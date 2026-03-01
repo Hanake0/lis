@@ -248,14 +248,12 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 	[Trace("GowaClient > SendChatPresenceAsync")]
 	public async Task SendChatPresenceAsync(string phone, string action, CancellationToken ct = default) {
 		var payload = new { phone, action };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/chat-presence", payload, ct);
-		response.EnsureSuccessStatusCode();
+		await httpClient.PostAsJsonAsync("/api/send/chat-presence", payload, ct);
 	}
 
 	[Trace("GowaClient > SendPresenceAsync")]
 	public async Task SendPresenceAsync(string type, CancellationToken ct = default) {
 		var payload = new { type };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/presence", payload, ct);
-		response.EnsureSuccessStatusCode();
+		await httpClient.PostAsJsonAsync("/api/send/presence", payload, ct);
 	}
 }

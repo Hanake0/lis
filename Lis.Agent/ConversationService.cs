@@ -40,11 +40,7 @@ public sealed class ConversationService(
 			return;
 		}
 
-		try {
-			await channelClient.SetTypingAsync(message.ChatId, ct);
-		} catch (Exception ex) {
-			logger.LogWarning(ex, "Failed to send composing presence");
-		}
+		await channelClient.SetTypingAsync(message.ChatId, ct);
 
 		List<MessageEntity> recentMessages = await db.Messages
 			.Where(m => m.ChatId == chat.Id)
