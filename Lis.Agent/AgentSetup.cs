@@ -13,7 +13,7 @@ public static class AgentSetup {
 			IServiceScopeFactory scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
 
 			IKernelBuilder builder = Kernel.CreateBuilder();
-			builder.Services.AddSingleton(chatClient);
+			builder.Services.AddChatClient(chatClient);
 			builder.Services.AddSingleton(scopeFactory);
 			builder.Plugins.AddFromType<DateTimePlugin>();
 			builder.Plugins.AddFromType<MemoryPlugin>();
