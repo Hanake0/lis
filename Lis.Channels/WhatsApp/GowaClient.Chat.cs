@@ -10,7 +10,7 @@ public sealed partial class GowaClient {
 
 	[Trace("GowaClient > GetChatsAsync")]
 	public async Task<ChatInfo[]?> GetChatsAsync(int limit = 25, int offset = 0, string? search = null, bool? hasMedia = null, CancellationToken ct = default) {
-		string url = $"/api/chats?limit={limit}&offset={offset}";
+		string url = $"/chats?limit={limit}&offset={offset}";
 		if (search is not null) url += $"&search={Uri.EscapeDataString(search)}";
 		if (hasMedia is not null) url += $"&has_media={hasMedia.Value.ToString().ToLowerInvariant()}";
 
@@ -25,7 +25,7 @@ public sealed partial class GowaClient {
 	public async Task<ChatMessage[]?> GetChatMessagesAsync(string chatJid, int limit = 50, int offset = 0, string? search = null, bool? mediaOnly = null, bool? isFromMe = null, CancellationToken ct = default) {
 		Activity.Current?.SetTag("chat.id", chatJid);
 
-		string url = $"/api/chat/{chatJid}/messages?limit={limit}&offset={offset}";
+		string url = $"/chat/{chatJid}/messages?limit={limit}&offset={offset}";
 		if (search is not null) url += $"&search={Uri.EscapeDataString(search)}";
 		if (mediaOnly is not null) url += $"&media_only={mediaOnly.Value.ToString().ToLowerInvariant()}";
 		if (isFromMe is not null) url += $"&is_from_me={isFromMe.Value.ToString().ToLowerInvariant()}";
@@ -42,7 +42,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("chat.id", chatJid);
 
 		var payload = new { label_id = labelId, label_name = labelName, labeled };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/chat/{chatJid}/label", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/chat/{chatJid}/label", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -51,7 +51,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("chat.id", chatJid);
 
 		var payload = new { pinned };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/chat/{chatJid}/pin", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/chat/{chatJid}/pin", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -60,7 +60,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("chat.id", chatJid);
 
 		var payload = new { timer_seconds = timerSeconds };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/chat/{chatJid}/disappearing", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/chat/{chatJid}/disappearing", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -69,7 +69,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("chat.id", chatJid);
 
 		var payload = new { archived };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/chat/{chatJid}/archive", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/chat/{chatJid}/archive", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 }

@@ -13,7 +13,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/revoke", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/revoke", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -22,7 +22,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/delete", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/delete", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -31,7 +31,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone, emoji };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/reaction", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/reaction", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -40,7 +40,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone, message };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/update", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/update", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -49,7 +49,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/read", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/read", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -58,7 +58,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/star", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/star", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -67,7 +67,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("message.id", messageId);
 
 		var payload = new { phone };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/api/message/{messageId}/unstar", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync($"/message/{messageId}/unstar", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -75,7 +75,7 @@ public sealed partial class GowaClient {
 	public async Task<MediaDownloadResult?> DownloadMediaAsync(string messageId, string phone, CancellationToken ct = default) {
 		Activity.Current?.SetTag("message.id", messageId);
 
-		string url = $"/api/message/{messageId}/download?phone={Uri.EscapeDataString(phone)}";
+		string url = $"/message/{messageId}/download?phone={Uri.EscapeDataString(phone)}";
 		HttpResponseMessage response = await httpClient.GetAsync(url, ct);
 		response.EnsureSuccessStatusCode();
 

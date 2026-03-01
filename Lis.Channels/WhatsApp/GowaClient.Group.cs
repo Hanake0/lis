@@ -14,7 +14,7 @@ public sealed partial class GowaClient {
 	public async Task<GroupInfo?> GetGroupInfoAsync(string groupId, CancellationToken ct = default) {
 		Activity.Current?.SetTag("group.id", groupId);
 
-		string url = $"/api/group/info?group_id={Uri.EscapeDataString(groupId)}";
+		string url = $"/group/info?group_id={Uri.EscapeDataString(groupId)}";
 		HttpResponseMessage response = await httpClient.GetAsync(url, ct);
 		response.EnsureSuccessStatusCode();
 
@@ -25,7 +25,7 @@ public sealed partial class GowaClient {
 	[Trace("GowaClient > CreateGroupAsync")]
 	public async Task CreateGroupAsync(string title, string[] participants, CancellationToken ct = default) {
 		var payload = new { title, participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -35,7 +35,7 @@ public sealed partial class GowaClient {
 	public async Task<GroupParticipant[]?> GetGroupParticipantsAsync(string groupId, CancellationToken ct = default) {
 		Activity.Current?.SetTag("group.id", groupId);
 
-		string url = $"/api/group/participants?group_id={Uri.EscapeDataString(groupId)}";
+		string url = $"/group/participants?group_id={Uri.EscapeDataString(groupId)}";
 		HttpResponseMessage response = await httpClient.GetAsync(url, ct);
 		response.EnsureSuccessStatusCode();
 
@@ -48,7 +48,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		ManageParticipantsRequest request = new() { GroupId = groupId, Participants = participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/participants", request, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/participants", request, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -57,7 +57,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		ManageParticipantsRequest request = new() { GroupId = groupId, Participants = participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/participants/remove", request, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/participants/remove", request, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -66,7 +66,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		ManageParticipantsRequest request = new() { GroupId = groupId, Participants = participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/participants/promote", request, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/participants/promote", request, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -75,7 +75,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		ManageParticipantsRequest request = new() { GroupId = groupId, Participants = participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/participants/demote", request, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/participants/demote", request, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -84,13 +84,13 @@ public sealed partial class GowaClient {
 	[Trace("GowaClient > JoinGroupAsync")]
 	public async Task JoinGroupAsync(string link, CancellationToken ct = default) {
 		var payload = new { link };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/join-with-link", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/join-with-link", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
 	[Trace("GowaClient > GetGroupFromLinkAsync")]
 	public async Task<GroupInfo?> GetGroupFromLinkAsync(string link, CancellationToken ct = default) {
-		string url = $"/api/group/info-from-link?link={Uri.EscapeDataString(link)}";
+		string url = $"/group/info-from-link?link={Uri.EscapeDataString(link)}";
 		HttpResponseMessage response = await httpClient.GetAsync(url, ct);
 		response.EnsureSuccessStatusCode();
 
@@ -103,7 +103,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/leave", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/leave", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -113,7 +113,7 @@ public sealed partial class GowaClient {
 	public async Task<GroupJoinRequestInfo[]?> GetJoinRequestsAsync(string groupId, CancellationToken ct = default) {
 		Activity.Current?.SetTag("group.id", groupId);
 
-		string url = $"/api/group/participant-requests?group_id={Uri.EscapeDataString(groupId)}";
+		string url = $"/group/participant-requests?group_id={Uri.EscapeDataString(groupId)}";
 		HttpResponseMessage response = await httpClient.GetAsync(url, ct);
 		response.EnsureSuccessStatusCode();
 
@@ -126,7 +126,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId, participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/participant-requests/approve", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/participant-requests/approve", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -135,7 +135,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId, participants };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/participant-requests/reject", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/participant-requests/reject", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -149,7 +149,7 @@ public sealed partial class GowaClient {
 		content.Add(new StringContent(groupId), "group_id");
 		content.Add(new StreamContent(photo), "photo", fileName);
 
-		HttpResponseMessage response = await httpClient.PostAsync("/api/group/photo", content, ct);
+		HttpResponseMessage response = await httpClient.PostAsync("/group/photo", content, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -158,7 +158,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId, name };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/name", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/name", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -167,7 +167,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId, locked };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/locked", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/locked", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -176,7 +176,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId, announce };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/announce", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/announce", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -185,7 +185,7 @@ public sealed partial class GowaClient {
 		Activity.Current?.SetTag("group.id", groupId);
 
 		var payload = new { group_id = groupId, topic };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/group/topic", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/group/topic", payload, ct);
 		response.EnsureSuccessStatusCode();
 	}
 
@@ -195,7 +195,7 @@ public sealed partial class GowaClient {
 	public async Task<string?> GetGroupInviteLinkAsync(string groupId, bool reset = false, CancellationToken ct = default) {
 		Activity.Current?.SetTag("group.id", groupId);
 
-		string url = $"/api/group/invite-link?group_id={Uri.EscapeDataString(groupId)}&reset={reset.ToString().ToLowerInvariant()}";
+		string url = $"/group/invite-link?group_id={Uri.EscapeDataString(groupId)}&reset={reset.ToString().ToLowerInvariant()}";
 		HttpResponseMessage response = await httpClient.GetAsync(url, ct);
 		response.EnsureSuccessStatusCode();
 

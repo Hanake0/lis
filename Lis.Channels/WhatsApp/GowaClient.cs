@@ -26,7 +26,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 			Mentions       = mentions,
 		};
 
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/message", request, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/message", request, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -42,7 +42,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, image_url = imageUrl, caption, view_once = viewOnce, compress };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/image", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/image", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -61,7 +61,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		if (caption is not null) content.Add(new StringContent(caption), "caption");
 		if (viewOnce) content.Add(new StringContent("true"), "view_once");
 
-		HttpResponseMessage response = await httpClient.PostAsync("/api/send/image", content, ct);
+		HttpResponseMessage response = await httpClient.PostAsync("/send/image", content, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -76,7 +76,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, audio_url = audioUrl };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/audio", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/audio", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -92,7 +92,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		content.Add(new StringContent(phone), "phone");
 		content.Add(new StreamContent(audio), "audio", fileName);
 
-		HttpResponseMessage response = await httpClient.PostAsync("/api/send/audio", content, ct);
+		HttpResponseMessage response = await httpClient.PostAsync("/send/audio", content, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -112,7 +112,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		content.Add(new StreamContent(file), "file", fileName);
 		if (caption is not null) content.Add(new StringContent(caption), "caption");
 
-		HttpResponseMessage response = await httpClient.PostAsync("/api/send/file", content, ct);
+		HttpResponseMessage response = await httpClient.PostAsync("/send/file", content, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -127,7 +127,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, sticker_url = stickerUrl };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/sticker", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/sticker", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -143,7 +143,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		content.Add(new StringContent(phone), "phone");
 		content.Add(new StreamContent(sticker), "sticker", fileName);
 
-		HttpResponseMessage response = await httpClient.PostAsync("/api/send/sticker", content, ct);
+		HttpResponseMessage response = await httpClient.PostAsync("/send/sticker", content, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -159,7 +159,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, video_url = videoUrl, caption, view_once = viewOnce, compress };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/video", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/video", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -178,7 +178,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		if (caption is not null) content.Add(new StringContent(caption), "caption");
 		if (viewOnce) content.Add(new StringContent("true"), "view_once");
 
-		HttpResponseMessage response = await httpClient.PostAsync("/api/send/video", content, ct);
+		HttpResponseMessage response = await httpClient.PostAsync("/send/video", content, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -193,7 +193,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, contact_name = contactName, contact_phone = contactPhone };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/contact", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/contact", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -208,7 +208,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, link, caption };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/link", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/link", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -223,7 +223,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		Activity.Current?.SetTag("chat.phone", phone);
 
 		var payload = new { phone, latitude, longitude };
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/location", payload, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/location", payload, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -236,7 +236,7 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 	public async Task<SendResult?> SendPollAsync(SendPollRequest request, CancellationToken ct = default) {
 		Activity.Current?.SetTag("chat.phone", request.Phone);
 
-		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/api/send/poll", request, ct);
+		HttpResponseMessage response = await httpClient.PostAsJsonAsync("/send/poll", request, ct);
 		response.EnsureSuccessStatusCode();
 
 		GowaResponse<SendResult>? result = await response.Content.ReadFromJsonAsync<GowaResponse<SendResult>>(ct);
@@ -248,12 +248,12 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 	[Trace("GowaClient > SendChatPresenceAsync")]
 	public async Task SendChatPresenceAsync(string phone, string action, CancellationToken ct = default) {
 		var payload = new { phone, action };
-		await httpClient.PostAsJsonAsync("/api/send/chat-presence", payload, ct);
+		await httpClient.PostAsJsonAsync("/send/chat-presence", payload, ct);
 	}
 
 	[Trace("GowaClient > SendPresenceAsync")]
 	public async Task SendPresenceAsync(string type, CancellationToken ct = default) {
 		var payload = new { type };
-		await httpClient.PostAsJsonAsync("/api/send/presence", payload, ct);
+		await httpClient.PostAsJsonAsync("/send/presence", payload, ct);
 	}
 }
