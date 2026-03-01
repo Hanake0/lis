@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: ./Lis.Api/Dockerfile
+    container_name: backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3010:3010"
+    depends_on:
+      - backend-redis
+      - postgres
+      - gowa
+
+  backend-redis:
+    container_name: backend-redis
+    image: redis:8-alpine
+    restart: always
+
+  postgres:
+    container_name: backend-postgres
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: lis
+      POSTGRES_USER: lis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  gowa:
+    container_name: gowa
+    image: aldinokemal/go-whatsapp-web-multidevice:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      APP_PORT: "3000"
+      WHATSAPP_WEBHOOK: "http://backend:3010/webhook/whatsapp"
+      WHATSAPP_WEBHOOK_SECRET: "${GOWA_WEBHOOK_SECRET}"
+      WHATSAPP_WEBHOOK_EVENTS: "message"
+
+volumes:
+  pgdata:
