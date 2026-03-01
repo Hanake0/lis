@@ -48,8 +48,9 @@ public sealed class ConversationService(
 
 		List<MessageEntity> recentMessages = await db.Messages
 			.Where(m => m.ChatId == chat.Id)
+			.OrderByDescending(m => m.Timestamp)
+			.Take(lisOptions.Value.MaxRecentMessages)
 			.OrderBy(m => m.Timestamp)
-			.TakeLast(lisOptions.Value.MaxRecentMessages)
 			.ToListAsync(ct);
 
 		string systemPrompt = await promptComposer.BuildAsync(db, ct);
