@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/Root/">
+    <File Path=".dockerignore" />
+    <File Path=".editorconfig" />
+    <File Path=".env" />
+    <File Path="docker-compose.yml" />
+    <File Path=".gitignore" />
+    <File Path="CLAUDE.md" />
+    <File Path="PLAN.md" />
+    <File Path=".env.example" />
+    <File Path="Directory.Build.props" />
+  </Folder>
+  <Project Path="Lis.Core/Lis.Core.csproj" />
+  <Project Path="Lis.Persistence/Lis.Persistence.csproj" />
+  <Project Path="Lis.Agent/Lis.Agent.csproj" />
+  <Project Path="Lis.Tools/Lis.Tools.csproj" />
+  <Project Path="Lis.Channels/Lis.Channels.csproj" />
+  <Project Path="Lis.Providers/Lis.Providers.csproj" />
+  <Project Path="Lis.Api/Lis.Api.csproj" />
+  <Project Path="Lis.Tests/Lis.Tests.csproj" />
+</Solution>
