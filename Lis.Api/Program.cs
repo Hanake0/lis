@@ -31,7 +31,7 @@ builder.Services.AddSingleton(Options.Create(new LisOptions {
 
 // Database
 if (Env("DATABASE_URL") is { Length: > 0 } dbUrl)
-	Environment.SetEnvironmentVariable("ConnectionStrings__lisdb", dbUrl);
+	builder.Configuration["ConnectionStrings:lisdb"] = dbUrl;
 builder.AddNpgsqlDbContext<LisDbContext>("lisdb",
 										 configureDbContextOptions: options => options.UseNpgsql(o => o.UseVector()));
 
