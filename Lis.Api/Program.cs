@@ -25,7 +25,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(Options.Create(new LisOptions {
 	OwnerJid               = Env("LIS_OWNER_JID"),
 	Timezone               = Env("LIS_TIMEZONE") is { Length: > 0 } t ? t : "E. South America Standard Time",
-	MaxRecentMessages      = EnvInt("LIS_MAX_RECENT_MESSAGES", 50),
+	MaxRecentMessages      = EnvInt("LIS_MAX_RECENT_MESSAGES",     50),
 	SummarizationThreshold = EnvInt("LIS_SUMMARIZATION_THRESHOLD", 30),
 }));
 
@@ -33,7 +33,7 @@ builder.Services.AddSingleton(Options.Create(new LisOptions {
 if (Env("DATABASE_URL") is { Length: > 0 } dbUrl)
 	Environment.SetEnvironmentVariable("ConnectionStrings__lisdb", dbUrl);
 builder.AddNpgsqlDbContext<LisDbContext>("lisdb",
-	configureDbContextOptions: options => options.UseNpgsql(o => o.UseVector()));
+										 configureDbContextOptions: options => options.UseNpgsql(o => o.UseVector()));
 
 // AI Provider
 if (Env("ANTHROPIC_ENABLED") == "true") builder.Services.AddAnthropic();
@@ -67,10 +67,8 @@ app.UseExceptionHandler();
 app.MapControllers();
 
 await app.RunAsync();
+return;
 
 // Helpers
-static string Env(string key) => Environment.GetEnvironmentVariable(key) ?? "";
-static int EnvInt(string key, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
-
-// Required for WebApplicationFactory integration tests
-public partial class Program;
+static string Env(string    key)               => Environment.GetEnvironmentVariable(key) ?? "";
+static int    EnvInt(string key, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
