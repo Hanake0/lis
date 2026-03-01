@@ -2,33 +2,38 @@ using System.Text.Json.Serialization;
 
 namespace Lis.Channels.WhatsApp.Schemas;
 
+public sealed class WebhookEnvelope {
+	[JsonPropertyName("event")]
+	public string? Event { get; init; }
+
+	[JsonPropertyName("device_id")]
+	public string? DeviceId { get; init; }
+
+	[JsonPropertyName("payload")]
+	public WebhookPayload? Payload { get; init; }
+}
+
 public sealed class WebhookPayload {
 	[JsonPropertyName("id")]
-	public required string Id { get; init; }
+	public string? Id { get; init; }
 
-	[JsonPropertyName("chat_jid")]
-	public required string ChatJid { get; init; }
+	[JsonPropertyName("chat_id")]
+	public string? ChatId { get; init; }
 
-	[JsonPropertyName("sender_jid")]
-	public required string SenderJid { get; init; }
+	[JsonPropertyName("from")]
+	public string? From { get; init; }
 
-	[JsonPropertyName("sender_name")]
-	public string? SenderName { get; init; }
+	[JsonPropertyName("from_name")]
+	public string? FromName { get; init; }
 
 	[JsonPropertyName("timestamp")]
-	public long Timestamp { get; init; }
+	public string? Timestamp { get; init; }
 
 	[JsonPropertyName("is_from_me")]
 	public bool IsFromMe { get; init; }
 
-	[JsonPropertyName("is_group")]
-	public bool IsGroup { get; init; }
-
 	[JsonPropertyName("body")]
 	public string? Body { get; init; }
-
-	[JsonPropertyName("replied_id")]
-	public string? RepliedId { get; init; }
 
 	[JsonPropertyName("quoted_message")]
 	public string? QuotedMessage { get; init; }

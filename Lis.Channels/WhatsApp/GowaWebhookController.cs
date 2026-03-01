@@ -28,26 +28,33 @@ public class GowaWebhookController(
 		if (!string.IsNullOrEmpty(signature) && !validator.Validate(signature, body))
 			return this.Unauthorized();
 
-		WebhookPayload? payload;
+		WebhookEnvelope? envelope;
 		try {
-			payload = JsonSerializer.Deserialize<WebhookPayload>(body);
+			envelope = JsonSerializer.Deserialize<WebhookEnvelope>(body);
 		} catch (JsonException) {
 			return this.BadRequest();
 		}
 
+		WebhookPayload? payload = envelope?.Payload;
 		if (payload is null || string.IsNullOrEmpty(payload.Body) || payload.IsFromMe)
 			return this.Ok();
 
+		// Group JIDs end with @g.us
+		bool isGroup = payload.ChatId?.EndsWith("@g.us") is true;
+
+		DateTimeOffset timestamp = DateTimeOffset.TryParse(payload.Timestamp, out DateTimeOffset ts)
+			? ts
+			: DateTimeOffset.UtcNow;
+
 		IncomingMessage message = new() {
-			ExternalId   = payload.Id,
-			ChatId       = payload.ChatJid,
-			SenderId     = payload.SenderJid,
-			SenderName   = payload.SenderName,
-			Timestamp    = DateTimeOffset.FromUnixTimeSeconds(payload.Timestamp),
+			ExternalId   = payload.Id ?? "",
+			ChatId       = payload.ChatId ?? "",
+			SenderId     = payload.From ?? "",
+			SenderName   = payload.FromName,
+			Timestamp    = timestamp,
 			IsFromMe     = payload.IsFromMe,
-			IsGroup      = payload.IsGroup,
+			IsGroup      = isGroup,
 			Body         = payload.Body,
-			RepliedId    = payload.RepliedId,
 			MediaType    = payload.MediaType,
 			MediaCaption = payload.MediaCaption,
 		};
