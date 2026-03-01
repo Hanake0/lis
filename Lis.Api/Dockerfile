@@ -24,7 +24,6 @@ COPY Lis.Agent/ Lis.Agent/
 COPY Lis.Channels/ Lis.Channels/
 COPY Lis.Providers/ Lis.Providers/
 COPY Lis.Api/ Lis.Api/
-RUN touch Lis.Api/.env
 RUN dotnet publish "Lis.Api/Lis.Api.csproj" -c Release --no-restore -o /app
 
 # Runtime Image

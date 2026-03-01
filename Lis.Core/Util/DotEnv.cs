@@ -1,9 +1,21 @@
 namespace Lis.Core.Util;
 
 public static class DotEnv {
-	public static void Load(string filePath = ".env") {
-		if (!File.Exists(filePath)) return;
+	public static void Load(string fileName = ".env") {
+		string? dir = Directory.GetCurrentDirectory();
 
+		while (dir is not null) {
+			string path = Path.Combine(dir, fileName);
+			if (File.Exists(path)) {
+				LoadFile(path);
+				return;
+			}
+
+			dir = Directory.GetParent(dir)?.FullName;
+		}
+	}
+
+	private static void LoadFile(string filePath) {
 		foreach (string line in File.ReadAllLines(filePath)) {
 			string[] parts = line.Split('=', StringSplitOptions.RemoveEmptyEntries);
 

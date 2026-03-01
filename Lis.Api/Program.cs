@@ -35,6 +35,9 @@ if (Env("DATABASE_URL") is { Length: > 0 } dbUrl)
 builder.AddNpgsqlDbContext<LisDbContext>("lisdb",
 										 configureDbContextOptions: options => options.UseNpgsql(o => o.UseVector()));
 
+// Defaults (providers override these)
+builder.Services.AddSingleton(new ModelSettings());
+
 // AI Provider
 if (Env("ANTHROPIC_ENABLED") == "true") builder.Services.AddAnthropic();
 
@@ -47,10 +50,12 @@ if (Env("GOWA_ENABLED") == "true") builder.Services.AddWhatsApp();
 // Application services
 builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
-builder.Services.AddScoped<IConversationService, ConversationService>();
 
-// Semantic Kernel
-builder.Services.AddLisAgent();
+// Conversation + Agent require both AI and Channel
+if (Env("ANTHROPIC_ENABLED") == "true" && Env("GOWA_ENABLED") == "true") {
+	builder.Services.AddScoped<IConversationService, ConversationService>();
+	builder.Services.AddLisAgent();
+}
 
 WebApplication app = builder.Build();
 

@@ -23,10 +23,5 @@
     <ProjectReference Include="..\Lis.Providers\Lis.Providers.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include=".env">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
 
 </Project>
