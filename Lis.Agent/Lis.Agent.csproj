@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.72.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.72.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lis.Core\Lis.Core.csproj" />
+    <ProjectReference Include="..\Lis.Persistence\Lis.Persistence.csproj" />
+    <ProjectReference Include="..\Lis.Tools\Lis.Tools.csproj" />
+  </ItemGroup>
+
+</Project>
