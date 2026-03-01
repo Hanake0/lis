@@ -10,7 +10,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <NuGetAuditLevel>moderate</NuGetAuditLevel>
-    <MSBuildNodeReuse>false</MSBuildNodeReuse>
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
 </Project>

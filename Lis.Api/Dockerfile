@@ -39,4 +39,4 @@ RUN apk add --no-cache icu-data-full icu-libs
 
 USER app
 COPY --from=build /app .
-ENTRYPOINT ["./Lis.Api"]
+ENTRYPOINT ["dotnet", "Lis.Api.dll"]
