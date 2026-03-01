@@ -3,6 +3,7 @@ using Lis.Tools;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
@@ -13,7 +14,7 @@ public static class AgentSetup {
 			IServiceScopeFactory scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
 
 			IKernelBuilder builder = Kernel.CreateBuilder();
-			builder.Services.AddChatClient(chatClient);
+			builder.Services.AddSingleton<IChatCompletionService>(chatClient.AsChatCompletionService());
 			builder.Services.AddSingleton(scopeFactory);
 			builder.Plugins.AddFromType<DateTimePlugin>();
 			builder.Plugins.AddFromType<MemoryPlugin>();
