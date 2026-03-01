@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+
 using Anthropic.SDK;
 
 using Lis.Core.Configuration;
@@ -17,9 +19,16 @@ public static class AnthropicProvider {
 			ContextBudget = EnvInt("ANTHROPIC_CONTEXT_BUDGET", 12000),
 		};
 
+		bool useBearer = Env("ANTHROPIC_AUTH_MODE").Equals("bearer", StringComparison.OrdinalIgnoreCase)
+		              || opts.ApiKey.StartsWith("sk-ant-oat", StringComparison.Ordinal);
+
+		AnthropicClient anthropic = useBearer
+			? new AnthropicClient(opts.ApiKey, new HttpClient(new BearerAuthHandler(opts.ApiKey) { InnerHandler = new HttpClientHandler() }))
+			: new AnthropicClient(opts.ApiKey);
+
 		services.AddSingleton(Options.Create(opts));
 		services.AddSingleton(new ModelSettings { MaxTokens = opts.MaxTokens, ContextBudget = opts.ContextBudget });
-		services.AddSingleton<IChatClient>(new ChatClientBuilder(new AnthropicClient(opts.ApiKey).Messages).UseFunctionInvocation().Build());
+		services.AddSingleton<IChatClient>(new ChatClientBuilder(anthropic.Messages).UseFunctionInvocation().Build());
 
 		return services;
 	}
@@ -27,4 +36,12 @@ public static class AnthropicProvider {
 	private static string Env(string key) => Environment.GetEnvironmentVariable(key) ?? "";
 
 	private static int EnvInt(string key, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
+
+	private sealed class BearerAuthHandler(string token) :DelegatingHandler {
+		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+			request.Headers.Remove("x-api-key");
+			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+			return base.SendAsync(request, ct);
+		}
+	}
 }
