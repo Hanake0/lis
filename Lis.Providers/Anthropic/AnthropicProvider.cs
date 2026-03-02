@@ -28,7 +28,7 @@ public static class AnthropicProvider {
 
 		services.AddSingleton(Options.Create(opts));
 		services.AddSingleton(new ModelSettings { Model = opts.Model, MaxTokens = opts.MaxTokens, ContextBudget = opts.ContextBudget });
-		services.AddSingleton<IChatClient>(new ChatClientBuilder(anthropic.Messages).UseFunctionInvocation().Build());
+		services.AddSingleton<IChatClient>(anthropic.Messages);
 
 		return services;
 	}
