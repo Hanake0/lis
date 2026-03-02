@@ -19,6 +19,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 
 	[KernelFunction("create_memory")]
 	[Description("Store a new memory. Optionally link to a person by name.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> CreateMemoryAsync(
 		[Description("The information to remember")] string content,
 		[Description("Person's name this memory is about (optional)")] string? contactName = null) {
@@ -45,6 +46,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 
 	[KernelFunction("search_memories")]
 	[Description("Search stored memories by keyword or phrase. Optionally filter by person.")]
+	[ToolSummarization(SummarizationPolicy.Summarize)]
 	public async Task<string> SearchMemoriesAsync(
 		[Description("Search keyword or phrase")] string query,
 		[Description("Person's name to filter by (optional)")] string? contactName = null) {
