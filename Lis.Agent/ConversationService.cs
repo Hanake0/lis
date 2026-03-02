@@ -86,7 +86,7 @@ public sealed class ConversationService(
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 		ChatMessageContent response = await chatService.GetChatMessageContentAsync(
 			chatHistory,
-			new PromptExecutionSettings { ModelId = modelSettings.Model, ExtensionData = new Dictionary<string, object> { ["max_tokens"] = modelSettings.MaxTokens } },
+			new PromptExecutionSettings { ModelId = modelSettings.Model, FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), ExtensionData = new Dictionary<string, object> { ["max_tokens"] = modelSettings.MaxTokens } },
 			kernel,
 			ct);
 
