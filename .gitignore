@@ -376,5 +376,4 @@ FodyWeavers.xsd
 
 # Claude Code
 .claude/plans/
-**/CLAUDE.md
 .claude/settings.local.json
