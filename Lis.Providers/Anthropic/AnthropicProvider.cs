@@ -37,10 +37,15 @@ public static class AnthropicProvider {
 
 	private static int EnvInt(string key, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
 
-	private sealed class BearerAuthHandler(string token) :DelegatingHandler {
+	private sealed class BearerAuthHandler(string token) : DelegatingHandler {
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
 			request.Headers.Remove("x-api-key");
 			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+			request.Headers.TryAddWithoutValidation("user-agent", "claude-cli/2.1.62");
+			request.Headers.TryAddWithoutValidation("x-app", "cli");
+			request.Headers.TryAddWithoutValidation("anthropic-dangerous-direct-browser-access", "true");
+			request.Headers.TryAddWithoutValidation("anthropic-beta",
+				"claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14");
 			return base.SendAsync(request, ct);
 		}
 	}
