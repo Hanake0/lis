@@ -37,11 +37,22 @@ public sealed class ChatEntity {
 	[JsonPropertyName("updated_at")]
 	public DateTimeOffset UpdatedAt { get; set; }
 
+	[Column("current_session_id")]
+	[JsonPropertyName("current_session_id")]
+	public long? CurrentSessionId { get; set; }
+
+	public SessionEntity? CurrentSession { get; set; }
+
 	public ICollection<MessageEntity> Messages { get; set; } = [];
 }
 
-public class ChatEntityConfiguration :IEntityTypeConfiguration<ChatEntity> {
+public class ChatEntityConfiguration : IEntityTypeConfiguration<ChatEntity> {
 	public void Configure(EntityTypeBuilder<ChatEntity> builder) {
 		builder.HasIndex(e => e.ExternalId).IsUnique();
+
+		builder.HasOne(e => e.CurrentSession)
+			   .WithMany()
+			   .HasForeignKey(e => e.CurrentSessionId)
+			   .OnDelete(DeleteBehavior.SetNull);
 	}
 }

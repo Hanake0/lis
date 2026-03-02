@@ -11,6 +11,7 @@ public sealed class LisDbContext(DbContextOptions<LisDbContext> options) :DbCont
 	public DbSet<ContactIdentifierEntity>   ContactIdentifiers { get; init; } = null!;
 	public DbSet<PromptSectionEntity>       PromptSections     { get; init; } = null!;
 	public DbSet<MemoryEntity>              Memories           { get; init; } = null!;
+	public DbSet<SessionEntity>             Sessions           { get; init; } = null!;
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
 		modelBuilder.HasPostgresExtension("vector");

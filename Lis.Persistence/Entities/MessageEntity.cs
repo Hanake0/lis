@@ -64,6 +64,26 @@ public sealed class MessageEntity {
 	[JsonPropertyName("token_count")]
 	public int TokenCount { get; set; }
 
+	[Column("input_tokens")]
+	[JsonPropertyName("input_tokens")]
+	public int? InputTokens { get; set; }
+
+	[Column("output_tokens")]
+	[JsonPropertyName("output_tokens")]
+	public int? OutputTokens { get; set; }
+
+	[Column("cache_read_tokens")]
+	[JsonPropertyName("cache_read_tokens")]
+	public int? CacheReadTokens { get; set; }
+
+	[Column("cache_creation_tokens")]
+	[JsonPropertyName("cache_creation_tokens")]
+	public int? CacheCreationTokens { get; set; }
+
+	[Column("thinking_tokens")]
+	[JsonPropertyName("thinking_tokens")]
+	public int? ThinkingTokens { get; set; }
+
 	[Column("timestamp")]
 	[JsonPropertyName("timestamp")]
 	public DateTimeOffset Timestamp { get; set; }
