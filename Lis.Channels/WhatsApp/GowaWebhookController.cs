@@ -13,10 +13,9 @@ namespace Lis.Channels.WhatsApp;
 [Route("webhook/whatsapp")]
 [Tags("WhatsApp")]
 public class GowaWebhookController(
-	WebhookValidator validator,
-	IConversationService conversationService,
-	ILogger<GowaWebhookController> logger) :ControllerBase {
-
+	WebhookValidator               validator,
+	IConversationService           conversationService,
+	ILogger<GowaWebhookController> logger) : ControllerBase {
 	[HttpPost]
 	[ProducesResponseType(StatusCodes.Status200OK)]
 	[ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -36,6 +35,13 @@ public class GowaWebhookController(
 		}
 
 		WebhookPayload? payload = envelope?.Payload;
+
+		// Typing/composing events → extend debounce timer (requires GOWA PR #547)
+		if (envelope?.Event is "chat_presence" && !string.IsNullOrEmpty(payload?.ChatId)) {
+			_ = Task.Run(() => conversationService.HandleTypingAsync(payload.ChatId, CancellationToken.None));
+			return this.Ok();
+		}
+
 		if (payload is null || string.IsNullOrEmpty(payload.Body) || payload.IsFromMe)
 			return this.Ok();
 
@@ -47,16 +53,16 @@ public class GowaWebhookController(
 			: DateTimeOffset.UtcNow;
 
 		IncomingMessage message = new() {
-			ExternalId   = payload.Id ?? "",
+			ExternalId   = payload.Id     ?? "",
 			ChatId       = payload.ChatId ?? "",
-			SenderId     = payload.From ?? "",
+			SenderId     = payload.From   ?? "",
 			SenderName   = payload.FromName,
 			Timestamp    = timestamp,
 			IsFromMe     = payload.IsFromMe,
 			IsGroup      = isGroup,
 			Body         = payload.Body,
 			MediaType    = payload.MediaType,
-			MediaCaption = payload.MediaCaption,
+			MediaCaption = payload.MediaCaption
 		};
 
 		_ = Task.Run(async () => {

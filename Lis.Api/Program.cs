@@ -23,11 +23,12 @@ builder.Services.AddProblemDetails();
 
 // Configuration
 builder.Services.AddSingleton(Options.Create(new LisOptions {
-	OwnerJid               = Env("LIS_OWNER_JID"),
-	Timezone               = Env("LIS_TIMEZONE") is { Length: > 0 } t ? t : "E. South America Standard Time",
-	MaxRecentMessages      = EnvInt("LIS_MAX_RECENT_MESSAGES",     50),
-	SummarizationThreshold = EnvInt("LIS_SUMMARIZATION_THRESHOLD", 30),
-}));
+												 OwnerJid               = Env("LIS_OWNER_JID"),
+												 Timezone               = Env("LIS_TIMEZONE") is { Length: > 0 } t ? t : "E. South America Standard Time",
+												 MaxRecentMessages      = EnvInt("LIS_MAX_RECENT_MESSAGES",     50),
+												 SummarizationThreshold = EnvInt("LIS_SUMMARIZATION_THRESHOLD", 30),
+												 MessageDebounceMs      = EnvInt("LIS_MESSAGE_DEBOUNCE_MS",     3000)
+											 }));
 
 // Database
 if (Env("DATABASE_URL") is { Length: > 0 } dbUrl)
@@ -53,7 +54,8 @@ builder.Services.AddSingleton<PromptComposer>();
 
 // Conversation + Agent require both AI and Channel
 if (Env("ANTHROPIC_ENABLED") == "true" && Env("GOWA_ENABLED") == "true") {
-	builder.Services.AddScoped<IConversationService, ConversationService>();
+	builder.Services.AddScoped<ConversationService>();
+	builder.Services.AddSingleton<IConversationService, MessageDebouncer>();
 	builder.Services.AddLisAgent();
 }
 
@@ -75,5 +77,10 @@ await app.RunAsync();
 return;
 
 // Helpers
-static string Env(string    key)               => Environment.GetEnvironmentVariable(key) ?? "";
-static int    EnvInt(string key, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
+static string Env(string key) {
+	return Environment.GetEnvironmentVariable(key) ?? "";
+}
+
+static int EnvInt(string key, int fallback) {
+	return int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
+}
