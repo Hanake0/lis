@@ -1,15 +1,21 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 
+using Lis.Core.Channel;
 using Lis.Core.Util;
 
 using Microsoft.Extensions.Logging;
+
+using UsageContent = Microsoft.Extensions.AI.UsageContent;
+using UsageDetails = Microsoft.Extensions.AI.UsageDetails;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
 public sealed class ToolRunner(ILogger<ToolRunner> logger) {
+	internal const string UsageMetadataKey = "LisTokenUsage";
+
 	private static int MaxIterations =>
 		int.TryParse(Environment.GetEnvironmentVariable("LIS_MAX_TOOL_ITERATIONS"), out int v) ? v : 10;
 
@@ -22,7 +28,7 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 		for (int i = 0; i < MaxIterations; i++) {
 			int countBefore = history.Count;
 
-			(ChatMessageContent result, IReadOnlyList<FunctionCallContent> calls) =
+			(ChatMessageContent result, IReadOnlyList<FunctionCallContent> calls, TokenUsage? usage) =
 				await this.StreamResponseAsync(chat, history, settings, kernel, ct);
 
 			// SK's ChatClientChatCompletionService auto-appends a tool-call-only message
@@ -46,8 +52,18 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 		logger.LogWarning("Max tool iterations ({Max}) reached", MaxIterations);
 	}
 
+	/// <summary>
+	/// Extracts the <see cref="TokenUsage"/> attached by <see cref="RunAsync"/> to an assistant message.
+	/// Returns null for tool messages or messages without usage data.
+	/// </summary>
+	public static TokenUsage? GetUsage(ChatMessageContent message) {
+		if (message.Metadata?.TryGetValue(UsageMetadataKey, out object? value) == true)
+			return value as TokenUsage;
+		return null;
+	}
+
 	[Trace("ToolRunner > StreamResponseAsync")]
-	private async Task<(ChatMessageContent, IReadOnlyList<FunctionCallContent>)> StreamResponseAsync(
+	private async Task<(ChatMessageContent, IReadOnlyList<FunctionCallContent>, TokenUsage?)> StreamResponseAsync(
 		IChatCompletionService chat, ChatHistory history,
 		PromptExecutionSettings settings, Kernel kernel, CancellationToken ct) {
 
@@ -55,6 +71,7 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 		StringBuilder              text       = new();
 		FunctionCallContentBuilder fccBuilder = new();
 		bool                       typingSet  = false;
+		IReadOnlyDictionary<string, object?>? lastMetadata = null;
 
 		await foreach (StreamingChatMessageContent chunk in
 			chat.GetStreamingChatMessageContentsAsync(history, settings, kernel, ct)) {
@@ -71,16 +88,59 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 				text.Append(chunk.Content);
 
 			fccBuilder.Append(chunk);
+
+			// Keep the last chunk's metadata — it contains the final usage stats
+			if (chunk.Metadata is { Count: > 0 })
+				lastMetadata = chunk.Metadata;
 		}
 
 		IReadOnlyList<FunctionCallContent> calls = fccBuilder.Build();
 
+		TokenUsage? usage = ExtractUsage(lastMetadata);
+
+		// Build message with usage attached in metadata (thread-safe, per-message)
+		Dictionary<string, object?>? metadata = usage is not null
+			? new Dictionary<string, object?> { [UsageMetadataKey] = usage }
+			: null;
+
 		string? content = text.Length > 0 ? text.ToString() : null;
-		ChatMessageContent message = new(role: role ?? AuthorRole.Assistant, content: content);
+		ChatMessageContent message = new(role: role ?? AuthorRole.Assistant, content: content, metadata: metadata);
 		foreach (FunctionCallContent call in calls)
 			message.Items.Add(call);
 
-		return (message, calls);
+		return (message, calls, usage);
+	}
+
+	private static TokenUsage? ExtractUsage(IReadOnlyDictionary<string, object?>? metadata) {
+		if (metadata is null) return null;
+
+		// M.E.AI wraps usage in a UsageContent object under the "Usage" key
+		if (!metadata.TryGetValue("Usage", out object? usageObj) || usageObj is not UsageContent usageContent)
+			return null;
+
+		UsageDetails? details = usageContent.Details;
+		if (details is null) return null;
+
+		int inputTokens  = (int)(details.InputTokenCount  ?? 0);
+		int outputTokens = (int)(details.OutputTokenCount ?? 0);
+
+		if (inputTokens == 0 && outputTokens == 0) return null;
+
+		// Cache tokens are in AdditionalCounts (Anthropic SDK maps them there)
+		int cacheReadTokens     = 0;
+		int cacheCreationTokens = 0;
+		if (details.AdditionalCounts is not null) {
+			foreach (KeyValuePair<string, long> kvp in details.AdditionalCounts) {
+				if (kvp.Key.Contains("CacheRead", StringComparison.OrdinalIgnoreCase)
+				    || kvp.Key.Contains("cache_read", StringComparison.OrdinalIgnoreCase))
+					cacheReadTokens = (int)kvp.Value;
+				else if (kvp.Key.Contains("CacheCreation", StringComparison.OrdinalIgnoreCase)
+				         || kvp.Key.Contains("cache_creation", StringComparison.OrdinalIgnoreCase))
+					cacheCreationTokens = (int)kvp.Value;
+			}
+		}
+
+		return new TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ThinkingTokens: 0);
 	}
 
 	[Trace("ToolRunner > InvokeFunctionAsync")]
