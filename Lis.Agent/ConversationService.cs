@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
@@ -19,6 +20,7 @@ public sealed class ConversationService(
 	IServiceScopeFactory         scopeFactory,
 	IChannelClient               channelClient,
 	Kernel                       kernel,
+	ToolRunner                   toolRunner,
 	ContextWindowBuilder         contextWindowBuilder,
 	PromptComposer               promptComposer,
 	ModelSettings                modelSettings,
@@ -83,18 +85,22 @@ public sealed class ConversationService(
 
 		ChatHistory chatHistory = contextWindowBuilder.Build(systemPrompt, recentMessages);
 
+		ToolContext.ChatId  = message.ChatId;
+		ToolContext.Channel = channelClient;
+
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
-		ChatMessageContent response = await chatService.GetChatMessageContentAsync(
-			chatHistory,
-			new PromptExecutionSettings { ModelId = modelSettings.Model, FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), ExtensionData = new Dictionary<string, object> { ["max_tokens"] = modelSettings.MaxTokens } },
-			kernel,
-			ct);
+		PromptExecutionSettings settings = new() {
+			ModelId                = modelSettings.Model,
+			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: false),
+			ExtensionData          = new Dictionary<string, object> { ["max_tokens"] = modelSettings.MaxTokens }
+		};
 
-		string responseText = response.Content ?? "...";
+		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, kernel, settings, ct)) {
+			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content))
+				await channelClient.SendMessageAsync(message.ChatId, msg.Content, message.ExternalId, ct);
 
-		await PersistOutgoingMessageAsync(db, chat, responseText, ct);
-
-		await channelClient.SendMessageAsync(message.ChatId, responseText, message.ExternalId, ct);
+			await PersistSkMessageAsync(db, chat, msg, ct);
+		}
 	}
 
 	private bool ShouldRespond(IncomingMessage message) {
@@ -153,19 +159,18 @@ public sealed class ConversationService(
 		await db.SaveChangesAsync(ct);
 	}
 
-	private static async Task PersistOutgoingMessageAsync(
-		LisDbContext db, ChatEntity chat, string body, CancellationToken ct) {
-		MessageEntity entity = new() {
+	private static async Task PersistSkMessageAsync(
+		LisDbContext db, ChatEntity chat, ChatMessageContent msg, CancellationToken ct) {
+		db.Messages.Add(new MessageEntity {
 			ChatId     = chat.Id,
 			SenderId   = "me",
-			IsFromMe   = true,
-			Body       = body,
-			TokenCount = ContextWindowBuilder.EstimateTokens(body),
+			IsFromMe   = msg.Role != AuthorRole.User,
+			Body       = msg.Content,
+			SkContent  = JsonSerializer.Serialize(msg),
+			TokenCount = ContextWindowBuilder.EstimateTokens(msg.Content),
 			Timestamp  = DateTimeOffset.UtcNow,
 			CreatedAt  = DateTimeOffset.UtcNow
-		};
-
-		db.Messages.Add(entity);
+		});
 		await db.SaveChangesAsync(ct);
 	}
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text;
 
+using Lis.Core.Util;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
 
@@ -11,18 +12,18 @@ using Microsoft.SemanticKernel;
 namespace Lis.Tools;
 
 public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
-
 	[KernelFunction("list_prompt_sections")]
 	[Description("List prompt sections. Use type='names' for a summary or type='full' for complete content of all sections.")]
 	public async Task<string> ListPromptSectionsAsync(
-		[Description("Listing type: 'names' for summary, 'full' for complete content")] string type = "names") {
-
+		[Description("Listing type: 'names' for summary, 'full' for complete content")]
+		string type = "names") {
+		await ToolContext.NotifyAsync($"📋 Listing prompt sections\ntype: {type}");
 		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
 		List<PromptSectionEntity> sections = await db.PromptSections
-			.OrderBy(s => s.SortOrder)
-			.ToListAsync();
+													 .OrderBy(s => s.SortOrder)
+													 .ToListAsync();
 
 		if (sections.Count == 0) return "No prompt sections found.";
 
@@ -46,13 +47,14 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("get_prompt_section")]
 	[Description("Get the full content of a specific prompt section by name.")]
 	public async Task<string> GetPromptSectionAsync(
-		[Description("Section name (e.g. 'soul', 'user', 'instructions')")] string name) {
-
+		[Description("Section name (e.g. 'soul', 'user', 'instructions')")]
+		string name) {
+		await ToolContext.NotifyAsync($"📄 Reading prompt section\nname: {name}");
 		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
 		PromptSectionEntity? section = await db.PromptSections
-			.FirstOrDefaultAsync(s => s.Name == name);
+											   .FirstOrDefaultAsync(s => s.Name == name);
 
 		if (section is null) return $"Section '{name}' not found.";
 
@@ -62,14 +64,16 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("update_prompt_section")]
 	[Description("Update the content of a prompt section. Changes take effect on the next message.")]
 	public async Task<string> UpdatePromptSectionAsync(
-		[Description("Section name (e.g. 'soul', 'user', 'instructions')")] string name,
-		[Description("New content for the section")] string content) {
-
+		[Description("Section name (e.g. 'soul', 'user', 'instructions')")]
+		string name,
+		[Description("New content for the section")]
+		string content) {
+		await ToolContext.NotifyAsync($"✏️ Updating prompt section\nname: {name}\n```\n{content}\n```");
 		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
 		PromptSectionEntity? section = await db.PromptSections
-			.FirstOrDefaultAsync(s => s.Name == name);
+											   .FirstOrDefaultAsync(s => s.Name == name);
 
 		if (section is null) return $"Section '{name}' not found.";
 

@@ -56,6 +56,10 @@ public sealed class MessageEntity {
 	[JsonPropertyName("reply_to_id")]
 	public string? ReplyToId { get; set; }
 
+	[Column("sk_content", TypeName = "jsonb")]
+	[JsonPropertyName("sk_content")]
+	public string? SkContent { get; set; }
+
 	[Column("token_count")]
 	[JsonPropertyName("token_count")]
 	public int TokenCount { get; set; }

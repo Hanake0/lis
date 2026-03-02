@@ -1,6 +1,9 @@
+using System.Text.Json;
+
 using Lis.Core.Configuration;
 using Lis.Persistence.Entities;
 
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
@@ -41,13 +44,15 @@ public sealed class ContextWindowBuilder(ModelSettings modelSettings) {
 
 		for (int i = startIndex; i < recentMessages.Count; i++) {
 			MessageEntity msg = recentMessages[i];
-			string content = msg.Body ?? "[media]";
 
-			if (msg.IsFromMe) {
-				history.AddAssistantMessage(content);
-			} else {
-				history.AddUserMessage(content);
+			if (msg.SkContent is not null) {
+				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent);
+				if (skMsg is not null) { history.Add(skMsg); continue; }
 			}
+
+			string content = msg.Body ?? "[media]";
+			if (msg.IsFromMe) history.AddAssistantMessage(content);
+			else              history.AddUserMessage(content);
 		}
 
 		return history;

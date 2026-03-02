@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text;
 
+using Lis.Core.Util;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
 
@@ -21,7 +22,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	public async Task<string> CreateMemoryAsync(
 		[Description("The information to remember")] string content,
 		[Description("Person's name this memory is about (optional)")] string? contactName = null) {
-
+		await ToolContext.NotifyAsync($"💾 Saving memory{(contactName is not null ? $"\ncontact: {contactName}" : "")}\n```\n{content}\n```");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
@@ -47,7 +48,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	public async Task<string> SearchMemoriesAsync(
 		[Description("Search keyword or phrase")] string query,
 		[Description("Person's name to filter by (optional)")] string? contactName = null) {
-
+		await ToolContext.NotifyAsync($"🔍 Searching memories\nquery: {query}{(contactName is not null ? $"\ncontact: {contactName}" : "")}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
@@ -87,7 +88,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	public async Task<string> UpdateMemoryAsync(
 		[Description("Memory ID")] long id,
 		[Description("Updated content")] string content) {
-
+		await ToolContext.NotifyAsync($"✏️ Updating memory #{id}\n```\n{content}\n```");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
@@ -106,7 +107,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	[Description("Delete a memory by ID.")]
 	public async Task<string> DeleteMemoryAsync(
 		[Description("Memory ID")] long id) {
-
+		await ToolContext.NotifyAsync($"🗑️ Deleting memory #{id}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 

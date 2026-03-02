@@ -1,3 +1,5 @@
+using Grafana.OpenTelemetry;
+
 using Lis.Agent;
 using Lis.Channels.WhatsApp;
 using Lis.Core.Channel;
@@ -9,8 +11,16 @@ using Lis.Providers.Embedding;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 DotEnv.Load();
+
+// SK telemetry
+AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnostics",          true);
+AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Controllers + JSON serialization
@@ -20,6 +30,27 @@ builder.Services.AddControllers()
 
 // Error handling
 builder.Services.AddProblemDetails();
+
+// Observability
+builder.Services.AddOpenTelemetry()
+	   .ConfigureResource(rb => rb.AddService(serviceName: "lis", serviceNamespace: "lis"))
+	   .WithMetrics(metrics => {
+		   metrics.AddAspNetCoreInstrumentation();
+		   metrics.AddHttpClientInstrumentation();
+		   metrics.AddRuntimeInstrumentation();
+		   metrics.AddMeter("Microsoft.SemanticKernel*");
+	   })
+	   .WithTracing(tracing => {
+		   tracing.AddAspNetCoreInstrumentation();
+		   tracing.AddHttpClientInstrumentation(o => o.RecordException = true);
+		   tracing.AddSource("Microsoft.SemanticKernel*");
+		   tracing.AddSource(TraceAspect.ActivitySource.Name);
+	   })
+	   .UseGrafana();
+builder.Logging.AddOpenTelemetry(logging => {
+	logging.IncludeFormattedMessage = true;
+	logging.IncludeScopes           = true;
+});
 
 // Configuration
 builder.Services.AddSingleton(Options.Create(new LisOptions {
@@ -51,6 +82,7 @@ if (Env("GOWA_ENABLED") == "true") builder.Services.AddWhatsApp();
 // Application services
 builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
+builder.Services.AddSingleton<ToolRunner>();
 
 // Conversation + Agent require both AI and Channel
 if (Env("ANTHROPIC_ENABLED") == "true" && Env("GOWA_ENABLED") == "true") {
