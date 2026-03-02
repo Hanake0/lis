@@ -20,8 +20,16 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 		[EnumeratorCancellation] CancellationToken ct = default) {
 
 		for (int i = 0; i < MaxIterations; i++) {
+			int countBefore = history.Count;
+
 			(ChatMessageContent result, IReadOnlyList<FunctionCallContent> calls) =
 				await this.StreamResponseAsync(chat, history, settings, kernel, ct);
+
+			// SK's ChatClientChatCompletionService auto-appends a tool-call-only message
+			// to ChatHistory when FunctionChoiceBehavior is set (even with autoInvoke: false).
+			// Remove it so we can add our own version which includes full text content.
+			while (history.Count > countBefore)
+				history.RemoveAt(history.Count - 1);
 
 			history.Add(result);
 			yield return result;

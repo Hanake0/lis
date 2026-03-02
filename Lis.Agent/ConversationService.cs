@@ -28,6 +28,10 @@ public sealed class ConversationService(
 	ILogger<ConversationService> logger) : IConversationService {
 	[Trace("ConversationService > HandleIncomingAsync")]
 	public async Task HandleIncomingAsync(IncomingMessage message, CancellationToken ct) {
+		// Skip echoes of our own messages (tool notifications, AI responses).
+		// All AI messages are already persisted by PersistSkMessageAsync with sk_content.
+		if (message.IsFromMe) return;
+
 		(_, bool shouldRespond) = await this.IngestMessageAsync(message, ct);
 		if (shouldRespond)
 			await this.RespondAsync(message, ct);
