@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 
+using Lis.Agent.Commands;
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
 using Lis.Core.Util;
@@ -23,9 +24,12 @@ public sealed class ConversationService(
 	ToolRunner                   toolRunner,
 	ContextWindowBuilder         contextWindowBuilder,
 	PromptComposer               promptComposer,
+	CompactionService            compactionService,
+	CommandRouter                commandRouter,
 	ModelSettings                modelSettings,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger) : IConversationService {
+
 	[Trace("ConversationService > HandleIncomingAsync")]
 	public async Task HandleIncomingAsync(IncomingMessage message, CancellationToken ct) {
 		// Skip echoes of our own messages (tool notifications, AI responses).
@@ -65,46 +69,177 @@ public sealed class ConversationService(
 		Activity.Current?.SetTag("message.id", message.ExternalId);
 		Activity.Current?.SetTag("chat.id",    message.ChatId);
 
-		await channelClient.SetTypingAsync(message.ChatId, ct);
-
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
 		ChatEntity? chat = await db.Chats
-								   .FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
+			.Include(c => c.CurrentSession)
+			.FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
 
 		if (chat is null) {
 			logger.LogWarning("Chat not found for {ChatId} during respond phase", message.ChatId);
 			return;
 		}
 
+		// Ensure session exists
+		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
+
+		// Handle commands before AI processing
+		if (commandRouter.Match(message.Body) is { } command) {
+			CommandContext ctx = new(message, chat, session, db);
+			string response = await command.ExecuteAsync(ctx, ct);
+			await channelClient.SendMessageAsync(message.ChatId, response, message.ExternalId, ct);
+			return;
+		}
+
+		await channelClient.SetTypingAsync(message.ChatId, ct);
+
+		// Load messages from current session
 		List<MessageEntity> recentMessages = await db.Messages
-													 .Where(m => m.ChatId == chat.Id)
-													 .OrderByDescending(m => m.Timestamp)
-													 .Take(lisOptions.Value.MaxRecentMessages)
-													 .OrderBy(m => m.Timestamp)
-													 .ToListAsync(ct);
+			.Where(m => m.ChatId == chat.Id
+			         && (session.StartMessageId == null || m.Id >= session.StartMessageId))
+			.OrderByDescending(m => m.Timestamp)
+			.Take(lisOptions.Value.MaxRecentMessages)
+			.OrderBy(m => m.Timestamp)
+			.ToListAsync(ct);
 
 		string systemPrompt = await promptComposer.BuildAsync(db, ct);
 
-		ChatHistory chatHistory = contextWindowBuilder.Build(systemPrompt, recentMessages);
+		// Load parent session for continuity
+		SessionEntity? parentSession = session.ParentSessionId is not null
+			? await db.Sessions.FindAsync([session.ParentSessionId], ct)
+			: null;
+
+		ChatHistory chatHistory = contextWindowBuilder.Build(
+			systemPrompt, recentMessages, session, parentSession);
 
 		ToolContext.ChatId  = message.ChatId;
 		ToolContext.Channel = channelClient;
 
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
+
+		Dictionary<string, object> extensionData = new() { ["max_tokens"] = modelSettings.MaxTokens };
+		if (modelSettings.ThinkingEffort is { Length: > 0 } effort)
+			extensionData["thinking"] = new Dictionary<string, object> {
+				["type"] = "enabled",
+				["budget_tokens"] = effort switch {
+					"low"    => 1024,
+					"medium" => 4096,
+					"high"   => 16384,
+					_ => int.TryParse(effort, out int t) ? t : 4096
+				}
+			};
+
 		PromptExecutionSettings settings = new() {
 			ModelId                = modelSettings.Model,
 			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: false),
-			ExtensionData          = new Dictionary<string, object> { ["max_tokens"] = modelSettings.MaxTokens }
+			ExtensionData          = extensionData
 		};
+
+		TokenUsage? lastUsage = null;
 
 		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, kernel, settings, ct)) {
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content))
 				await channelClient.SendMessageAsync(message.ChatId, msg.Content, message.ExternalId, ct);
 
-			await PersistSkMessageAsync(db, chat, msg, ct);
+			// Usage is attached per-message by ToolRunner (only on assistant messages)
+			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
+			if (msgUsage is not null) lastUsage = msgUsage;
+			await PersistSkMessageAsync(db, chat, msg, msgUsage, ct);
 		}
+
+		// Update session token stats from last response
+		if (lastUsage is not null) {
+			session.TotalInputTokens         += lastUsage.InputTokens;
+			session.TotalOutputTokens        += lastUsage.OutputTokens;
+			session.TotalCacheReadTokens     += lastUsage.CacheReadTokens;
+			session.TotalCacheCreationTokens += lastUsage.CacheCreationTokens;
+			session.TotalThinkingTokens      += lastUsage.ThinkingTokens;
+			session.UpdatedAt                 = DateTimeOffset.UtcNow;
+			await db.SaveChangesAsync(ct);
+
+			// Check compaction triggers based on actual input tokens
+			await this.CheckCompactionTriggersAsync(db, session, lastUsage, message.ChatId, ct);
+		}
+	}
+
+	private async Task CheckCompactionTriggersAsync(
+		LisDbContext db, SessionEntity session, TokenUsage usage, string chatId, CancellationToken ct) {
+		int totalInput = usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens;
+
+		// Full compaction takes priority — calculate split point from recent messages
+		if (totalInput > lisOptions.Value.CompactionThreshold && !session.IsCompacting) {
+			// Find split: walk backwards from newest, keep KeepRecentTokens
+			List<MessageEntity> allMsgs = await db.Messages
+				.Where(m => m.ChatId == session.ChatId
+				         && (session.StartMessageId == null || m.Id >= session.StartMessageId))
+				.OrderByDescending(m => m.Id)
+				.ToListAsync(ct);
+
+			int keepTokens = lisOptions.Value.KeepRecentTokens;
+			int accumulated = 0;
+			long splitId = allMsgs.LastOrDefault()?.Id ?? 0;
+
+			foreach (MessageEntity m in allMsgs) {
+				int cost = m.OutputTokens ?? m.InputTokens ?? 0;
+				if (cost == 0) cost = (m.Body?.Length ?? 0) / 4; // rough fallback
+				accumulated += cost;
+				if (accumulated > keepTokens) {
+					splitId = m.Id;
+					break;
+				}
+			}
+
+			if (splitId > 0)
+				_ = Task.Run(() => compactionService.CompactAsync(chatId, splitId, CancellationToken.None), CancellationToken.None);
+			return;
+		}
+
+		// Tool pruning — count only tool output tokens specifically
+		if (session.ToolsPrunedThroughId is null) {
+			int toolTokens = await db.Messages
+				.Where(m => m.ChatId == session.ChatId
+				         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
+				         && m.SkContent != null && m.IsFromMe)
+				.SumAsync(m => m.OutputTokens ?? 0, ct);
+
+			if (toolTokens > lisOptions.Value.ToolPruneThreshold) {
+				long? lastMsgId = await db.Messages
+					.Where(m => m.ChatId == session.ChatId)
+					.OrderByDescending(m => m.Id)
+					.Select(m => (long?)m.Id)
+					.FirstOrDefaultAsync(ct);
+				session.ToolsPrunedThroughId = lastMsgId;
+				await db.SaveChangesAsync(ct);
+			}
+		}
+	}
+
+	[Trace("ConversationService > EnsureSessionAsync")]
+	private async Task<SessionEntity> EnsureSessionAsync(LisDbContext db, ChatEntity chat, CancellationToken ct) {
+		if (chat.CurrentSession is not null) return chat.CurrentSession;
+
+		// Get the earliest message ID for the chat — session starts from there
+		long startMsgId = await db.Messages
+			.Where(m => m.ChatId == chat.Id)
+			.OrderBy(m => m.Id)
+			.Select(m => m.Id)
+			.FirstOrDefaultAsync(ct);
+
+		SessionEntity session = new() {
+			ChatId         = chat.Id,
+			StartMessageId = startMsgId > 0 ? startMsgId : null,
+			CreatedAt      = DateTimeOffset.UtcNow,
+			UpdatedAt      = DateTimeOffset.UtcNow
+		};
+		db.Sessions.Add(session);
+		await db.SaveChangesAsync(ct);
+
+		chat.CurrentSessionId = session.Id;
+		chat.CurrentSession   = session;
+		await db.SaveChangesAsync(ct);
+
+		return session;
 	}
 
 	private bool ShouldRespond(IncomingMessage message) {
@@ -154,7 +289,6 @@ public sealed class ConversationService(
 			MediaType    = message.MediaType,
 			MediaCaption = message.MediaCaption,
 			ReplyToId    = message.RepliedId,
-			TokenCount   = ContextWindowBuilder.EstimateTokens(message.Body),
 			Timestamp    = message.Timestamp,
 			CreatedAt    = DateTimeOffset.UtcNow
 		};
@@ -164,16 +298,21 @@ public sealed class ConversationService(
 	}
 
 	private static async Task PersistSkMessageAsync(
-		LisDbContext db, ChatEntity chat, ChatMessageContent msg, CancellationToken ct) {
+		LisDbContext db, ChatEntity chat, ChatMessageContent msg,
+		TokenUsage? usage, CancellationToken ct) {
 		db.Messages.Add(new MessageEntity {
-			ChatId     = chat.Id,
-			SenderId   = "me",
-			IsFromMe   = msg.Role != AuthorRole.User,
-			Body       = msg.Content,
-			SkContent  = JsonSerializer.Serialize(msg),
-			TokenCount = ContextWindowBuilder.EstimateTokens(msg.Content),
-			Timestamp  = DateTimeOffset.UtcNow,
-			CreatedAt  = DateTimeOffset.UtcNow
+			ChatId              = chat.Id,
+			SenderId            = "me",
+			IsFromMe            = msg.Role != AuthorRole.User,
+			Body                = msg.Content,
+			SkContent           = JsonSerializer.Serialize(msg),
+			InputTokens         = usage?.InputTokens,
+			OutputTokens        = usage?.OutputTokens,
+			CacheReadTokens     = usage?.CacheReadTokens,
+			CacheCreationTokens = usage?.CacheCreationTokens,
+			ThinkingTokens      = usage?.ThinkingTokens,
+			Timestamp           = DateTimeOffset.UtcNow,
+			CreatedAt           = DateTimeOffset.UtcNow
 		});
 		await db.SaveChangesAsync(ct);
 	}
