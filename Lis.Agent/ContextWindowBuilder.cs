@@ -1,6 +1,5 @@
 using System.Text.Json;
 
-using Lis.Core.Configuration;
 using Lis.Persistence.Entities;
 
 using Microsoft.SemanticKernel;
@@ -8,46 +7,42 @@ using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
-public sealed class ContextWindowBuilder(ModelSettings modelSettings) {
-	private const double CHARS_PER_TOKEN = 3.5;
-	private const int TOOL_SCHEMA_RESERVE = 400;
-
+public sealed class ContextWindowBuilder {
 	// SK serializes $type discriminators after other properties; STJ requires them first by default.
 	private static readonly JsonSerializerOptions SkJsonOptions = new() { AllowOutOfOrderMetadataProperties = true };
 
-	public static int EstimateTokens(string? text) {
-		if (string.IsNullOrEmpty(text)) {
-			return 0;
-		}
-
-		return (int)Math.Ceiling(text.Length / CHARS_PER_TOKEN);
-	}
-
-	public ChatHistory Build(string systemPrompt, IReadOnlyList<MessageEntity> recentMessages) {
-		int budget = modelSettings.ContextBudget;
-		int responseReserve = modelSettings.MaxTokens;
-
-		int systemTokens = EstimateTokens(systemPrompt);
-		int available = budget - systemTokens - responseReserve - TOOL_SCHEMA_RESERVE;
+	public ChatHistory Build(
+		string systemPrompt, IReadOnlyList<MessageEntity> messages,
+		SessionEntity? session = null, SessionEntity? parentSession = null) {
 
 		ChatHistory history = new(systemPrompt);
 
-		int startIndex = 0;
-		int accumulated = 0;
-		for (int i = recentMessages.Count - 1; i >= 0; i--) {
-			MessageEntity msg = recentMessages[i];
-			int cost = msg.TokenCount > 0 ? msg.TokenCount : EstimateTokens(msg.Body);
-			accumulated += cost;
+		// Inject parent session summary for continuity
+		if (parentSession?.Summary is { Length: > 0 } parentSummary)
+			history.AddAssistantMessage($"Here is context from the previous conversation session:\n{parentSummary}");
 
-			if (accumulated > available) {
-				startIndex = i + 1;
-				break;
+		// Inject current session summary (from earlier compaction in this session)
+		if (session?.Summary is { Length: > 0 } summary)
+			history.AddAssistantMessage($"Here is context from our earlier conversation:\n{summary}");
+
+		// Add messages, applying tool pruning where needed
+		foreach (MessageEntity msg in messages) {
+			// Tool output pruning: replace tool results with one-liners for messages
+			// before the prune boundary (non-destructive, DB unchanged)
+			if (session?.ToolsPrunedThroughId is not null
+			    && msg.Id <= session.ToolsPrunedThroughId
+			    && msg.SkContent is not null) {
+
+				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent, SkJsonOptions);
+				if (skMsg?.Role == AuthorRole.Tool) {
+					// Extract function name from FunctionResultContent if available
+					string funcName = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault()?.FunctionName ?? "tool";
+					history.AddAssistantMessage($"[result: {funcName}]");
+					continue;
+				}
 			}
-		}
 
-		for (int i = startIndex; i < recentMessages.Count; i++) {
-			MessageEntity msg = recentMessages[i];
-
+			// Normal message deserialization
 			if (msg.SkContent is not null) {
 				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent, SkJsonOptions);
 				if (skMsg is not null) { history.Add(skMsg); continue; }

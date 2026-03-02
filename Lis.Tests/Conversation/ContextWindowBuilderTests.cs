@@ -1,5 +1,4 @@
 using Lis.Agent;
-using Lis.Core.Configuration;
 using Lis.Persistence.Entities;
 
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -7,26 +6,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 namespace Lis.Tests.Conversation;
 
 public sealed class ContextWindowBuilderTests {
-	private readonly ContextWindowBuilder builder = new(new ModelSettings {
-		MaxTokens     = 1000,
-		ContextBudget = 4000,
-	});
-
-	[Fact]
-	public void EstimateTokens_ReturnsExpectedValue() {
-		string text = new('a', 350);
-
-		int tokens = ContextWindowBuilder.EstimateTokens(text);
-
-		Assert.Equal(100, tokens);
-	}
-
-	[Fact]
-	public void EstimateTokens_NullText_ReturnsZero() {
-		int tokens = ContextWindowBuilder.EstimateTokens(null);
-
-		Assert.Equal(0, tokens);
-	}
+	private readonly ContextWindowBuilder builder = new();
 
 	[Fact]
 	public void Build_IncludesSystemPrompt() {
@@ -59,21 +39,35 @@ public sealed class ContextWindowBuilderTests {
 	}
 
 	[Fact]
-	public void Build_TruncatesWhenOverBudget() {
+	public void Build_InjectsParentSessionSummary() {
 		string systemPrompt = "System";
-		List<MessageEntity> messages = [];
+		List<MessageEntity> messages = [
+			CreateMessage("Hello", isFromMe: false, timestamp: 1),
+		];
+		SessionEntity parentSession = new() { Summary = "Previous context here." };
 
-		for (int i = 0; i < 100; i++) {
-			messages.Add(CreateMessage(
-				new string('x', 350),
-				isFromMe: i % 2 == 0,
-				timestamp: i));
-		}
+		ChatHistory history = this.builder.Build(systemPrompt, messages, parentSession: parentSession);
 
-		ChatHistory history = this.builder.Build(systemPrompt, messages);
+		Assert.Equal(3, history.Count);
+		Assert.Equal(AuthorRole.System, history[0].Role);
+		Assert.Equal(AuthorRole.Assistant, history[1].Role);
+		Assert.Contains("Previous context here.", history[1].Content);
+		Assert.Equal(AuthorRole.User, history[2].Role);
+	}
 
-		Assert.True(history.Count < 101);
-		Assert.True(history.Count > 1);
+	[Fact]
+	public void Build_InjectsCurrentSessionSummary() {
+		string systemPrompt = "System";
+		List<MessageEntity> messages = [
+			CreateMessage("Hello", isFromMe: false, timestamp: 1),
+		];
+		SessionEntity session = new() { Summary = "Earlier summary." };
+
+		ChatHistory history = this.builder.Build(systemPrompt, messages, session: session);
+
+		Assert.Equal(3, history.Count);
+		Assert.Equal(AuthorRole.Assistant, history[1].Role);
+		Assert.Contains("Earlier summary.", history[1].Content);
 	}
 
 	private static MessageEntity CreateMessage(string body, bool isFromMe, int timestamp) {
@@ -81,7 +75,6 @@ public sealed class ContextWindowBuilderTests {
 			SenderId = isFromMe ? "me" : "user@example.com",
 			IsFromMe = isFromMe,
 			Body = body,
-			TokenCount = ContextWindowBuilder.EstimateTokens(body),
 			Timestamp = DateTimeOffset.UtcNow.AddSeconds(timestamp),
 		};
 	}
