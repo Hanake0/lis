@@ -1,3 +1,4 @@
+using Lis.Agent.Commands;
 using Lis.Tools;
 
 using Microsoft.Extensions.AI;
@@ -29,6 +30,14 @@ public static class AgentSetup {
 
 			return kernel;
 		});
+
+		// Commands
+		services.AddSingleton<IChatCommand, StatusCommand>();
+		services.AddSingleton<IChatCommand, NewSessionCommand>();
+		services.AddSingleton<CommandRouter>();
+
+		// Compaction
+		services.AddSingleton<CompactionService>();
 
 		return services;
 	}

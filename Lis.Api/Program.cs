@@ -10,6 +10,7 @@ using Lis.Providers.Anthropic;
 using Lis.Providers.Embedding;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -54,11 +55,17 @@ builder.Logging.AddOpenTelemetry(logging => {
 
 // Configuration
 builder.Services.AddSingleton(Options.Create(new LisOptions {
-												 OwnerJid               = Env("LIS_OWNER_JID"),
-												 Timezone               = Env("LIS_TIMEZONE") is { Length: > 0 } t ? t : "E. South America Standard Time",
-												 MaxRecentMessages      = EnvInt("LIS_MAX_RECENT_MESSAGES",     50),
-												 SummarizationThreshold = EnvInt("LIS_SUMMARIZATION_THRESHOLD", 30),
-												 MessageDebounceMs      = EnvInt("LIS_MESSAGE_DEBOUNCE_MS",     3000)
+												 OwnerJid                = Env("LIS_OWNER_JID"),
+												 Timezone                = Env("LIS_TIMEZONE") is { Length: > 0 } t ? t : "E. South America Standard Time",
+												 MaxRecentMessages       = EnvInt("LIS_MAX_RECENT_MESSAGES",       50),
+												 MessageDebounceMs       = EnvInt("LIS_MESSAGE_DEBOUNCE_MS",       3000),
+												 ToolNotifications       = Env("LIS_TOOL_NOTIFICATIONS") != "false",
+												 KeepRecentTokens        = EnvInt("LIS_KEEP_RECENT_TOKENS",        4000),
+												 ToolPruneThreshold      = EnvInt("LIS_TOOL_PRUNE_THRESHOLD",      8000),
+												 ToolKeepThreshold       = EnvInt("LIS_TOOL_KEEP_THRESHOLD",       2000),
+												 CompactionThreshold     = EnvInt("LIS_COMPACTION_THRESHOLD",      10000),
+												 CompactionNotify        = Env("LIS_COMPACTION_NOTIFY") != "false",
+												 ToolSummarizationPolicy = Env("LIS_TOOL_SUMMARIZATION_POLICY") is { Length: > 0 } p ? p : "auto"
 											 }));
 
 // Database
@@ -72,6 +79,18 @@ builder.Services.AddSingleton(new ModelSettings());
 
 // AI Provider
 if (Env("ANTHROPIC_ENABLED") == "true") builder.Services.AddAnthropic();
+
+// Compaction client (keyed IChatClient for summarization — falls back to main)
+if (Env("LIS_COMPACTION_PROVIDER") is { Length: > 0 } compProvider
+    && compProvider.Equals("anthropic", StringComparison.OrdinalIgnoreCase)) {
+	string compApiKey = Env("LIS_COMPACTION_API_KEY");
+	Anthropic.SDK.AnthropicClient compClient = new(compApiKey);
+	builder.Services.AddKeyedSingleton<IChatClient>("compaction", compClient.Messages);
+} else {
+	// Reuse main client for compaction
+	builder.Services.AddKeyedSingleton<IChatClient>("compaction",
+		(sp, _) => sp.GetRequiredService<IChatClient>());
+}
 
 // Embedding (optional — enables vector search for memories)
 if (Env("MEMORIES_EMBEDDING_ENABLED") == "true") builder.Services.AddEmbedding();
