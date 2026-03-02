@@ -4,8 +4,7 @@ namespace Lis.Channels.WhatsApp.Schemas;
 
 public sealed class GowaResponse<T> {
 	[JsonPropertyName("code")]
-	[JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
-	public int Code { get; init; }
+	public string Code { get; init; } = "";
 
 	[JsonPropertyName("message")]
 	public string? Message { get; init; }
