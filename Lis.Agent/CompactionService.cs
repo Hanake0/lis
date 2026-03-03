@@ -9,6 +9,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.SemanticKernel.ChatCompletion;
 
 using Pgvector;
 
@@ -20,6 +21,9 @@ public sealed class CompactionService(
 	IServiceScopeFactory                          scopeFactory,
 	IOptions<LisOptions>                          lisOptions,
 	ILogger<CompactionService>                    logger,
+	PromptComposer                                promptComposer,
+	ContextWindowBuilder                          contextWindowBuilder,
+	ITokenCounter?                                tokenCounter = null,
 	IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator = null) {
 
 	[Trace("CompactionService > CompactAsync")]
@@ -100,11 +104,29 @@ public sealed class CompactionService(
 				.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId && m.Role == "tool")
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
+			// Count actual tokens for the new session's context
+			int? actualTotal = null;
+			if (tokenCounter is not null) {
+				try {
+					string systemPrompt = await promptComposer.BuildAsync(db, ct);
+					List<MessageEntity> keptMessages = await db.Messages
+						.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId)
+						.OrderBy(m => m.Timestamp)
+						.ToListAsync(ct);
+					ChatHistory newCtx = contextWindowBuilder.Build(
+						systemPrompt, keptMessages, newSession, session, lisOptions.Value);
+					string json = ChatHistorySerializer.ToAnthropicJson(newCtx, modelSettings.Model);
+					actualTotal = await tokenCounter.CountAsync(json, ct);
+				} catch (Exception ex) {
+					logger.LogWarning(ex, "Token counting failed; using estimation");
+				}
+			}
+
 			// Notify user
 			if (lisOptions.Value.CompactionNotify)
 				await this.NotifyCompactionAsync(
 					externalChatId, session.TotalInputTokens,
-					summaryTokens, keptTokens, toolTokens, ct);
+					summaryTokens, keptTokens, toolTokens, actualTotal, ct);
 
 			if (logger.IsEnabled(LogLevel.Information))
 				logger.LogInformation(
@@ -255,17 +277,26 @@ public sealed class CompactionService(
 
 	private async Task NotifyCompactionAsync(
 		string chatId, long oldInputTokens,
-		int summaryTokens, int keptTokens, int toolTokens, CancellationToken ct) {
+		int summaryTokens, int keptTokens, int toolTokens,
+		int? actualTotal, CancellationToken ct) {
 		try {
 			int budget = modelSettings.ContextBudget;
-			int newTotal = summaryTokens + keptTokens;
+			int newTotal = actualTotal ?? (summaryTokens + keptTokens);
 			int pct = budget > 0 ? (int)((long)newTotal * 100 / budget) : 0;
 
-			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {FormatTokens(newTotal)})"
-			           + $"\n  📝 Summary: {FormatTokens(summaryTokens)} tokens"
-			           + $"\n  💬 Kept context: {FormatTokens(keptTokens - toolTokens)} tokens"
-			           + $"\n  🛠️ Tools: {FormatTokens(toolTokens)} tokens"
-			           + $"\n  📊 Total: {FormatTokens(newTotal)}/{FormatTokens(budget)} ({pct}%)";
+			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {FormatTokens(newTotal)})";
+
+			// System tokens = actual total - summary - kept (only when actual count available)
+			if (actualTotal is not null) {
+				int systemTokens = actualTotal.Value - summaryTokens - keptTokens;
+				if (systemTokens > 0)
+					msg += $"\n  🔧 System: {FormatTokens(systemTokens)} tokens";
+			}
+
+			msg += $"\n  📝 Summary: {FormatTokens(summaryTokens)} tokens"
+			     + $"\n  💬 Kept context: {FormatTokens(keptTokens - toolTokens)} tokens"
+			     + $"\n  🛠️ Tools: {FormatTokens(toolTokens)} tokens"
+			     + $"\n  📊 Total: {FormatTokens(newTotal)}/{FormatTokens(budget)} ({pct}%)";
 
 			using IServiceScope scope = scopeFactory.CreateScope();
 			IChannelClient channel = scope.ServiceProvider.GetRequiredService<IChannelClient>();
