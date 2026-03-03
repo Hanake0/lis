@@ -31,6 +31,11 @@ public sealed class ContextWindowBuilder {
 		string policy = options?.ToolSummarizationPolicy ?? "auto";
 		long? pruneBoundary = session?.ToolsPrunedThroughId;
 
+		// Safeguard: keep_all yields to auto when pruning was triggered
+		// (either by threshold or manual /prune) to prevent runaway context.
+		if (policy == "keep_all" && pruneBoundary is not null)
+			policy = "auto";
+
 		// Compute keep boundary for ToolKeepThreshold — tool messages at or after this ID
 		// skip pruning at build time even if they're before pruneBoundary.
 		// Long.MaxValue means "keep nothing" (no threshold configured).

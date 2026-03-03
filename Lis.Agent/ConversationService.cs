@@ -187,6 +187,17 @@ public sealed class ConversationService(
 
 		// Full compaction takes priority — calculate split point from recent messages
 		if (totalInput > lisOptions.Value.CompactionThreshold && !session.IsCompacting) {
+			// Safeguard: also set tool prune boundary so keep_all yields to auto
+			if (session.ToolsPrunedThroughId is null) {
+				long? lastMsgId = await db.Messages
+					.Where(m => m.ChatId == session.ChatId)
+					.OrderByDescending(m => m.Id)
+					.Select(m => (long?)m.Id)
+					.FirstOrDefaultAsync(ct);
+				session.ToolsPrunedThroughId = lastMsgId;
+				await db.SaveChangesAsync(ct);
+			}
+
 			// Find split: walk backwards from newest, keep KeepRecentTokens
 			List<MessageEntity> allMsgs = await db.Messages
 				.Where(m => m.ChatId == session.ChatId
