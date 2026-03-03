@@ -13,5 +13,6 @@ public sealed class LisOptions {
 	public int    ToolKeepThreshold       { get; init; } = 2000;
 	public int    CompactionThreshold     { get; init; } = 10000;
 	public bool   CompactionNotify        { get; init; } = true;
+	public string CompactionModel         { get; init; } = "";     // empty = use main model
 	public string ToolSummarizationPolicy { get; init; } = "auto"; // auto, keep_all, keep_none
 }

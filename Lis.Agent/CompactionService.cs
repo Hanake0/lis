@@ -16,6 +16,7 @@ namespace Lis.Agent;
 
 public sealed class CompactionService(
 	[FromKeyedServices("compaction")] IChatClient compactionClient,
+	ModelSettings                                  modelSettings,
 	IServiceScopeFactory                          scopeFactory,
 	IOptions<LisOptions>                          lisOptions,
 	ILogger<CompactionService>                    logger,
@@ -215,7 +216,9 @@ public sealed class CompactionService(
 			{conversationText}
 			""";
 
-		ChatResponse result = await compactionClient.GetResponseAsync(prompt, cancellationToken: ct);
+		string model = lisOptions.Value.CompactionModel is { Length: > 0 } m ? m : modelSettings.Model;
+		ChatOptions options = new() { ModelId = model };
+		ChatResponse result = await compactionClient.GetResponseAsync(prompt, options, ct);
 		return result.Text ?? "";
 	}
 

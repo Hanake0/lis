@@ -65,6 +65,7 @@ builder.Services.AddSingleton(Options.Create(new LisOptions {
 												 ToolKeepThreshold       = EnvInt("LIS_TOOL_KEEP_THRESHOLD",       2000),
 												 CompactionThreshold     = EnvInt("LIS_COMPACTION_THRESHOLD",      10000),
 												 CompactionNotify        = Env("LIS_COMPACTION_NOTIFY") != "false",
+												 CompactionModel         = Env("LIS_COMPACTION_MODEL"),
 												 ToolSummarizationPolicy = Env("LIS_TOOL_SUMMARIZATION_POLICY") is { Length: > 0 } p ? p : "auto"
 											 }));
 
