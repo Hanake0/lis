@@ -153,9 +153,12 @@ Full compaction:
 
 ### Prompt caching
 
-`CacheControlHandler` DelegatingHandler intercepts Anthropic API requests and injects:
-- Top-level `cache_control` for automatic caching
-- Explicit `cache_control` on last system content block
+`CacheControlHandler` DelegatingHandler intercepts Anthropic API requests and injects
+4 cache breakpoints:
+1. Last system content block — caches the stable system prompt
+2. Last session summary message — caches summaries (stable within session)
+3. Tool prune boundary — caches pruned content (stable once set, communicated via `ToolContext.CacheBreakIndex`)
+4. Top-level `cache_control` — auto-caches growing conversation prefix
 
 The handler is inserted in the HttpClient pipeline before `BearerAuthHandler`.
 Cache stats (`cache_read_input_tokens`, `cache_creation_input_tokens`) are extracted

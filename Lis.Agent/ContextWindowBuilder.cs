@@ -36,35 +36,33 @@ public sealed class ContextWindowBuilder {
 		// Long.MaxValue means "keep nothing" (no threshold configured).
 		long keepFromId = ComputeToolKeepBoundary(messages, pruneBoundary, options?.ToolKeepThreshold ?? 0);
 
+		// Track prune boundary position for cache breakpoint #3
+		int pruneBoundaryIdx = -1;
+
 		// Add messages, applying tool pruning where needed
 		foreach (MessageEntity msg in messages) {
-			if (pruneBoundary is not null && msg.Id <= pruneBoundary && msg.SkContent is not null) {
+			bool inPruneWindow = pruneBoundary is not null && msg.Id <= pruneBoundary;
+
+			if (inPruneWindow && msg.SkContent is not null) {
 				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent, SkJsonOptions);
 				if (skMsg?.Role == AuthorRole.Tool) {
 					if (policy == "keep_all") {
 						history.Add(skMsg);
-						continue;
-					}
-
-					if (policy == "keep_none") {
+					} else if (policy == "keep_none") {
 						PruneToolResult(history, skMsg);
-						continue;
-					}
-
-					// auto: ToolKeepThreshold keeps recent outputs unpruned
-					if (msg.Id >= keepFromId) {
+					} else if (msg.Id >= keepFromId) {
+						// auto: ToolKeepThreshold keeps recent outputs unpruned
 						history.Add(skMsg);
-						continue;
+					} else {
+						// auto: check per-tool [ToolSummarization] attribute
+						FunctionResultContent? frc = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();
+						if (frc is not null && HasSummarizePolicy(frc.FunctionName))
+							history.Add(skMsg);
+						else
+							PruneToolResult(history, skMsg);
 					}
 
-					// auto: check per-tool [ToolSummarization] attribute
-					FunctionResultContent? frc = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();
-					if (frc is not null && HasSummarizePolicy(frc.FunctionName)) {
-						history.Add(skMsg);
-						continue;
-					}
-
-					PruneToolResult(history, skMsg);
+					pruneBoundaryIdx = history.Count - 2; // -2: index 0 is system
 					continue;
 				}
 			}
@@ -72,13 +70,20 @@ public sealed class ContextWindowBuilder {
 			// Normal message deserialization
 			if (msg.SkContent is not null) {
 				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent, SkJsonOptions);
-				if (skMsg is not null) { history.Add(skMsg); continue; }
+				if (skMsg is not null) { history.Add(skMsg); }
+				else { history.AddAssistantMessage(msg.Body ?? "[media]"); }
+			} else {
+				string content = msg.Body ?? "[media]";
+				if (msg.IsFromMe) history.AddAssistantMessage(content);
+				else              history.AddUserMessage(content);
 			}
 
-			string content = msg.Body ?? "[media]";
-			if (msg.IsFromMe) history.AddAssistantMessage(content);
-			else              history.AddUserMessage(content);
+			if (inPruneWindow)
+				pruneBoundaryIdx = history.Count - 2;
 		}
+
+		// Communicate prune boundary to CacheControlHandler via AsyncLocal
+		ToolContext.CacheBreakIndex = pruneBoundaryIdx;
 
 		SanitizeToolPairs(history);
 

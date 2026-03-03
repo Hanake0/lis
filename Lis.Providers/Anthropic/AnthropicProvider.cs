@@ -7,6 +7,7 @@ using Anthropic.SDK;
 
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
+using Lis.Core.Util;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,7 +69,7 @@ public static class AnthropicProvider {
 
 	/// <summary>
 	/// Injects cache_control markers into Anthropic API requests for prompt caching.
-	/// Adds top-level automatic caching + explicit breakpoint on the last system content block.
+	/// Places up to 4 breakpoints at stable boundaries to maximize cache hits.
 	/// </summary>
 	private sealed class CacheControlHandler(string cacheTtl) : DelegatingHandler {
 		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
@@ -90,17 +91,59 @@ public static class AnthropicProvider {
 				? new JsonObject { ["type"] = "ephemeral", ["ttl"] = "1h" }
 				: new JsonObject { ["type"] = "ephemeral" };
 
-			// Top-level automatic caching (breakpoint #4 — auto-moves to last cacheable block)
+			// Breakpoint #4 — top-level automatic (auto-moves to last cacheable block)
 			obj["cache_control"] = cacheControl.DeepClone();
 
-			// Explicit breakpoint on last system content block (breakpoint #1)
+			// Breakpoint #1 — last system content block (system prompt is stable)
 			if (obj["system"] is JsonArray systemArr && systemArr.Count > 0) {
 				JsonNode? lastBlock = systemArr[^1];
 				if (lastBlock is JsonObject lastObj)
 					lastObj["cache_control"] = cacheControl.DeepClone();
 			}
 
+			if (obj["messages"] is JsonArray messages && messages.Count > 0) {
+				// Breakpoint #2 — after session summaries (first consecutive assistant messages)
+				// Summaries are injected by ContextWindowBuilder as the first messages.
+				// They're stable within a session, so caching them saves re-processing.
+				int summaryEnd = 0;
+				for (int i = 0; i < messages.Count; i++) {
+					if (messages[i] is JsonObject m && m["role"]?.GetValue<string>() == "assistant")
+						summaryEnd = i + 1;
+					else
+						break;
+				}
+				if (summaryEnd > 0)
+					MarkLastContentBlock(messages[summaryEnd - 1], cacheControl);
+
+				// Breakpoint #3 — at tool prune boundary (set by ContextWindowBuilder)
+				// Everything at/before this index has pruned tool results — stable content.
+				int pruneIdx = ToolContext.CacheBreakIndex;
+				if (pruneIdx >= 0 && pruneIdx < messages.Count)
+					MarkLastContentBlock(messages[pruneIdx], cacheControl);
+			}
+
 			return obj.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+		}
+
+		private static void MarkLastContentBlock(JsonNode? message, JsonObject cacheControl) {
+			if (message is not JsonObject msg) return;
+			JsonNode? content = msg["content"];
+
+			// Content is an array of blocks — mark the last one
+			if (content is JsonArray arr && arr.Count > 0 && arr[^1] is JsonObject lastBlock) {
+				lastBlock["cache_control"] = cacheControl.DeepClone();
+				return;
+			}
+
+			// Content is a plain string — wrap in block format to attach cache_control
+			if (content is JsonValue val && val.TryGetValue<string>(out string? text)) {
+				msg["content"] = new JsonArray(
+					new JsonObject {
+						["type"] = "text",
+						["text"] = text,
+						["cache_control"] = cacheControl.DeepClone()
+					});
+			}
 		}
 	}
 }
