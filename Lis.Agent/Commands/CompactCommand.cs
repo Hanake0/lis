@@ -16,7 +16,6 @@ public sealed class CompactCommand(CompactionService compactionService, IOptions
 		if (ctx.Session.IsCompacting)
 			return "Compaction already in progress.";
 
-		// Load session messages newest-first
 		List<MessageEntity> allMsgs = await ctx.Db.Messages
 			.Where(m => m.ChatId == ctx.Chat.Id
 			         && (ctx.Session.StartMessageId == null || m.Id >= ctx.Session.StartMessageId))
@@ -26,20 +25,7 @@ public sealed class CompactCommand(CompactionService compactionService, IOptions
 		if (allMsgs.Count < 2)
 			return "Not enough messages to compact.";
 
-		// Walk backwards keeping KeepRecentTokens, everything before that gets summarized
-		int keepTokens = lisOptions.Value.KeepRecentTokens;
-		int accumulated = 0;
-		long splitId = allMsgs.Last().Id;
-
-		foreach (MessageEntity m in allMsgs) {
-			int cost = m.OutputTokens ?? m.InputTokens ?? 0;
-			if (cost == 0) cost = (m.Body?.Length ?? 0) / 4;
-			accumulated += cost;
-			if (accumulated > keepTokens) {
-				splitId = m.Id;
-				break;
-			}
-		}
+		long splitId = CompactionService.CalculateSplitPoint(allMsgs, lisOptions.Value.KeepRecentTokens);
 
 		long oldSessionId = ctx.Session.Id;
 		string chatExternalId = ctx.Chat.ExternalId;

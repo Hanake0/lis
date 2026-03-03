@@ -248,4 +248,25 @@ public sealed class CompactionService(
 			logger.LogWarning(ex, "Failed to send compaction notification");
 		}
 	}
+
+	/// <summary>
+	/// Walks messages (newest-first) accumulating token costs.
+	/// Returns the ID of the first message that exceeds the keep budget — everything
+	/// at or before this ID should be compacted. Messages without token counts
+	/// contribute 0 (no estimation).
+	/// </summary>
+	public static long CalculateSplitPoint(IReadOnlyList<MessageEntity> messagesNewestFirst, int keepRecentTokens) {
+		if (messagesNewestFirst.Count == 0) return 0;
+
+		long splitId = messagesNewestFirst[^1].Id;
+		int accumulated = 0;
+		foreach (MessageEntity m in messagesNewestFirst) {
+			accumulated += m.OutputTokens ?? m.InputTokens ?? 0;
+			if (accumulated > keepRecentTokens) {
+				splitId = m.Id;
+				break;
+			}
+		}
+		return splitId;
+	}
 }

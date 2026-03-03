@@ -182,19 +182,7 @@ public sealed class ConversationService(
 				.OrderByDescending(m => m.Id)
 				.ToListAsync(ct);
 
-			int keepTokens = lisOptions.Value.KeepRecentTokens;
-			int accumulated = 0;
-			long splitId = allMsgs.LastOrDefault()?.Id ?? 0;
-
-			foreach (MessageEntity m in allMsgs) {
-				int cost = m.OutputTokens ?? m.InputTokens ?? 0;
-				if (cost == 0) cost = (m.Body?.Length ?? 0) / 4; // rough fallback
-				accumulated += cost;
-				if (accumulated > keepTokens) {
-					splitId = m.Id;
-					break;
-				}
-			}
+			long splitId = CompactionService.CalculateSplitPoint(allMsgs, lisOptions.Value.KeepRecentTokens);
 
 			if (splitId > 0)
 				_ = Task.Run(() => compactionService.CompactAsync(chatId, splitId, CancellationToken.None), CancellationToken.None);
