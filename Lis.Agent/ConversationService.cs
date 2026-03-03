@@ -221,6 +221,12 @@ public sealed class ConversationService(
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
 			if (toolTokens > lisOptions.Value.ToolPruneThreshold) {
+				int toolCount = await db.Messages
+					.Where(m => m.ChatId == session.ChatId
+					         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
+					         && m.Role == "tool")
+					.CountAsync(ct);
+
 				long? lastMsgId = await db.Messages
 					.Where(m => m.ChatId == session.ChatId)
 					.OrderByDescending(m => m.Id)
@@ -229,9 +235,14 @@ public sealed class ConversationService(
 				session.ToolsPrunedThroughId = lastMsgId;
 				await db.SaveChangesAsync(ct);
 
-				if (lisOptions.Value.CompactionNotify)
+				if (lisOptions.Value.CompactionNotify) {
+					int prunedEstimate = toolCount * 10; // ~10 tokens per pruned result
+					int pct = totalInput > 0 ? (int)((long)(totalInput - toolTokens + prunedEstimate) * 100 / modelSettings.ContextBudget) : 0;
+					int savings = toolTokens > 0 ? (int)((long)(toolTokens - prunedEstimate) * 100 / toolTokens) : 0;
 					await ToolContext.NotifyAsync(
-						$"🔧 Tool outputs pruned ({toolTokens / 1000.0:0.#}k tokens)", ct);
+						$"🔧 Tool outputs pruned ({Fmt(toolTokens)} → {Fmt(prunedEstimate)}, -{savings}%)"
+						+ $"\n  📊 Context: {Fmt(totalInput - toolTokens + prunedEstimate)}/{Fmt(modelSettings.ContextBudget)} ({pct}%)", ct);
+				}
 			}
 		}
 	}
@@ -333,4 +344,7 @@ public sealed class ConversationService(
 		});
 		await db.SaveChangesAsync(ct);
 	}
+
+	private static string Fmt(long tokens) =>
+		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
 }

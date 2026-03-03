@@ -60,7 +60,7 @@ public sealed class CompactionService(
 			string conversationText = BuildConversationText(messages, session.Summary);
 
 			// Call compaction LLM
-			string summary = await this.SummarizeAsync(conversationText, ct);
+			(string summary, int summaryTokens) = await this.SummarizeAsync(conversationText, ct);
 
 			// Generate embedding
 			Vector? embedding = null;
@@ -92,9 +92,19 @@ public sealed class CompactionService(
 			chat.CurrentSessionId = newSession.Id;
 			await db.SaveChangesAsync(ct);
 
+			// Compute new context stats for notification
+			int keptTokens = await db.Messages
+				.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId)
+				.SumAsync(m => (m.OutputTokens ?? m.InputTokens ?? 0), ct);
+			int toolTokens = await db.Messages
+				.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId && m.Role == "tool")
+				.SumAsync(m => m.OutputTokens ?? 0, ct);
+
 			// Notify user
 			if (lisOptions.Value.CompactionNotify)
-				await this.NotifyCompactionAsync(externalChatId, session.TotalInputTokens, messages.Count, ct);
+				await this.NotifyCompactionAsync(
+					externalChatId, session.TotalInputTokens,
+					summaryTokens, keptTokens, toolTokens, ct);
 
 			if (logger.IsEnabled(LogLevel.Information))
 				logger.LogInformation(
@@ -190,7 +200,7 @@ public sealed class CompactionService(
 		if (messages.Count == 0) return;
 
 		string conversationText = BuildConversationText(messages, null);
-		string summary = await this.SummarizeAsync(conversationText, ct);
+		(string summary, _) = await this.SummarizeAsync(conversationText, ct);
 
 		Vector? embedding = null;
 		if (embeddingGenerator is not null) {
@@ -206,7 +216,7 @@ public sealed class CompactionService(
 		await db.SaveChangesAsync(ct);
 	}
 
-	private async Task<string> SummarizeAsync(string conversationText, CancellationToken ct) {
+	private async Task<(string Text, int OutputTokens)> SummarizeAsync(string conversationText, CancellationToken ct) {
 		string prompt = $"""
 			Summarize the following conversation concisely. Preserve:
 			- Key facts, names, dates, and decisions made
@@ -224,7 +234,8 @@ public sealed class CompactionService(
 		string model = lisOptions.Value.CompactionModel is { Length: > 0 } m ? m : modelSettings.Model;
 		ChatOptions options = new() { ModelId = model };
 		ChatResponse result = await compactionClient.GetResponseAsync(prompt, options, ct);
-		return result.Text ?? "";
+		int outputTokens = (int)(result.Usage?.OutputTokenCount ?? 0);
+		return (result.Text ?? "", outputTokens);
 	}
 
 	private static string BuildConversationText(IReadOnlyList<MessageEntity> messages, string? existingSummary) {
@@ -243,11 +254,18 @@ public sealed class CompactionService(
 	}
 
 	private async Task NotifyCompactionAsync(
-		string chatId, long oldInputTokens, int compactedMessages, CancellationToken ct) {
+		string chatId, long oldInputTokens,
+		int summaryTokens, int keptTokens, int toolTokens, CancellationToken ct) {
 		try {
 			int budget = modelSettings.ContextBudget;
-			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {compactedMessages} msgs summarized)"
-			           + $"\n  📊 Budget: {FormatTokens(budget)}";
+			int newTotal = summaryTokens + keptTokens;
+			int pct = budget > 0 ? (int)((long)newTotal * 100 / budget) : 0;
+
+			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {FormatTokens(newTotal)})"
+			           + $"\n  📝 Summary: {FormatTokens(summaryTokens)} tokens"
+			           + $"\n  💬 Kept context: {FormatTokens(keptTokens - toolTokens)} tokens"
+			           + $"\n  🛠️ Tools: {FormatTokens(toolTokens)} tokens"
+			           + $"\n  📊 Total: {FormatTokens(newTotal)}/{FormatTokens(budget)} ({pct}%)";
 
 			using IServiceScope scope = scopeFactory.CreateScope();
 			IChannelClient channel = scope.ServiceProvider.GetRequiredService<IChannelClient>();

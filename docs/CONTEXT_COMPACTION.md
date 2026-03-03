@@ -38,9 +38,9 @@ The old `EstimateTokens` heuristic (`chars / 3.5`) is removed entirely.
 Two stages, applied in order:
 
 1. **Tool output pruning** — triggered when total tool result tokens (after
-   `ToolsPrunedThroughId`) exceed `ToolPruneThreshold`. Replaces tool output bodies
-   with one-liners like `[result: get_current_datetime]`. Non-destructive (DB unchanged).
-   Runs ONCE, stays stable → preserves prompt cache.
+   `ToolsPrunedThroughId`) exceed `ToolPruneThreshold`. Replaces tool output with the
+   bare function name (preserving `FunctionResultContent` metadata and `CallId`).
+   Non-destructive (DB unchanged). Runs ONCE, stays stable → preserves prompt cache.
 
 2. **Full compaction** — triggered when `input_tokens` from the last response exceeds
    `CompactionThreshold`. Keeps `KeepRecentTokens` of recent messages. Everything
@@ -78,8 +78,10 @@ main client if not configured.
 
 ### Chat commands — intercepted before AI
 
-`/status`, `/new`, `/clear` are handled by `CommandRouter` before AI processing.
-No AI tokens wasted on commands.
+`/status`, `/new`, `/clear`, `/compact`, `/prune` are handled by `CommandRouter`
+before AI processing. Commands bypass debouncing and execute immediately.
+Responses are persisted to message history. No AI tokens wasted on commands.
+Commands support arguments: `/command [args]`.
 
 ### Thinking effort — configurable
 
@@ -96,7 +98,7 @@ or exact token count.
 | `LIS_COMPACTION_THRESHOLD` | 10000 | Input tokens to trigger full compaction |
 | `LIS_COMPACTION_NOTIFY` | true | Notify user on compaction events |
 | `LIS_TOOL_SUMMARIZATION_POLICY` | auto | `auto`, `keep_all`, `keep_none` |
-| `LIS_COMPACTION_PROVIDER` | *(main)* | `anthropic`, `openai` |
+| `LIS_COMPACTION_PROVIDER` | *(main)* | `anthropic` (others: not yet) |
 | `LIS_COMPACTION_API_KEY` | | API key for compaction provider |
 | `LIS_COMPACTION_MODEL` | | Model for summarization |
 | `ANTHROPIC_CACHE_TTL` | 5m | `5m` or `1h` |
@@ -132,7 +134,7 @@ Full compaction:
 | `Lis.Agent/ContextWindowBuilder.cs` | History assembly with session/summary injection, tool pruning |
 | `Lis.Agent/ConversationService.cs` | Session management, compaction triggers, command routing |
 | `Lis.Agent/ToolRunner.cs` | Token usage extraction from streaming responses |
-| `Lis.Agent/Commands/` | Command framework: `IChatCommand`, `CommandRouter`, `/status`, `/new` |
+| `Lis.Agent/Commands/` | Command framework: `IChatCommand`, `CommandRouter`, `/status`, `/new`, `/compact`, `/prune` |
 | `Lis.Providers/Anthropic/AnthropicProvider.cs` | CacheControlHandler, thinking effort, cache config |
 | `Lis.Core/Util/ToolSummarizationAttribute.cs` | Per-tool summarization policy attribute |
 | `Lis.Core/Channel/TokenUsage.cs` | Token usage DTO |
@@ -141,7 +143,7 @@ Full compaction:
 
 1. Message arrives → `ConversationService.RespondAsync`
 2. Ensure session exists (auto-create on first message)
-3. Check commands (`/status`, `/new`, `/clear`) → handle without AI
+3. Check commands (`/status`, `/new`, `/clear`, `/compact`, `/prune`) → handle without AI
 4. Load messages from current session (`StartMessageId` onwards)
 5. Build context: system prompt → parent summary → session summary → messages (with pruning)
 6. Send to AI via ToolRunner (streaming, with tool loop)
