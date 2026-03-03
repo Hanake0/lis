@@ -228,6 +228,10 @@ public sealed class ConversationService(
 					.FirstOrDefaultAsync(ct);
 				session.ToolsPrunedThroughId = lastMsgId;
 				await db.SaveChangesAsync(ct);
+
+				if (lisOptions.Value.CompactionNotify)
+					await ToolContext.NotifyAsync(
+						$"🔧 Tool outputs pruned ({toolTokens / 1000.0:0.#}k tokens)", ct);
 			}
 		}
 	}

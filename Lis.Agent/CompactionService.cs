@@ -94,7 +94,7 @@ public sealed class CompactionService(
 
 			// Notify user
 			if (lisOptions.Value.CompactionNotify)
-				await this.NotifyCompactionAsync(externalChatId, ct);
+				await this.NotifyCompactionAsync(externalChatId, session.TotalInputTokens, messages.Count, ct);
 
 			if (logger.IsEnabled(LogLevel.Information))
 				logger.LogInformation(
@@ -242,15 +242,23 @@ public sealed class CompactionService(
 		return sb.ToString();
 	}
 
-	private async Task NotifyCompactionAsync(string chatId, CancellationToken ct) {
+	private async Task NotifyCompactionAsync(
+		string chatId, long oldInputTokens, int compactedMessages, CancellationToken ct) {
 		try {
+			int budget = modelSettings.ContextBudget;
+			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {compactedMessages} msgs summarized)"
+			           + $"\n  📊 Budget: {FormatTokens(budget)}";
+
 			using IServiceScope scope = scopeFactory.CreateScope();
 			IChannelClient channel = scope.ServiceProvider.GetRequiredService<IChannelClient>();
-			await channel.SendMessageAsync(chatId, "⚙️ Conversation compacted. Context optimized.", null, ct);
+			await channel.SendMessageAsync(chatId, msg, null, ct);
 		} catch (Exception ex) {
 			logger.LogWarning(ex, "Failed to send compaction notification");
 		}
 	}
+
+	private static string FormatTokens(long tokens) =>
+		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
 
 	/// <summary>
 	/// Walks messages (newest-first) accumulating token costs.
