@@ -34,6 +34,7 @@ public static class AgentSetup {
 		// Commands
 		services.AddSingleton<IChatCommand, StatusCommand>();
 		services.AddSingleton<IChatCommand, NewSessionCommand>();
+		services.AddSingleton<IChatCommand, CompactCommand>();
 		services.AddSingleton<CommandRouter>();
 
 		// Compaction
