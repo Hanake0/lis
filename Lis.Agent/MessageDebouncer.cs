@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 
+using Lis.Agent.Commands;
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
 using Lis.Core.Util;
@@ -13,6 +14,7 @@ namespace Lis.Agent;
 
 public sealed class MessageDebouncer(
 	IServiceScopeFactory      scopeFactory,
+	CommandRouter             commandRouter,
 	IOptions<LisOptions>      lisOptions,
 	ILogger<MessageDebouncer> logger) : IConversationService, IDisposable {
 	private readonly ConcurrentDictionary<string, object> _locks = new();
@@ -31,6 +33,12 @@ public sealed class MessageDebouncer(
 		}
 
 		if (!shouldRespond) return;
+
+		// Commands execute immediately — no debounce
+		if (commandRouter.Match(message.Body) is not null) {
+			await this.RespondInScopeAsync(message);
+			return;
+		}
 
 		int debounceMs = lisOptions.Value.MessageDebounceMs;
 
