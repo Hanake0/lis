@@ -12,4 +12,7 @@ public sealed class IncomingMessage {
 	public string? RepliedId { get; init; }
 	public string? MediaType { get; init; }
 	public string? MediaCaption { get; init; }
+
+	/// <summary>Set after ingestion — the DB-generated primary key.</summary>
+	public long DbId { get; set; }
 }

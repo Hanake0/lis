@@ -82,7 +82,7 @@ public sealed class ConversationService(
 		}
 
 		// Ensure session exists
-		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
+		SessionEntity session = await this.EnsureSessionAsync(db, chat, message.DbId, ct);
 
 		// Handle commands before AI processing
 		if (commandRouter.Match(message.Body) is { } match) {
@@ -222,19 +222,13 @@ public sealed class ConversationService(
 	}
 
 	[Trace("ConversationService > EnsureSessionAsync")]
-	private async Task<SessionEntity> EnsureSessionAsync(LisDbContext db, ChatEntity chat, CancellationToken ct) {
+	private async Task<SessionEntity> EnsureSessionAsync(
+		LisDbContext db, ChatEntity chat, long messageDbId, CancellationToken ct) {
 		if (chat.CurrentSession is not null) return chat.CurrentSession;
-
-		// Get the earliest message ID for the chat — session starts from there
-		long startMsgId = await db.Messages
-			.Where(m => m.ChatId == chat.Id)
-			.OrderBy(m => m.Id)
-			.Select(m => m.Id)
-			.FirstOrDefaultAsync(ct);
 
 		SessionEntity session = new() {
 			ChatId         = chat.Id,
-			StartMessageId = startMsgId > 0 ? startMsgId : null,
+			StartMessageId = messageDbId > 0 ? messageDbId : null,
 			CreatedAt      = DateTimeOffset.UtcNow,
 			UpdatedAt      = DateTimeOffset.UtcNow
 		};
@@ -301,6 +295,7 @@ public sealed class ConversationService(
 
 		db.Messages.Add(entity);
 		await db.SaveChangesAsync(ct);
+		message.DbId = entity.Id;
 	}
 
 	private static async Task PersistSkMessageAsync(
