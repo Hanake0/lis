@@ -157,6 +157,9 @@ public sealed class CompactionService(
 		SessionEntity newSession = new() {
 			ChatId          = chat.Id,
 			ParentSessionId = isExplicitBreak ? null : currentSession?.Id,
+			StartMessageId  = currentSession?.EndMessageId is not null
+				? currentSession.EndMessageId + 1
+				: null,
 			CreatedAt       = DateTimeOffset.UtcNow,
 			UpdatedAt       = DateTimeOffset.UtcNow
 		};
