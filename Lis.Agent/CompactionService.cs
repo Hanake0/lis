@@ -35,10 +35,12 @@ public sealed class CompactionService(
 			if (chat?.CurrentSession is null) return;
 
 			SessionEntity session = chat.CurrentSession;
-			if (session.IsCompacting) return;
 
-			session.IsCompacting = true;
-			await db.SaveChangesAsync(ct);
+			// Atomic claim — prevents concurrent compactions
+			int claimed = await db.Database.ExecuteSqlInterpolatedAsync(
+				$"UPDATE session SET is_compacting = true, updated_at = {DateTimeOffset.UtcNow} WHERE id = {session.Id} AND is_compacting = false", ct);
+			if (claimed == 0) return;
+			await db.Entry(session).ReloadAsync(ct);
 
 			// Load messages from session start to split point
 			List<MessageEntity> messages = await db.Messages

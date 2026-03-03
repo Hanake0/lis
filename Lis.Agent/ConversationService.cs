@@ -151,6 +151,12 @@ public sealed class ConversationService(
 
 		// Update session token stats from last response
 		if (lastUsage is not null) {
+			// Reload session — compaction may have completed during the AI loop
+			await db.Entry(session).ReloadAsync(ct);
+
+			// If session was finalized by compaction, skip updates (new session is current)
+			if (session.EndMessageId is not null) return;
+
 			session.TotalInputTokens         += lastUsage.InputTokens;
 			session.TotalOutputTokens        += lastUsage.OutputTokens;
 			session.TotalCacheReadTokens     += lastUsage.CacheReadTokens;
@@ -159,7 +165,6 @@ public sealed class ConversationService(
 			session.UpdatedAt                 = DateTimeOffset.UtcNow;
 			await db.SaveChangesAsync(ct);
 
-			// Check compaction triggers based on actual input tokens
 			await this.CheckCompactionTriggersAsync(db, session, lastUsage, message.ChatId, ct);
 		}
 	}
@@ -196,12 +201,12 @@ public sealed class ConversationService(
 			return;
 		}
 
-		// Tool pruning — count only tool output tokens specifically
+		// Tool pruning — count only tool result message tokens
 		if (session.ToolsPrunedThroughId is null) {
 			int toolTokens = await db.Messages
 				.Where(m => m.ChatId == session.ChatId
 				         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
-				         && m.SkContent != null && m.IsFromMe)
+				         && m.Role == "tool")
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
 			if (toolTokens > lisOptions.Value.ToolPruneThreshold) {
