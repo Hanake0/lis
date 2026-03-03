@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 
 using Anthropic.SDK;
 
+using Lis.Core.Channel;
 using Lis.Core.Configuration;
 
 using Microsoft.Extensions.AI;
@@ -35,7 +36,7 @@ public static class AnthropicProvider {
 
 		AnthropicClient anthropic = useBearer
 			? new AnthropicClient(opts.ApiKey, new HttpClient(new BearerAuthHandler(opts.ApiKey) { InnerHandler = innerHandler }))
-			: new AnthropicClient(opts.ApiKey, new HttpClient(new CacheControlHandler(opts.CacheTtl) { InnerHandler = new HttpClientHandler() }));
+			: new AnthropicClient(opts.ApiKey, new HttpClient(innerHandler));
 
 		services.AddSingleton(Options.Create(opts));
 		services.AddSingleton(new ModelSettings {
@@ -43,6 +44,7 @@ public static class AnthropicProvider {
 			ContextBudget = opts.ContextBudget, ThinkingEffort = opts.ThinkingEffort
 		});
 		services.AddSingleton<IChatClient>(anthropic.Messages);
+		services.AddSingleton<IUsageExtractor, AnthropicUsageExtractor>();
 
 		return services;
 	}

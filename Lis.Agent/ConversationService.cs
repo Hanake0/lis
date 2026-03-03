@@ -113,8 +113,9 @@ public sealed class ConversationService(
 		ChatHistory chatHistory = contextWindowBuilder.Build(
 			systemPrompt, recentMessages, session, parentSession, lisOptions.Value);
 
-		ToolContext.ChatId  = message.ChatId;
-		ToolContext.Channel = channelClient;
+		ToolContext.ChatId               = message.ChatId;
+		ToolContext.Channel              = channelClient;
+		ToolContext.NotificationsEnabled = lisOptions.Value.ToolNotifications;
 
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 
@@ -165,7 +166,7 @@ public sealed class ConversationService(
 
 	private async Task CheckCompactionTriggersAsync(
 		LisDbContext db, SessionEntity session, TokenUsage usage, string chatId, CancellationToken ct) {
-		int totalInput = usage.InputTokens + usage.CacheReadTokens + usage.CacheCreationTokens;
+		int totalInput = usage.TotalInputTokens;
 
 		// Full compaction takes priority — calculate split point from recent messages
 		if (totalInput > lisOptions.Value.CompactionThreshold && !session.IsCompacting) {

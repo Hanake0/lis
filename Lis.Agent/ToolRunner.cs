@@ -5,15 +5,12 @@ using Lis.Core.Channel;
 using Lis.Core.Util;
 
 using Microsoft.Extensions.Logging;
-
-using UsageContent = Microsoft.Extensions.AI.UsageContent;
-using UsageDetails = Microsoft.Extensions.AI.UsageDetails;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
-public sealed class ToolRunner(ILogger<ToolRunner> logger) {
+public sealed class ToolRunner(IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
 	internal const string UsageMetadataKey = "LisTokenUsage";
 
 	private static int MaxIterations =>
@@ -96,7 +93,7 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 
 		IReadOnlyList<FunctionCallContent> calls = fccBuilder.Build();
 
-		TokenUsage? usage = ExtractUsage(lastMetadata);
+		TokenUsage? usage = usageExtractor.Extract(lastMetadata);
 
 		// Build message with usage attached in metadata (thread-safe, per-message)
 		Dictionary<string, object?>? metadata = usage is not null
@@ -109,38 +106,6 @@ public sealed class ToolRunner(ILogger<ToolRunner> logger) {
 			message.Items.Add(call);
 
 		return (message, calls, usage);
-	}
-
-	private static TokenUsage? ExtractUsage(IReadOnlyDictionary<string, object?>? metadata) {
-		if (metadata is null) return null;
-
-		// M.E.AI wraps usage in a UsageContent object under the "Usage" key
-		if (!metadata.TryGetValue("Usage", out object? usageObj) || usageObj is not UsageContent usageContent)
-			return null;
-
-		UsageDetails? details = usageContent.Details;
-		if (details is null) return null;
-
-		int inputTokens  = (int)(details.InputTokenCount  ?? 0);
-		int outputTokens = (int)(details.OutputTokenCount ?? 0);
-
-		if (inputTokens == 0 && outputTokens == 0) return null;
-
-		// Cache tokens are in AdditionalCounts (Anthropic SDK maps them there)
-		int cacheReadTokens     = 0;
-		int cacheCreationTokens = 0;
-		if (details.AdditionalCounts is not null) {
-			foreach (KeyValuePair<string, long> kvp in details.AdditionalCounts) {
-				if (kvp.Key.Contains("CacheRead", StringComparison.OrdinalIgnoreCase)
-				    || kvp.Key.Contains("cache_read", StringComparison.OrdinalIgnoreCase))
-					cacheReadTokens = (int)kvp.Value;
-				else if (kvp.Key.Contains("CacheCreation", StringComparison.OrdinalIgnoreCase)
-				         || kvp.Key.Contains("cache_creation", StringComparison.OrdinalIgnoreCase))
-					cacheCreationTokens = (int)kvp.Value;
-			}
-		}
-
-		return new TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ThinkingTokens: 0);
 	}
 
 	[Trace("ToolRunner > InvokeFunctionAsync")]
