@@ -89,6 +89,18 @@ public sealed class ConversationService(
 			CommandContext ctx = new(message, chat, session, db, match.Args);
 			string response = await match.Command.ExecuteAsync(ctx, ct);
 			await channelClient.SendMessageAsync(message.ChatId, response, message.ExternalId, ct);
+
+			// Persist so AI sees the response in history
+			db.Messages.Add(new MessageEntity {
+				ChatId    = chat.Id,
+				SenderId  = "me",
+				IsFromMe  = true,
+				Role      = "assistant",
+				Body      = response,
+				Timestamp = DateTimeOffset.UtcNow,
+				CreatedAt = DateTimeOffset.UtcNow
+			});
+			await db.SaveChangesAsync(ct);
 			return;
 		}
 
