@@ -47,6 +47,15 @@ public static class AnthropicProvider {
 		services.AddSingleton<IChatClient>(anthropic.Messages);
 		services.AddSingleton<IUsageExtractor, AnthropicUsageExtractor>();
 
+		// Token counter (free endpoint for accurate post-compaction counts)
+		HttpClient tokenHttp = useBearer
+			? new(new BearerAuthHandler(opts.ApiKey) { InnerHandler = new HttpClientHandler() })
+			: new();
+		if (!useBearer)
+			tokenHttp.DefaultRequestHeaders.Add("x-api-key", opts.ApiKey);
+		tokenHttp.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+		services.AddSingleton<ITokenCounter>(new AnthropicTokenCounter(tokenHttp));
+
 		return services;
 	}
 
