@@ -60,9 +60,10 @@ public sealed class MessageEntity {
 	[JsonPropertyName("sk_content")]
 	public string? SkContent { get; set; }
 
-	[Column("token_count")]
-	[JsonPropertyName("token_count")]
-	public int TokenCount { get; set; }
+	[MaxLength(16)]
+	[Column("role", TypeName = "varchar(16)")]
+	[JsonPropertyName("role")]
+	public string? Role { get; set; }
 
 	[Column("input_tokens")]
 	[JsonPropertyName("input_tokens")]

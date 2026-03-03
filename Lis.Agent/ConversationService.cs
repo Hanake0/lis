@@ -304,6 +304,7 @@ public sealed class ConversationService(
 			ChatId              = chat.Id,
 			SenderId            = "me",
 			IsFromMe            = msg.Role != AuthorRole.User,
+			Role                = msg.Role.Label,
 			Body                = msg.Content,
 			SkContent           = JsonSerializer.Serialize(msg),
 			InputTokens         = usage?.InputTokens,
