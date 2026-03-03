@@ -14,6 +14,7 @@ namespace Lis.Tools;
 public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("list_prompt_sections")]
 	[Description("List prompt sections. Use type='names' for a summary or type='full' for complete content of all sections.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> ListPromptSectionsAsync(
 		[Description("Listing type: 'names' for summary, 'full' for complete content")]
 		string type = "names") {
@@ -46,6 +47,7 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 
 	[KernelFunction("get_prompt_section")]
 	[Description("Get the full content of a specific prompt section by name.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> GetPromptSectionAsync(
 		[Description("Section name (e.g. 'soul', 'user', 'instructions')")]
 		string name) {
@@ -63,6 +65,7 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 
 	[KernelFunction("update_prompt_section")]
 	[Description("Update the content of a prompt section. Changes take effect on the next message.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> UpdatePromptSectionAsync(
 		[Description("Section name (e.g. 'soul', 'user', 'instructions')")]
 		string name,

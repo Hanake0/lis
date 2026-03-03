@@ -87,6 +87,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 
 	[KernelFunction("update_memory")]
 	[Description("Update an existing memory's content.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> UpdateMemoryAsync(
 		[Description("Memory ID")] long id,
 		[Description("Updated content")] string content) {
@@ -107,6 +108,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 
 	[KernelFunction("delete_memory")]
 	[Description("Delete a memory by ID.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> DeleteMemoryAsync(
 		[Description("Memory ID")] long id) {
 		await ToolContext.NotifyAsync($"🗑️ Deleting memory #{id}");
