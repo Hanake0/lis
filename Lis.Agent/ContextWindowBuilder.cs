@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+using Lis.Core.Configuration;
+using Lis.Core.Util;
 using Lis.Persistence.Entities;
 
 using Microsoft.SemanticKernel;
@@ -13,7 +15,8 @@ public sealed class ContextWindowBuilder {
 
 	public ChatHistory Build(
 		string systemPrompt, IReadOnlyList<MessageEntity> messages,
-		SessionEntity? session = null, SessionEntity? parentSession = null) {
+		SessionEntity? session = null, SessionEntity? parentSession = null,
+		LisOptions? options = null) {
 
 		ChatHistory history = new(systemPrompt);
 
@@ -25,19 +28,43 @@ public sealed class ContextWindowBuilder {
 		if (session?.Summary is { Length: > 0 } summary)
 			history.AddAssistantMessage($"Here is context from our earlier conversation:\n{summary}");
 
+		string policy = options?.ToolSummarizationPolicy ?? "auto";
+		long? pruneBoundary = session?.ToolsPrunedThroughId;
+
+		// Compute keep boundary for ToolKeepThreshold — tool messages at or after this ID
+		// skip pruning at build time even if they're before pruneBoundary.
+		// Long.MaxValue means "keep nothing" (no threshold configured).
+		long keepFromId = ComputeToolKeepBoundary(messages, pruneBoundary, options?.ToolKeepThreshold ?? 0);
+
 		// Add messages, applying tool pruning where needed
 		foreach (MessageEntity msg in messages) {
-			// Tool output pruning: replace tool results with one-liners for messages
-			// before the prune boundary (non-destructive, DB unchanged)
-			if (session?.ToolsPrunedThroughId is not null
-			    && msg.Id <= session.ToolsPrunedThroughId
-			    && msg.SkContent is not null) {
-
+			if (pruneBoundary is not null && msg.Id <= pruneBoundary && msg.SkContent is not null) {
 				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent, SkJsonOptions);
 				if (skMsg?.Role == AuthorRole.Tool) {
-					// Extract function name from FunctionResultContent if available
-					string funcName = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault()?.FunctionName ?? "tool";
-					history.AddAssistantMessage($"[result: {funcName}]");
+					if (policy == "keep_all") {
+						history.Add(skMsg);
+						continue;
+					}
+
+					if (policy == "keep_none") {
+						PruneToolResult(history, skMsg);
+						continue;
+					}
+
+					// auto: ToolKeepThreshold keeps recent outputs unpruned
+					if (msg.Id >= keepFromId) {
+						history.Add(skMsg);
+						continue;
+					}
+
+					// auto: check per-tool [ToolSummarization] attribute
+					FunctionResultContent? frc = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();
+					if (frc is not null && HasSummarizePolicy(frc.FunctionName)) {
+						history.Add(skMsg);
+						continue;
+					}
+
+					PruneToolResult(history, skMsg);
 					continue;
 				}
 			}
@@ -56,6 +83,64 @@ public sealed class ContextWindowBuilder {
 		SanitizeToolPairs(history);
 
 		return history;
+	}
+
+	private static void PruneToolResult(ChatHistory history, ChatMessageContent skMsg) {
+		FunctionResultContent? original = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();
+		if (original is null) {
+			// Fallback: no FunctionResultContent metadata — add as bare tool message
+			history.Add(new ChatMessageContent(AuthorRole.Tool, "pruned"));
+			return;
+		}
+
+		ChatMessageContent pruned = new(AuthorRole.Tool, content: (string?)null);
+		pruned.Items.Add(new FunctionResultContent(original.FunctionName, original.PluginName, original.CallId, original.FunctionName));
+		history.Add(pruned);
+	}
+
+	private static long ComputeToolKeepBoundary(
+		IReadOnlyList<MessageEntity> messages, long? pruneBoundary, int keepThreshold) {
+		if (pruneBoundary is null || keepThreshold <= 0) return long.MaxValue; // no keep window
+
+		int accumulated = 0;
+		long keepFrom = long.MaxValue;
+		// Walk from newest message backwards within prune window, accumulate tool output sizes
+		for (int i = messages.Count - 1; i >= 0; i--) {
+			MessageEntity m = messages[i];
+			if (m.Id > pruneBoundary) continue; // not in prune window
+			if (m.Role is not "tool") continue;
+
+			accumulated += m.OutputTokens ?? 0;
+			if (accumulated > keepThreshold)
+				return keepFrom; // return the ID of the last tool that fit
+			keepFrom = m.Id;
+		}
+
+		return keepFrom; // everything fits within threshold — keep all tools
+	}
+
+	private static bool HasSummarizePolicy(string? functionName) {
+		if (functionName is null) return false;
+		// Check all loaded assemblies for KernelFunction methods with ToolSummarization attribute
+		foreach (System.Reflection.Assembly asm in AppDomain.CurrentDomain.GetAssemblies()) {
+			try {
+				foreach (Type type in asm.GetTypes()) {
+					foreach (System.Reflection.MethodInfo method in type.GetMethods()) {
+						KernelFunctionAttribute? kf = method.GetCustomAttributes(typeof(KernelFunctionAttribute), false)
+							.OfType<KernelFunctionAttribute>().FirstOrDefault();
+						if (kf?.Name == functionName) {
+							ToolSummarizationAttribute? ts = method.GetCustomAttributes(typeof(ToolSummarizationAttribute), false)
+								.OfType<ToolSummarizationAttribute>().FirstOrDefault();
+							return ts?.Policy == SummarizationPolicy.Summarize;
+						}
+					}
+				}
+			} catch {
+				// Skip assemblies that can't be reflected
+			}
+		}
+
+		return false;
 	}
 
 	/// <summary>

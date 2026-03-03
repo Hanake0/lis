@@ -111,7 +111,7 @@ public sealed class ConversationService(
 			: null;
 
 		ChatHistory chatHistory = contextWindowBuilder.Build(
-			systemPrompt, recentMessages, session, parentSession);
+			systemPrompt, recentMessages, session, parentSession, lisOptions.Value);
 
 		ToolContext.ChatId  = message.ChatId;
 		ToolContext.Channel = channelClient;
