@@ -28,7 +28,8 @@ public sealed class ConversationService(
 	CommandRouter                commandRouter,
 	ModelSettings                modelSettings,
 	IOptions<LisOptions>         lisOptions,
-	ILogger<ConversationService> logger) : IConversationService {
+	ILogger<ConversationService> logger,
+	ITokenCounter?               tokenCounter = null) : IConversationService {
 
 	[Trace("ConversationService > HandleIncomingAsync")]
 	public async Task HandleIncomingAsync(IncomingMessage message, CancellationToken ct) {
@@ -124,6 +125,19 @@ public sealed class ConversationService(
 
 		ChatHistory chatHistory = contextWindowBuilder.Build(
 			systemPrompt, recentMessages, session, parentSession, lisOptions.Value);
+
+		// Pre-send validation: count tokens when context is likely large
+		if (tokenCounter is not null && session.TotalInputTokens > modelSettings.ContextBudget * 0.7) {
+			try {
+				string countJson = ChatHistorySerializer.ToAnthropicJson(chatHistory, modelSettings.Model);
+				int? tokenCount = await tokenCounter.CountAsync(countJson, ct);
+				if (tokenCount > modelSettings.ContextBudget)
+					logger.LogWarning("Pre-send token count ({Tokens}) exceeds budget ({Budget})",
+						tokenCount, modelSettings.ContextBudget);
+			} catch (Exception ex) {
+				logger.LogWarning(ex, "Pre-send token counting failed");
+			}
+		}
 
 		ToolContext.ChatId               = message.ChatId;
 		ToolContext.Channel              = channelClient;
