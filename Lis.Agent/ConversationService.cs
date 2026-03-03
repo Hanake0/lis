@@ -85,9 +85,9 @@ public sealed class ConversationService(
 		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
 
 		// Handle commands before AI processing
-		if (commandRouter.Match(message.Body) is { } command) {
-			CommandContext ctx = new(message, chat, session, db);
-			string response = await command.ExecuteAsync(ctx, ct);
+		if (commandRouter.Match(message.Body) is { } match) {
+			CommandContext ctx = new(message, chat, session, db, match.Args);
+			string response = await match.Command.ExecuteAsync(ctx, ct);
 			await channelClient.SendMessageAsync(message.ChatId, response, message.ExternalId, ct);
 			return;
 		}

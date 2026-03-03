@@ -13,16 +13,22 @@ public sealed record CommandContext(
 	IncomingMessage Message,
 	ChatEntity      Chat,
 	SessionEntity?  Session,
-	LisDbContext    Db);
+	LisDbContext    Db,
+	string?         Args = null);
+
+public sealed record CommandMatch(IChatCommand Command, string? Args);
 
 public sealed class CommandRouter(IEnumerable<IChatCommand> commands) {
-	public IChatCommand? Match(string? messageBody) {
+	public CommandMatch? Match(string? messageBody) {
 		if (string.IsNullOrWhiteSpace(messageBody)) return null;
 
 		string trimmed = messageBody.Trim();
 		foreach (IChatCommand command in commands)
-			if (command.Triggers.Any(t => trimmed.Equals(t, StringComparison.OrdinalIgnoreCase)))
-				return command;
+			foreach (string t in command.Triggers)
+				if (trimmed.Equals(t, StringComparison.OrdinalIgnoreCase))
+					return new(command, null);
+				else if (trimmed.StartsWith(t + " ", StringComparison.OrdinalIgnoreCase))
+					return new(command, trimmed[(t.Length + 1)..].TrimStart());
 
 		return null;
 	}
