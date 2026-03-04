@@ -164,13 +164,14 @@ public sealed class ConversationService(
 		TokenUsage? lastUsage = null;
 
 		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, kernel, settings, ct)) {
+			string? externalId = null;
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content))
-				await channelClient.SendMessageAsync(message.ChatId, msg.Content, message.ExternalId, ct);
+				externalId = await channelClient.SendMessageAsync(message.ChatId, msg.Content, message.ExternalId, ct);
 
 			// Usage is attached per-message by ToolRunner (only on assistant messages)
 			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
 			if (msgUsage is not null) lastUsage = msgUsage;
-			await PersistSkMessageAsync(db, chat, session, msg, msgUsage, ct);
+			await PersistSkMessageAsync(db, chat, session, msg, msgUsage, externalId, ct);
 		}
 
 		// Update session token stats from last response
@@ -338,8 +339,9 @@ public sealed class ConversationService(
 
 	private static async Task PersistSkMessageAsync(
 		LisDbContext db, ChatEntity chat, SessionEntity session,
-		ChatMessageContent msg, TokenUsage? usage, CancellationToken ct) {
+		ChatMessageContent msg, TokenUsage? usage, string? externalId, CancellationToken ct) {
 		db.Messages.Add(new MessageEntity {
+			ExternalId          = externalId,
 			ChatId              = chat.Id,
 			SessionId           = session.Id,
 			SenderId            = "me",
