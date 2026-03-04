@@ -125,7 +125,7 @@ public sealed class CompactionService(
 			// Notify user
 			if (lisOptions.Value.CompactionNotify)
 				await this.NotifyCompactionAsync(
-					externalChatId, session.TotalInputTokens,
+					externalChatId, session.ContextTokens,
 					summaryTokens, keptTokens, toolTokens, actualTotal, ct);
 
 			if (logger.IsEnabled(LogLevel.Information))
