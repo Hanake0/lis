@@ -48,9 +48,7 @@ public sealed class CompactionService(
 
 			// Load messages from session start to split point
 			List<MessageEntity> messages = await db.Messages
-				.Where(m => m.ChatId == chat.Id
-				         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
-				         && m.Id <= splitMessageId)
+				.Where(m => m.SessionId == session.Id && m.Id <= splitMessageId)
 				.OrderBy(m => m.Timestamp)
 				.ToListAsync(ct);
 
@@ -75,33 +73,36 @@ public sealed class CompactionService(
 					embedding = new Vector(result[0].Vector);
 			}
 
-			// Finalize current session
+			// Finalize current session + create new session + reassign messages atomically
+			await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
 			session.Summary          = summary;
 			session.SummaryEmbedding = embedding;
-			session.EndMessageId     = splitMessageId;
 			session.IsCompacting     = false;
 			session.UpdatedAt        = DateTimeOffset.UtcNow;
 
-			// Create new session (continuation)
 			SessionEntity newSession = new() {
 				ChatId          = chat.Id,
 				ParentSessionId = session.Id,
-				StartMessageId  = splitMessageId + 1,
 				CreatedAt       = DateTimeOffset.UtcNow,
 				UpdatedAt       = DateTimeOffset.UtcNow
 			};
 			db.Sessions.Add(newSession);
-			await db.SaveChangesAsync(ct);
-
 			chat.CurrentSessionId = newSession.Id;
 			await db.SaveChangesAsync(ct);
 
+			// Reassign kept messages to new session
+			await db.Database.ExecuteSqlInterpolatedAsync(
+				$"UPDATE message SET session_id = {newSession.Id} WHERE session_id = {session.Id} AND id > {splitMessageId}", ct);
+
+			await transaction.CommitAsync(ct);
+
 			// Compute new context stats for notification
 			int keptTokens = await db.Messages
-				.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId)
+				.Where(m => m.SessionId == newSession.Id)
 				.SumAsync(m => (m.OutputTokens ?? m.InputTokens ?? 0), ct);
 			int toolTokens = await db.Messages
-				.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId && m.Role == "tool")
+				.Where(m => m.SessionId == newSession.Id && m.Role == "tool")
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
 			// Count actual tokens for the new session's context
@@ -110,7 +111,7 @@ public sealed class CompactionService(
 				try {
 					string systemPrompt = await promptComposer.BuildAsync(db, ct);
 					List<MessageEntity> keptMessages = await db.Messages
-						.Where(m => m.ChatId == chat.Id && m.Id > splitMessageId)
+						.Where(m => m.SessionId == newSession.Id)
 						.OrderBy(m => m.Timestamp)
 						.ToListAsync(ct);
 					ChatHistory newCtx = contextWindowBuilder.Build(
@@ -164,34 +165,24 @@ public sealed class CompactionService(
 
 		// Finalize current session if it exists
 		if (currentSession is not null) {
-			currentSession.EndMessageId = await db.Messages
-				.Where(m => m.ChatId == chat.Id)
-				.OrderByDescending(m => m.Id)
-				.Select(m => (long?)m.Id)
-				.FirstOrDefaultAsync(ct);
 			currentSession.UpdatedAt = DateTimeOffset.UtcNow;
 
 			// Fire async summary generation for the old session (don't capture request ct)
 			string chatExternalId = chat.ExternalId;
 			long sessionId = currentSession.Id;
-			if (currentSession.EndMessageId is not null) {
-				_ = Task.Run(async () => {
-					try {
-						await this.GenerateSessionSummaryAsync(chatExternalId, sessionId, CancellationToken.None);
-					} catch (Exception ex) {
-						logger.LogError(ex, "Error generating summary for session #{SessionId}", sessionId);
-					}
-				}, CancellationToken.None);
-			}
+			_ = Task.Run(async () => {
+				try {
+					await this.GenerateSessionSummaryAsync(sessionId, CancellationToken.None);
+				} catch (Exception ex) {
+					logger.LogError(ex, "Error generating summary for session #{SessionId}", sessionId);
+				}
+			}, CancellationToken.None);
 		}
 
 		// Create new session
 		SessionEntity newSession = new() {
 			ChatId          = chat.Id,
 			ParentSessionId = isExplicitBreak ? null : currentSession?.Id,
-			StartMessageId  = currentSession?.EndMessageId is not null
-				? currentSession.EndMessageId + 1
-				: null,
 			CreatedAt       = DateTimeOffset.UtcNow,
 			UpdatedAt       = DateTimeOffset.UtcNow
 		};
@@ -205,7 +196,7 @@ public sealed class CompactionService(
 	}
 
 	[Trace("CompactionService > GenerateSessionSummaryAsync")]
-	private async Task GenerateSessionSummaryAsync(string externalChatId, long sessionId, CancellationToken ct) {
+	public async Task GenerateSessionSummaryAsync(long sessionId, CancellationToken ct) {
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
@@ -213,9 +204,7 @@ public sealed class CompactionService(
 		if (session is null) return;
 
 		List<MessageEntity> messages = await db.Messages
-			.Where(m => m.ChatId == session.ChatId
-			         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
-			         && (session.EndMessageId == null || m.Id <= session.EndMessageId))
+			.Where(m => m.SessionId == session.Id)
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 
