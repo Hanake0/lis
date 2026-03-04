@@ -85,6 +85,10 @@ public sealed class MessageEntity {
 	[JsonPropertyName("thinking_tokens")]
 	public int? ThinkingTokens { get; set; }
 
+	[Column("session_id")]
+	[JsonPropertyName("session_id")]
+	public long SessionId { get; set; }
+
 	[Column("timestamp")]
 	[JsonPropertyName("timestamp")]
 	public DateTimeOffset Timestamp { get; set; }
@@ -95,6 +99,9 @@ public sealed class MessageEntity {
 
 	[ForeignKey(nameof(ChatId))]
 	public ChatEntity Chat { get; set; } = null!;
+
+	[ForeignKey(nameof(SessionId))]
+	public SessionEntity Session { get; set; } = null!;
 }
 
 public class MessageEntityConfiguration :IEntityTypeConfiguration<MessageEntity> {
@@ -105,9 +112,16 @@ public class MessageEntityConfiguration :IEntityTypeConfiguration<MessageEntity>
 
 		builder.HasIndex(e => new { e.ChatId, e.Timestamp });
 
+		builder.HasIndex(e => new { e.SessionId, e.Timestamp });
+
 		builder.HasOne(e => e.Chat)
 			   .WithMany(c => c.Messages)
 			   .HasForeignKey(e => e.ChatId)
+			   .OnDelete(DeleteBehavior.Cascade);
+
+		builder.HasOne(e => e.Session)
+			   .WithMany()
+			   .HasForeignKey(e => e.SessionId)
 			   .OnDelete(DeleteBehavior.Cascade);
 	}
 }

@@ -24,14 +24,6 @@ public sealed class SessionEntity {
 	[JsonPropertyName("parent_session_id")]
 	public long? ParentSessionId { get; set; }
 
-	[Column("start_message_id")]
-	[JsonPropertyName("start_message_id")]
-	public long? StartMessageId { get; set; }
-
-	[Column("end_message_id")]
-	[JsonPropertyName("end_message_id")]
-	public long? EndMessageId { get; set; }
-
 	[Column("tools_pruned_through_id")]
 	[JsonPropertyName("tools_pruned_through_id")]
 	public long? ToolsPrunedThroughId { get; set; }
