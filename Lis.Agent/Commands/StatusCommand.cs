@@ -46,9 +46,17 @@ public sealed class StatusCommand(ModelSettings modelSettings) : IChatCommand {
 			// Context usage
 			long contextTokens = ctx.Session.ContextTokens;
 			int budget = modelSettings.ContextBudget;
-			int compactions = await ctx.Db.Sessions
-				.Where(s => s.ChatId == ctx.Chat.Id && s.EndMessageId != null)
-				.CountAsync(ct);
+			// Count ancestor sessions (compaction chain depth) via recursive CTE
+			int compactions = ctx.Session.ParentSessionId is not null
+				? await ctx.Db.Database.SqlQuery<int>($"""
+					WITH RECURSIVE chain AS (
+						SELECT parent_session_id FROM session WHERE id = {ctx.Session.Id}
+						UNION ALL
+						SELECT s.parent_session_id FROM session s JOIN chain c ON s.id = c.parent_session_id
+					)
+					SELECT CAST(COUNT(*) - 1 AS int) AS "Value" FROM chain
+					""").FirstAsync(ct)
+				: 0;
 			if (contextTokens > 0) {
 				int pct = budget > 0 ? (int)(contextTokens * 100 / budget) : 0;
 				string compactStr = compactions > 0 ? $" · 🧹 Compactions: {compactions}" : "";
