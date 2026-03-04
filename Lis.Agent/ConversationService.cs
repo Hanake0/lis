@@ -54,7 +54,8 @@ public sealed class ConversationService(
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
 		ChatEntity chat = await UpsertChatAsync(db, message, ct);
-		await PersistMessageAsync(db, chat, message, ct);
+		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
+		await PersistMessageAsync(db, session, message, ct);
 
 		try {
 			await channelClient.MarkReadAsync(message.ExternalId, message.ChatId, ct);
@@ -82,8 +83,7 @@ public sealed class ConversationService(
 			return;
 		}
 
-		// Ensure session exists
-		SessionEntity session = await this.EnsureSessionAsync(db, chat, message.DbId, ct);
+		SessionEntity session = chat.CurrentSession!;
 
 		// Handle commands before AI processing
 		if (commandRouter.Match(message.Body) is { } match) {
@@ -94,6 +94,7 @@ public sealed class ConversationService(
 			// Persist so AI sees the response in history
 			db.Messages.Add(new MessageEntity {
 				ChatId    = chat.Id,
+				SessionId = session.Id,
 				SenderId  = "me",
 				IsFromMe  = true,
 				Role      = "assistant",
@@ -109,10 +110,7 @@ public sealed class ConversationService(
 
 		// Load messages from current session
 		List<MessageEntity> recentMessages = await db.Messages
-			.Where(m => m.ChatId == chat.Id
-			         && (session.StartMessageId == null || m.Id >= session.StartMessageId))
-			.OrderByDescending(m => m.Timestamp)
-			.Take(lisOptions.Value.MaxRecentMessages)
+			.Where(m => m.SessionId == session.Id)
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 
@@ -172,7 +170,7 @@ public sealed class ConversationService(
 			// Usage is attached per-message by ToolRunner (only on assistant messages)
 			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
 			if (msgUsage is not null) lastUsage = msgUsage;
-			await PersistSkMessageAsync(db, chat, msg, msgUsage, ct);
+			await PersistSkMessageAsync(db, chat, session, msg, msgUsage, ct);
 		}
 
 		// Update session token stats from last response
@@ -181,7 +179,8 @@ public sealed class ConversationService(
 			await db.Entry(session).ReloadAsync(ct);
 
 			// If session was finalized by compaction, skip updates (new session is current)
-			if (session.EndMessageId is not null) return;
+			ChatEntity? reloadedChat = await db.Chats.FindAsync([chat.Id], ct);
+			if (reloadedChat is not null && reloadedChat.CurrentSessionId != session.Id) return;
 
 			session.TotalInputTokens         += lastUsage.InputTokens;
 			session.TotalOutputTokens        += lastUsage.OutputTokens;
@@ -199,9 +198,12 @@ public sealed class ConversationService(
 	private async Task CheckCompactionTriggersAsync(
 		LisDbContext db, SessionEntity session, TokenUsage usage, string chatId, CancellationToken ct) {
 		int totalInput = usage.TotalInputTokens;
+		int compactionThreshold = lisOptions.Value.CompactionThreshold > 0
+			? lisOptions.Value.CompactionThreshold
+			: (int)(modelSettings.ContextBudget * 0.8);
 
 		// Full compaction takes priority — calculate split point from recent messages
-		if (totalInput > lisOptions.Value.CompactionThreshold && !session.IsCompacting) {
+		if (totalInput > compactionThreshold && !session.IsCompacting) {
 			// Safeguard: also set tool prune boundary so keep_all yields to auto
 			if (session.ToolsPrunedThroughId is null) {
 				long? lastMsgId = await db.Messages
@@ -215,8 +217,7 @@ public sealed class ConversationService(
 
 			// Find split: walk backwards from newest, keep KeepRecentTokens
 			List<MessageEntity> allMsgs = await db.Messages
-				.Where(m => m.ChatId == session.ChatId
-				         && (session.StartMessageId == null || m.Id >= session.StartMessageId))
+				.Where(m => m.SessionId == session.Id)
 				.OrderByDescending(m => m.Id)
 				.ToListAsync(ct);
 
@@ -230,16 +231,12 @@ public sealed class ConversationService(
 		// Tool pruning — count only tool result message tokens
 		if (session.ToolsPrunedThroughId is null) {
 			int toolTokens = await db.Messages
-				.Where(m => m.ChatId == session.ChatId
-				         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
-				         && m.Role == "tool")
+				.Where(m => m.SessionId == session.Id && m.Role == "tool")
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
 			if (toolTokens > lisOptions.Value.ToolPruneThreshold) {
 				int toolCount = await db.Messages
-					.Where(m => m.ChatId == session.ChatId
-					         && (session.StartMessageId == null || m.Id >= session.StartMessageId)
-					         && m.Role == "tool")
+					.Where(m => m.SessionId == session.Id && m.Role == "tool")
 					.CountAsync(ct);
 
 				long? lastMsgId = await db.Messages
@@ -264,14 +261,13 @@ public sealed class ConversationService(
 
 	[Trace("ConversationService > EnsureSessionAsync")]
 	private async Task<SessionEntity> EnsureSessionAsync(
-		LisDbContext db, ChatEntity chat, long messageDbId, CancellationToken ct) {
+		LisDbContext db, ChatEntity chat, CancellationToken ct) {
 		if (chat.CurrentSession is not null) return chat.CurrentSession;
 
 		SessionEntity session = new() {
-			ChatId         = chat.Id,
-			StartMessageId = messageDbId > 0 ? messageDbId : null,
-			CreatedAt      = DateTimeOffset.UtcNow,
-			UpdatedAt      = DateTimeOffset.UtcNow
+			ChatId    = chat.Id,
+			CreatedAt = DateTimeOffset.UtcNow,
+			UpdatedAt = DateTimeOffset.UtcNow
 		};
 		db.Sessions.Add(session);
 		await db.SaveChangesAsync(ct);
@@ -319,10 +315,11 @@ public sealed class ConversationService(
 	}
 
 	private static async Task PersistMessageAsync(
-		LisDbContext db, ChatEntity chat, IncomingMessage message, CancellationToken ct) {
+		LisDbContext db, SessionEntity session, IncomingMessage message, CancellationToken ct) {
 		MessageEntity entity = new() {
 			ExternalId   = message.ExternalId,
-			ChatId       = chat.Id,
+			ChatId       = session.ChatId,
+			SessionId    = session.Id,
 			SenderId     = message.SenderId,
 			SenderName   = message.SenderName,
 			IsFromMe     = message.IsFromMe,
@@ -340,10 +337,11 @@ public sealed class ConversationService(
 	}
 
 	private static async Task PersistSkMessageAsync(
-		LisDbContext db, ChatEntity chat, ChatMessageContent msg,
-		TokenUsage? usage, CancellationToken ct) {
+		LisDbContext db, ChatEntity chat, SessionEntity session,
+		ChatMessageContent msg, TokenUsage? usage, CancellationToken ct) {
 		db.Messages.Add(new MessageEntity {
 			ChatId              = chat.Id,
+			SessionId           = session.Id,
 			SenderId            = "me",
 			IsFromMe            = msg.Role != AuthorRole.User,
 			Role                = msg.Role.Label,
