@@ -17,8 +17,7 @@ public sealed class CompactCommand(CompactionService compactionService, IOptions
 			return "Compaction already in progress.";
 
 		List<MessageEntity> allMsgs = await ctx.Db.Messages
-			.Where(m => m.ChatId == ctx.Chat.Id
-			         && (ctx.Session.StartMessageId == null || m.Id >= ctx.Session.StartMessageId))
+			.Where(m => m.SessionId == ctx.Session.Id)
 			.OrderByDescending(m => m.Id)
 			.ToListAsync(ct);
 
