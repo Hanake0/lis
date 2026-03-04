@@ -44,6 +44,21 @@ public sealed class ConversationService(
 
 	public Task HandleTypingAsync(string chatId, CancellationToken ct) => Task.CompletedTask;
 
+	[Trace("ConversationService > HandleSentEchoAsync")]
+	public async Task HandleSentEchoAsync(IncomingMessage echo, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		MessageEntity? msg = await db.Messages
+			.FirstOrDefaultAsync(m => m.ExternalId == echo.ExternalId, ct);
+		if (msg is null) return;
+
+		msg.SenderId   = echo.SenderId;
+		msg.SenderName = echo.SenderName;
+		msg.Timestamp  = echo.Timestamp;
+		await db.SaveChangesAsync(ct);
+	}
+
 	[Trace("ConversationService > IngestMessageAsync")]
 	public async Task<(ChatEntity Chat, bool ShouldRespond)> IngestMessageAsync(
 		IncomingMessage message, CancellationToken ct) {

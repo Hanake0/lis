@@ -42,7 +42,7 @@ public class GowaWebhookController(
 			return this.Ok();
 		}
 
-		if (payload is null || string.IsNullOrEmpty(payload.Body) || payload.IsFromMe)
+		if (payload is null || string.IsNullOrEmpty(payload.Id))
 			return this.Ok();
 
 		// Group JIDs end with @g.us
@@ -53,7 +53,7 @@ public class GowaWebhookController(
 			: DateTimeOffset.UtcNow;
 
 		IncomingMessage message = new() {
-			ExternalId   = payload.Id     ?? "",
+			ExternalId   = payload.Id,
 			ChatId       = payload.ChatId ?? "",
 			SenderId     = payload.From   ?? "",
 			SenderName   = payload.FromName,
@@ -64,6 +64,21 @@ public class GowaWebhookController(
 			MediaType    = payload.MediaType,
 			MediaCaption = payload.MediaCaption
 		};
+
+		// Echoes of our own messages → backfill sender info on the persisted record
+		if (payload.IsFromMe) {
+			_ = Task.Run(async () => {
+				try {
+					await conversationService.HandleSentEchoAsync(message, CancellationToken.None);
+				} catch (Exception ex) {
+					logger.LogError(ex, "Error processing echo {MessageId}", payload.Id);
+				}
+			});
+			return this.Ok();
+		}
+
+		if (string.IsNullOrEmpty(payload.Body))
+			return this.Ok();
 
 		_ = Task.Run(async () => {
 			try {

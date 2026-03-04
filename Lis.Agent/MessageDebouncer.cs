@@ -50,6 +50,13 @@ public sealed class MessageDebouncer(
 		this.ScheduleDebounce(message.ChatId, message, debounceMs);
 	}
 
+	[Trace("MessageDebouncer > HandleSentEchoAsync")]
+	public async Task HandleSentEchoAsync(IncomingMessage echo, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
+		await svc.HandleSentEchoAsync(echo, ct);
+	}
+
 	[Trace("MessageDebouncer > HandleTypingAsync")]
 	public Task HandleTypingAsync(string chatId, CancellationToken ct) {
 		int debounceMs = lisOptions.Value.MessageDebounceMs;
