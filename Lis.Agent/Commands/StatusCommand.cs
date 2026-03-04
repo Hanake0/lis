@@ -24,21 +24,39 @@ public sealed class StatusCommand(ModelSettings modelSettings) : IChatCommand {
 		};
 		sb.AppendLine($"🧠 Model: {modelSettings.Model}{thinkingLabel}");
 
-		// Session tokens
 		if (ctx.Session is not null) {
-			string inputStr  = FormatTokens(ctx.Session.TotalInputTokens);
-			string outputStr = FormatTokens(ctx.Session.TotalOutputTokens);
-			sb.AppendLine($"🧮 Session tokens: {inputStr} in / {outputStr} out");
+			// Last API response tokens (from latest message with usage data)
+			var lastUsage = await ctx.Db.Messages
+				.Where(m => m.ChatId == ctx.Chat.Id && m.InputTokens != null)
+				.OrderByDescending(m => m.Id)
+				.Select(m => new { m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheCreationTokens })
+				.FirstOrDefaultAsync(ct);
 
-			// Cache stats
-			long totalCacheInput = ctx.Session.TotalCacheReadTokens + ctx.Session.TotalCacheCreationTokens + ctx.Session.TotalInputTokens;
-			if (totalCacheInput > 0) {
-				int cacheHitPct = (int)(ctx.Session.TotalCacheReadTokens * 100 / totalCacheInput);
-				sb.AppendLine($"🗄️ Cache: {cacheHitPct}% hit · {FormatTokens(ctx.Session.TotalCacheReadTokens)} cached · {FormatTokens(ctx.Session.TotalCacheCreationTokens)} new");
+			if (lastUsage is not null) {
+				sb.AppendLine($"🧮 Tokens: {FormatTokens(lastUsage.InputTokens ?? 0)} in / {FormatTokens(lastUsage.OutputTokens ?? 0)} out");
+
+				long cacheRead     = lastUsage.CacheReadTokens ?? 0;
+				long cacheCreation = lastUsage.CacheCreationTokens ?? 0;
+				if (cacheRead + cacheCreation > 0) {
+					long totalForHit = cacheRead + cacheCreation + (lastUsage.InputTokens ?? 0);
+					int hitPct = totalForHit > 0 ? (int)(cacheRead * 100 / totalForHit) : 0;
+					sb.AppendLine($"🗄️ Cache: {hitPct}% hit · {FormatTokens(cacheRead)} cached · {FormatTokens(cacheCreation)} new");
+				}
 			}
 
-			// Context
-			sb.AppendLine($"📚 Context budget: {FormatTokens(modelSettings.ContextBudget)}");
+			// Context usage
+			long contextTokens = ctx.Session.ContextTokens;
+			int budget = modelSettings.ContextBudget;
+			int compactions = await ctx.Db.Sessions
+				.Where(s => s.ChatId == ctx.Chat.Id && s.EndMessageId != null)
+				.CountAsync(ct);
+			if (contextTokens > 0) {
+				int pct = budget > 0 ? (int)(contextTokens * 100 / budget) : 0;
+				string compactStr = compactions > 0 ? $" · 🧹 Compactions: {compactions}" : "";
+				sb.AppendLine($"📚 Context: {FormatTokens(contextTokens)}/{FormatTokens(budget)} ({pct}%){compactStr}");
+			} else {
+				sb.AppendLine($"📚 Context budget: {FormatTokens(budget)}");
+			}
 
 			// Session info
 			int messageCount = await ctx.Db.Messages
