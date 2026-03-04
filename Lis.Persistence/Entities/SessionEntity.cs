@@ -68,6 +68,14 @@ public sealed class SessionEntity {
 	[JsonPropertyName("total_thinking_tokens")]
 	public long TotalThinkingTokens { get; set; }
 
+	/// <summary>
+	/// Last API response's total context window size (input + cache_read + cache_creation).
+	/// Used for status display, pre-send validation, and compaction notification.
+	/// </summary>
+	[Column("context_tokens")]
+	[JsonPropertyName("context_tokens")]
+	public long ContextTokens { get; set; }
+
 	[Column("created_at")]
 	[JsonPropertyName("created_at")]
 	public DateTimeOffset CreatedAt { get; set; }
