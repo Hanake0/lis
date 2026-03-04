@@ -39,7 +39,8 @@ public sealed class StatusCommand(ModelSettings modelSettings) : IChatCommand {
 				long cacheCreation = lastUsage.CacheCreationTokens ?? 0;
 				long totalForHit = cacheRead + cacheCreation + (lastUsage.InputTokens ?? 0);
 				int hitPct = totalForHit > 0 ? (int)(cacheRead * 100 / totalForHit) : 0;
-				sb.AppendLine($"🗄️ Cache: {hitPct}% hit · {FormatTokens(cacheRead)} cached · {FormatTokens(cacheCreation)} new");
+				string cacheWarning = cacheRead + cacheCreation == 0 ? " ⚠️ below min" : "";
+				sb.AppendLine($"🗄️ Cache: {hitPct}% hit · {FormatTokens(cacheRead)} cached · {FormatTokens(cacheCreation)} new{cacheWarning}");
 			}
 
 			// Context usage
