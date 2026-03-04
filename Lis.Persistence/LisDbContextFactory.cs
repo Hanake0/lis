@@ -10,7 +10,8 @@ public class LisDbContextFactory :IDesignTimeDbContextFactory<LisDbContext> {
 		DotEnv.Load();
 
 		DbContextOptionsBuilder<LisDbContext> optionsBuilder   = new();
-		string?                               connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__lisdb");
+		string?                               connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__lisdb")
+														   ?? Environment.GetEnvironmentVariable("DATABASE_URL");
 
 		if (string.IsNullOrEmpty(connectionString))
 			throw new InvalidOperationException("ConnectionStrings__lisdb environment variable not set");
