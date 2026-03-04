@@ -127,7 +127,7 @@ public sealed class ConversationService(
 			systemPrompt, recentMessages, session, parentSession, lisOptions.Value);
 
 		// Pre-send validation: count tokens when context is likely large
-		if (tokenCounter is not null && session.TotalInputTokens > modelSettings.ContextBudget * 0.7) {
+		if (tokenCounter is not null && session.ContextTokens > modelSettings.ContextBudget * 0.7) {
 			try {
 				string countJson = ChatHistorySerializer.ToAnthropicJson(chatHistory, modelSettings.Model);
 				int? tokenCount = await tokenCounter.CountAsync(countJson, ct);
@@ -188,6 +188,7 @@ public sealed class ConversationService(
 			session.TotalCacheReadTokens     += lastUsage.CacheReadTokens;
 			session.TotalCacheCreationTokens += lastUsage.CacheCreationTokens;
 			session.TotalThinkingTokens      += lastUsage.ThinkingTokens;
+			session.ContextTokens             = lastUsage.TotalInputTokens;
 			session.UpdatedAt                 = DateTimeOffset.UtcNow;
 			await db.SaveChangesAsync(ct);
 
