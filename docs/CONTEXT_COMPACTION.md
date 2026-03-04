@@ -14,12 +14,22 @@ and an embedding for future semantic search.
 Each session is a self-contained segment of a chat with its own summary. Full compaction
 always creates a new session. Summaries are never merged into each other.
 
-- **Compaction** → finalize current session (summary + embedding) → create new session
-  with `ParentSessionId = old.Id` (continuation chain).
-- **`/new` or `/clear`** → finalize session → create new session with
-  `ParentSessionId = null` (explicit break).
+- **Compaction** → finalize current session (summary + embedding) → reassign kept messages
+  to new session → set `chat.CurrentSessionId` to new session.
+- **`/new` or `/clear`** → finalize session (async summary) → create new session.
+  Messages stay with their original session.
+- **`/resume`** → reopen a previous session (full context) or create a new session with
+  the target's summary injected (fallback).
 - **Context for continuations**: the parent session's summary is injected when building
   context, giving the AI continuity without merging.
+
+### Message ownership — `session_id`
+
+Each message has a NOT NULL `session_id` FK to session. Messages are loaded via
+`WHERE m.SessionId == session.Id`.
+
+During compaction, messages after the split point are atomically reassigned to the new
+session via `UPDATE message SET session_id = newSession.Id WHERE session_id = oldSession.Id AND id > splitMessageId`.
 
 ### No token estimation — ever
 
@@ -43,8 +53,9 @@ Two stages, applied in order:
    Non-destructive (DB unchanged). Runs ONCE, stays stable → preserves prompt cache.
 
 2. **Full compaction** — triggered when `input_tokens` from the last response exceeds
-   `CompactionThreshold`. Keeps `KeepRecentTokens` of recent messages. Everything
-   before that is summarized by the compaction LLM. Creates a new session.
+   `CompactionThreshold` (default: 80% of `ContextBudget`). Keeps `KeepRecentTokens`
+   of recent messages. Everything before that is summarized by the compaction LLM.
+   Creates a new session with kept messages reassigned atomically.
 
 ### Tool summarization policy
 
@@ -78,7 +89,7 @@ main client if not configured.
 
 ### Chat commands — intercepted before AI
 
-`/status`, `/new`, `/clear`, `/compact`, `/prune` are handled by `CommandRouter`
+`/status`, `/new`, `/clear`, `/compact`, `/prune`, `/resume` are handled by `CommandRouter`
 before AI processing. Commands bypass debouncing and execute immediately.
 Responses are persisted to message history. No AI tokens wasted on commands.
 Commands support arguments: `/command [args]`.
@@ -95,9 +106,10 @@ or exact token count.
 | `LIS_KEEP_RECENT_TOKENS` | 4000 | Recent messages kept verbatim after compaction |
 | `LIS_TOOL_PRUNE_THRESHOLD` | 8000 | Tool output tokens to trigger pruning |
 | `LIS_TOOL_KEEP_THRESHOLD` | 2000 | Recent tool output tokens to keep unpruned |
-| `LIS_COMPACTION_THRESHOLD` | 10000 | Input tokens to trigger full compaction |
+| `LIS_COMPACTION_THRESHOLD` | 80% of budget | Input tokens to trigger full compaction |
 | `LIS_COMPACTION_NOTIFY` | true | Notify user on compaction events |
 | `LIS_TOOL_SUMMARIZATION_POLICY` | auto | `auto`, `keep_all`, `keep_none` |
+| `LIS_RESUME_TOKEN_BUDGET` | 70% of budget | Max tokens for full session resume |
 | `LIS_COMPACTION_PROVIDER` | *(main)* | `anthropic` (others: not yet) |
 | `LIS_COMPACTION_API_KEY` | | API key for compaction provider |
 | `LIS_COMPACTION_MODEL` | | Model for summarization |
@@ -130,28 +142,29 @@ Full compaction:
 | File | Purpose |
 |------|---------|
 | `Lis.Persistence/Entities/SessionEntity.cs` | Session data model with summary, embedding, token stats |
-| `Lis.Agent/CompactionService.cs` | Async summarization, session lifecycle, embedding generation |
+| `Lis.Persistence/Entities/MessageEntity.cs` | Message data model with `session_id` FK |
+| `Lis.Agent/CompactionService.cs` | Async summarization, session lifecycle, embedding generation, message reassignment |
 | `Lis.Agent/ContextWindowBuilder.cs` | History assembly with session/summary injection, tool pruning |
 | `Lis.Agent/ConversationService.cs` | Session management, compaction triggers, command routing |
 | `Lis.Agent/ToolRunner.cs` | Token usage extraction from streaming responses |
-| `Lis.Agent/Commands/` | Command framework: `IChatCommand`, `CommandRouter`, `/status`, `/new`, `/compact`, `/prune` |
+| `Lis.Agent/Commands/` | Command framework: `IChatCommand`, `CommandRouter`, `/status`, `/new`, `/compact`, `/prune`, `/resume` |
 | `Lis.Providers/Anthropic/AnthropicProvider.cs` | CacheControlHandler, thinking effort, cache config |
 | `Lis.Core/Util/ToolSummarizationAttribute.cs` | Per-tool summarization policy attribute |
 | `Lis.Core/Channel/TokenUsage.cs` | Token usage DTO |
 
 ### Flow
 
-1. Message arrives → `ConversationService.RespondAsync`
-2. Ensure session exists (auto-create on first message)
-3. Check commands (`/status`, `/new`, `/clear`, `/compact`, `/prune`) → handle without AI
-4. Load messages from current session (`StartMessageId` onwards)
+1. Message arrives → `ConversationService.IngestMessageAsync` (ensure session, persist with `session_id`)
+2. `ConversationService.RespondAsync` — load chat + session
+3. Check commands (`/status`, `/new`, `/clear`, `/compact`, `/prune`, `/resume`) → handle without AI
+4. Load messages from current session (`WHERE m.SessionId == session.Id`)
 5. Build context: system prompt → parent summary → session summary → messages (with pruning)
 6. Send to AI via ToolRunner (streaming, with tool loop)
 7. Extract `TokenUsage` from response metadata → update session stats + message columns
 8. Check compaction triggers (based on actual `input_tokens`):
    - Tool prune threshold → set `ToolsPrunedThroughId`
    - Compaction threshold → fire async `CompactionService.CompactAsync`
-9. Compaction: summarize → embed → finalize session → create new session
+9. Compaction: summarize → embed → finalize session → create new session → reassign kept messages (in transaction)
 
 ### Prompt caching
 
