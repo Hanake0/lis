@@ -57,16 +57,16 @@ builder.Logging.AddOpenTelemetry(logging => {
 builder.Services.AddSingleton(Options.Create(new LisOptions {
 												 OwnerJid                = Env("LIS_OWNER_JID"),
 												 Timezone                = Env("LIS_TIMEZONE") is { Length: > 0 } t ? t : "E. South America Standard Time",
-												 MaxRecentMessages       = EnvInt("LIS_MAX_RECENT_MESSAGES",       50),
 												 MessageDebounceMs       = EnvInt("LIS_MESSAGE_DEBOUNCE_MS",       3000),
 												 ToolNotifications       = Env("LIS_TOOL_NOTIFICATIONS") != "false",
 												 KeepRecentTokens        = EnvInt("LIS_KEEP_RECENT_TOKENS",        4000),
 												 ToolPruneThreshold      = EnvInt("LIS_TOOL_PRUNE_THRESHOLD",      8000),
 												 ToolKeepThreshold       = EnvInt("LIS_TOOL_KEEP_THRESHOLD",       2000),
-												 CompactionThreshold     = EnvInt("LIS_COMPACTION_THRESHOLD",      10000),
+												 CompactionThreshold     = EnvInt("LIS_COMPACTION_THRESHOLD",      0),
 												 CompactionNotify        = Env("LIS_COMPACTION_NOTIFY") != "false",
 												 CompactionModel         = Env("LIS_COMPACTION_MODEL"),
-												 ToolSummarizationPolicy = Env("LIS_TOOL_SUMMARIZATION_POLICY") is { Length: > 0 } p ? p : "auto"
+												 ToolSummarizationPolicy = Env("LIS_TOOL_SUMMARIZATION_POLICY") is { Length: > 0 } p ? p : "auto",
+												 ResumeTokenBudget       = EnvInt("LIS_RESUME_TOKEN_BUDGET",       0)
 											 }));
 
 // Database
