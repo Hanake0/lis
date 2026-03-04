@@ -308,6 +308,7 @@ public sealed class ConversationService(
 	private static async Task<ChatEntity> UpsertChatAsync(
 		LisDbContext db, IncomingMessage message, CancellationToken ct) {
 		ChatEntity? chat = await db.Chats
+								   .Include(c => c.CurrentSession)
 								   .FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
 
 		if (chat is null) {
