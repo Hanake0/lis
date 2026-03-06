@@ -37,31 +37,38 @@ public sealed class MessageDebouncer(
 		ChatState state    = this.GetChatState(message.ChatId);
 		bool      isQueued = state.IsResponding;
 
-		// Ingest (persisted with queued flag when AI is responding)
-		bool shouldRespond;
-		using (IServiceScope scope = scopeFactory.CreateScope()) {
-			ConversationService svc = scope.ServiceProvider.GetRequiredService<ConversationService>();
-			(_, shouldRespond) = await svc.IngestMessageAsync(message, isQueued, ct);
-		}
-		if (!shouldRespond) return;
-
-		// If AI is responding: everything is queued, just react clock
+		// If AI is responding: react clock immediately, then ingest as queued
 		if (isQueued) {
+			if (!this.ShouldRespond(message)) {
+				await this.IngestAsync(message, queued: true, ct);
+				return;
+			}
+
+			// React clock before ingestion so user sees feedback instantly
+			try {
+				lock (state.Lock) { state.ReactedIds.Add(message.ExternalId); }
+				using IServiceScope reactScope = scopeFactory.CreateScope();
+				await GetChannelClient(reactScope).ReactAsync(
+					message.ExternalId, message.ChatId, "\U0001f550", CancellationToken.None);
+			} catch { /* best effort */ }
+
+			await this.IngestAsync(message, queued: true, ct);
+
 			// /abort additionally cancels the active AI response
 			if (message.Body?.Trim() is "/abort" or "/stop" or "/cancel") {
 				if (state.ActiveCts is { } activeCts) await activeCts.CancelAsync();
 				CancelPendingDebounce(state);
 			}
-
-			// React clock (best-effort)
-			try {
-				using IServiceScope reactScope = scopeFactory.CreateScope();
-				await GetChannelClient(reactScope).ReactAsync(
-					message.ExternalId, message.ChatId, "\U0001f550", CancellationToken.None);
-				lock (state.Lock) { state.ReactedIds.Add(message.ExternalId); }
-			} catch { /* best effort */ }
 			return;
 		}
+
+		// Normal path: ingest first, then decide
+		bool shouldRespond;
+		using (IServiceScope scope = scopeFactory.CreateScope()) {
+			ConversationService svc = scope.ServiceProvider.GetRequiredService<ConversationService>();
+			(_, shouldRespond) = await svc.IngestMessageAsync(message, queued: false, ct);
+		}
+		if (!shouldRespond) return;
 
 		// No AI running — handle normally
 		// Commands: execute immediately
@@ -147,6 +154,19 @@ public sealed class MessageDebouncer(
 			logger.LogInformation("Triggered pending responses for {Count} chats after crash recovery", chatIds.Count);
 	}
 
+	private bool ShouldRespond(IncomingMessage message) {
+		string ownerJid = lisOptions.Value.OwnerJid;
+		if (string.IsNullOrEmpty(ownerJid)) return !message.IsGroup;
+		if (message.IsGroup) return false;
+		return message.SenderId == ownerJid;
+	}
+
+	private async Task IngestAsync(IncomingMessage message, bool queued, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
+		await svc.IngestMessageAsync(message, queued, ct);
+	}
+
 	private async Task ExecuteCommandAsync(IncomingMessage message) {
 		try {
 			using IServiceScope scope = scopeFactory.CreateScope();
@@ -217,7 +237,8 @@ public sealed class MessageDebouncer(
 			state.ReactedIds.Clear();
 		}
 		foreach (string id in reacted)
-			try { await channel.ReactAsync(id, chatId, ""); } catch { /* best effort */ }
+			try { await channel.ReactAsync(id, chatId, ""); }
+			catch (Exception ex) { logger.LogWarning(ex, "Failed to remove reaction from {MessageId}", id); }
 
 		ChatEntity? chat = await db.Chats.Include(c => c.CurrentSession)
 			.FirstOrDefaultAsync(c => c.ExternalId == chatId);
