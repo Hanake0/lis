@@ -66,6 +66,8 @@ builder.Services.AddSingleton(Options.Create(new LisOptions {
 												 CompactionNotify        = Env("LIS_COMPACTION_NOTIFY") != "false",
 												 CompactionModel         = Env("LIS_COMPACTION_MODEL"),
 												 ToolSummarizationPolicy = Env("LIS_TOOL_SUMMARIZATION_POLICY") is { Length: > 0 } p ? p : "auto",
+												 ReactOnMessageQueued      = Env("LIS_REACT_ON_MESSAGE_QUEUED") == "true",
+												 ReactOnMessageQueuedEmoji = Env("LIS_REACT_ON_MESSAGE_QUEUED_EMOJI") is { Length: > 0 } e ? e : "🕐",
 												 ResumeTokenBudget       = EnvInt("LIS_RESUME_TOKEN_BUDGET",       0)
 											 }));
 

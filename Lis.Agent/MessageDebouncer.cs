@@ -45,12 +45,14 @@ public sealed class MessageDebouncer(
 			}
 
 			// React clock before ingestion so user sees feedback instantly
-			try {
-				lock (state.Lock) { state.ReactedIds.Add(message.ExternalId); }
-				using IServiceScope reactScope = scopeFactory.CreateScope();
-				await GetChannelClient(reactScope).ReactAsync(
-					message.ExternalId, message.ChatId, "\U0001f550", CancellationToken.None);
-			} catch { /* best effort */ }
+			if (lisOptions.Value.ReactOnMessageQueued) {
+				try {
+					lock (state.Lock) { state.ReactedIds.Add(message.ExternalId); }
+					using IServiceScope reactScope = scopeFactory.CreateScope();
+					await GetChannelClient(reactScope).ReactAsync(
+						message.ExternalId, message.ChatId, lisOptions.Value.ReactOnMessageQueuedEmoji, CancellationToken.None);
+				} catch { /* best effort */ }
+			}
 
 			await this.IngestAsync(message, queued: true, ct);
 

@@ -15,6 +15,10 @@ public sealed class LisOptions {
 	public string CompactionModel         { get; init; } = "";     // empty = use main model
 	public string ToolSummarizationPolicy { get; init; } = "auto"; // auto, keep_all, keep_none
 
+	// Queue
+	public bool   ReactOnMessageQueued      { get; init; }
+	public string ReactOnMessageQueuedEmoji { get; init; } = "🕐";
+
 	// Resume
 	public int    ResumeTokenBudget       { get; init; }           // 0 → 70% of ContextBudget
 }
