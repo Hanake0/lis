@@ -85,6 +85,10 @@ public sealed class MessageEntity {
 	[JsonPropertyName("thinking_tokens")]
 	public int? ThinkingTokens { get; set; }
 
+	[Column("queued")]
+	[JsonPropertyName("queued")]
+	public bool Queued { get; set; }
+
 	[Column("session_id")]
 	[JsonPropertyName("session_id")]
 	public long SessionId { get; set; }

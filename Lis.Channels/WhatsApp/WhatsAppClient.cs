@@ -23,6 +23,11 @@ public sealed class WhatsAppClient(GowaClient gowa) :IChannelClient {
 		await gowa.MarkMessageReadAsync(messageId, StripJidSuffix(chatId), ct);
 	}
 
+	[Trace("WhatsAppClient > ReactAsync")]
+	public async Task ReactAsync(string messageId, string chatId, string emoji, CancellationToken ct = default) {
+		await gowa.ReactToMessageAsync(messageId, StripJidSuffix(chatId), emoji, ct);
+	}
+
 	private static string StripJidSuffix(string jid) {
 		int atIndex = jid.IndexOf('@');
 		return atIndex > 0 ? jid[..atIndex] : jid;

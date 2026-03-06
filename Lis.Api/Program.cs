@@ -119,6 +119,10 @@ using (IServiceScope scope = app.Services.CreateScope()) {
 	await db.Database.MigrateAsync();
 }
 
+// Flush queued messages from crash recovery
+if (app.Services.GetService<IConversationService>() is MessageDebouncer debouncer)
+	await debouncer.TriggerPendingResponsesAsync();
+
 // Middleware
 app.UseExceptionHandler();
 

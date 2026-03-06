@@ -37,7 +37,7 @@ public sealed class ConversationService(
 		// All AI messages are already persisted by PersistSkMessageAsync with sk_content.
 		if (message.IsFromMe) return;
 
-		(_, bool shouldRespond) = await this.IngestMessageAsync(message, ct);
+		(_, bool shouldRespond) = await this.IngestMessageAsync(message, queued: false, ct);
 		if (shouldRespond)
 			await this.RespondAsync(message, ct);
 	}
@@ -61,7 +61,7 @@ public sealed class ConversationService(
 
 	[Trace("ConversationService > IngestMessageAsync")]
 	public async Task<(ChatEntity Chat, bool ShouldRespond)> IngestMessageAsync(
-		IncomingMessage message, CancellationToken ct) {
+		IncomingMessage message, bool queued, CancellationToken ct) {
 		Activity.Current?.SetTag("message.id", message.ExternalId);
 		Activity.Current?.SetTag("chat.id",    message.ChatId);
 
@@ -70,7 +70,7 @@ public sealed class ConversationService(
 
 		ChatEntity chat = await UpsertChatAsync(db, message, ct);
 		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
-		await PersistMessageAsync(db, session, message, ct);
+		await PersistMessageAsync(db, session, message, queued, ct);
 
 		try {
 			await channelClient.MarkReadAsync(message.ExternalId, message.ChatId, ct);
@@ -123,9 +123,9 @@ public sealed class ConversationService(
 
 		await channelClient.SetTypingAsync(message.ChatId, ct);
 
-		// Load messages from current session
+		// Load messages from current session (exclude queued — they're not yet visible to AI)
 		List<MessageEntity> recentMessages = await db.Messages
-			.Where(m => m.SessionId == session.Id)
+			.Where(m => m.SessionId == session.Id && !m.Queued)
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 
@@ -223,7 +223,7 @@ public sealed class ConversationService(
 			// Safeguard: also set tool prune boundary so keep_all yields to auto
 			if (session.ToolsPrunedThroughId is null) {
 				long? lastMsgId = await db.Messages
-					.Where(m => m.ChatId == session.ChatId)
+					.Where(m => m.ChatId == session.ChatId && !m.Queued)
 					.OrderByDescending(m => m.Id)
 					.Select(m => (long?)m.Id)
 					.FirstOrDefaultAsync(ct);
@@ -233,7 +233,7 @@ public sealed class ConversationService(
 
 			// Find split: walk backwards from newest, keep KeepRecentTokens
 			List<MessageEntity> allMsgs = await db.Messages
-				.Where(m => m.SessionId == session.Id)
+				.Where(m => m.SessionId == session.Id && !m.Queued)
 				.OrderByDescending(m => m.Id)
 				.ToListAsync(ct);
 
@@ -247,16 +247,16 @@ public sealed class ConversationService(
 		// Tool pruning — count only tool result message tokens
 		if (session.ToolsPrunedThroughId is null) {
 			int toolTokens = await db.Messages
-				.Where(m => m.SessionId == session.Id && m.Role == "tool")
+				.Where(m => m.SessionId == session.Id && !m.Queued && m.Role == "tool")
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
 			if (toolTokens > lisOptions.Value.ToolPruneThreshold) {
 				int toolCount = await db.Messages
-					.Where(m => m.SessionId == session.Id && m.Role == "tool")
+					.Where(m => m.SessionId == session.Id && !m.Queued && m.Role == "tool")
 					.CountAsync(ct);
 
 				long? lastMsgId = await db.Messages
-					.Where(m => m.ChatId == session.ChatId)
+					.Where(m => m.ChatId == session.ChatId && !m.Queued)
 					.OrderByDescending(m => m.Id)
 					.Select(m => (long?)m.Id)
 					.FirstOrDefaultAsync(ct);
@@ -332,7 +332,7 @@ public sealed class ConversationService(
 	}
 
 	private static async Task PersistMessageAsync(
-		LisDbContext db, SessionEntity session, IncomingMessage message, CancellationToken ct) {
+		LisDbContext db, SessionEntity session, IncomingMessage message, bool queued, CancellationToken ct) {
 		MessageEntity entity = new() {
 			ExternalId   = message.ExternalId,
 			ChatId       = session.ChatId,
@@ -344,6 +344,7 @@ public sealed class ConversationService(
 			MediaType    = message.MediaType,
 			MediaCaption = message.MediaCaption,
 			ReplyToId    = message.RepliedId,
+			Queued       = queued,
 			Timestamp    = message.Timestamp,
 			CreatedAt    = DateTimeOffset.UtcNow
 		};

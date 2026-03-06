@@ -89,10 +89,15 @@ main client if not configured.
 
 ### Chat commands — intercepted before AI
 
-`/status`, `/new`, `/clear`, `/compact`, `/prune`, `/resume` are handled by `CommandRouter`
+`/status`, `/new`, `/clear`, `/compact`, `/prune`, `/resume`, `/abort` are handled by `CommandRouter`
 before AI processing. Commands bypass debouncing and execute immediately.
 Responses are persisted to message history. No AI tokens wasted on commands.
 Commands support arguments: `/command [args]`.
+
+### Message queuing — `queued` flag
+
+All message queries filter `!m.Queued` to exclude messages that are queued while an AI
+response is in progress. See `docs/MESSAGE_QUEUE.md` for the full queuing model.
 
 ### Thinking effort — configurable
 

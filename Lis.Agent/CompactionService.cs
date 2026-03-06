@@ -48,7 +48,7 @@ public sealed class CompactionService(
 
 			// Load messages from session start to split point
 			List<MessageEntity> messages = await db.Messages
-				.Where(m => m.SessionId == session.Id && m.Id <= splitMessageId)
+				.Where(m => m.SessionId == session.Id && !m.Queued && m.Id <= splitMessageId)
 				.OrderBy(m => m.Timestamp)
 				.ToListAsync(ct);
 
@@ -204,7 +204,7 @@ public sealed class CompactionService(
 		if (session is null) return;
 
 		List<MessageEntity> messages = await db.Messages
-			.Where(m => m.SessionId == session.Id)
+			.Where(m => m.SessionId == session.Id && !m.Queued)
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 

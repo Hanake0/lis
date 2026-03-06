@@ -67,7 +67,7 @@ public sealed class StatusCommand(ModelSettings modelSettings) : IChatCommand {
 
 			// Session info
 			int messageCount = await ctx.Db.Messages
-				.Where(m => m.SessionId == ctx.Session.Id)
+				.Where(m => m.SessionId == ctx.Session.Id && !m.Queued)
 				.CountAsync(ct);
 
 			string elapsed = FormatElapsed(DateTimeOffset.UtcNow - ctx.Session.CreatedAt);
