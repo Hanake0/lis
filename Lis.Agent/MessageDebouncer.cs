@@ -237,7 +237,7 @@ public sealed class MessageDebouncer(
 			state.ReactedIds.Clear();
 		}
 		foreach (string id in reacted)
-			try { await channel.ReactAsync(id, chatId, "\u200B"); }
+			try { await channel.ReactAsync(id, chatId, ""); }
 			catch (Exception ex) { logger.LogWarning(ex, "Failed to remove reaction from {MessageId}", id); }
 
 		ChatEntity? chat = await db.Chats.Include(c => c.CurrentSession)
