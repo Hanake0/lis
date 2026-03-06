@@ -24,9 +24,10 @@ public static class AgentSetup {
 			// Register plugins using the OUTER service provider (has LisDbContext, embeddings, etc.)
 			// builder.Plugins.AddFromType<T>() would resolve from the kernel's internal provider,
 			// which shadows IServiceScopeFactory with its own built-in implementation.
-			kernel.Plugins.AddFromType<DateTimePlugin>(pluginName: null, serviceProvider: sp);
-			kernel.Plugins.AddFromType<PromptPlugin>(pluginName: null, serviceProvider: sp);
-			kernel.Plugins.AddFromType<MemoryPlugin>(pluginName: null, serviceProvider: sp);
+			// Short pluginName keeps tool names compact (e.g. "dt_get_current_datetime").
+			kernel.Plugins.AddFromType<DateTimePlugin>(pluginName: "dt", serviceProvider: sp);
+			kernel.Plugins.AddFromType<PromptPlugin>(pluginName: "prompt", serviceProvider: sp);
+			kernel.Plugins.AddFromType<MemoryPlugin>(pluginName: "mem", serviceProvider: sp);
 
 			return kernel;
 		});
