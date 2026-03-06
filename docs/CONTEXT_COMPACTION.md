@@ -135,8 +135,8 @@ Full compaction:
 ⚙️ Compacted (157k → 9.1k)
   🔧 System: 1.8k tokens
   📝 Summary: 3.2k tokens
-  💬 Kept context: 4.8k tokens
-  🛠️ Tools: 1.1k tokens
+  💬 Kept context: 2.7k tokens
+  🛠️ Tools: 1.4k tokens (1.1k defs + 300 calls)
   📊 Total: 9.1k/150k (6%)
 ```
 

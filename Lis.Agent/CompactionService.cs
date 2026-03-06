@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
 using Lis.Core.Util;
@@ -9,7 +11,11 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
+
+using FunctionCallContent = Microsoft.SemanticKernel.FunctionCallContent;
+using FunctionResultContent = Microsoft.SemanticKernel.FunctionResultContent;
 
 using Pgvector;
 
@@ -23,6 +29,7 @@ public sealed class CompactionService(
 	ILogger<CompactionService>                    logger,
 	PromptComposer                                promptComposer,
 	ContextWindowBuilder                          contextWindowBuilder,
+	Kernel                                        kernel,
 	ITokenCounter?                                tokenCounter = null,
 	IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator = null) {
 
@@ -74,40 +81,37 @@ public sealed class CompactionService(
 			}
 
 			// Finalize current session + create new session + reassign messages atomically
-			await using var transaction = await db.Database.BeginTransactionAsync(ct);
+			SessionEntity newSession = null!;
+			var strategy = db.Database.CreateExecutionStrategy();
+			await strategy.ExecuteAsync(async () => {
+				await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-			session.Summary          = summary;
-			session.SummaryEmbedding = embedding;
-			session.IsCompacting     = false;
-			session.UpdatedAt        = DateTimeOffset.UtcNow;
+				session.Summary          = summary;
+				session.SummaryEmbedding = embedding;
+				session.IsCompacting     = false;
+				session.UpdatedAt        = DateTimeOffset.UtcNow;
 
-			SessionEntity newSession = new() {
-				ChatId          = chat.Id,
-				ParentSessionId = session.Id,
-				CreatedAt       = DateTimeOffset.UtcNow,
-				UpdatedAt       = DateTimeOffset.UtcNow
-			};
-			db.Sessions.Add(newSession);
-			chat.CurrentSessionId = newSession.Id;
-			await db.SaveChangesAsync(ct);
+				newSession = new() {
+					ChatId          = chat.Id,
+					ParentSessionId = session.Id,
+					CreatedAt       = DateTimeOffset.UtcNow,
+					UpdatedAt       = DateTimeOffset.UtcNow
+				};
+				db.Sessions.Add(newSession);
+				await db.SaveChangesAsync(ct);
 
-			// Reassign kept messages to new session
-			await db.Database.ExecuteSqlInterpolatedAsync(
-				$"UPDATE message SET session_id = {newSession.Id} WHERE session_id = {session.Id} AND id > {splitMessageId}", ct);
+				chat.CurrentSessionId = newSession.Id;
+				await db.SaveChangesAsync(ct);
 
-			await transaction.CommitAsync(ct);
+				// Reassign kept messages to new session
+				await db.Database.ExecuteSqlInterpolatedAsync(
+					$"UPDATE message SET session_id = {newSession.Id} WHERE session_id = {session.Id} AND id > {splitMessageId}", ct);
 
-			// Compute new context stats for notification
-			int keptTokens = await db.Messages
-				.Where(m => m.SessionId == newSession.Id)
-				.SumAsync(m => (m.OutputTokens ?? m.InputTokens ?? 0), ct);
-			int toolTokens = await db.Messages
-				.Where(m => m.SessionId == newSession.Id && m.Role == "tool")
-				.SumAsync(m => m.OutputTokens ?? 0, ct);
+				await transaction.CommitAsync(ct);
+			});
 
-			// Count actual tokens for the new session's context
-			int? actualTotal = null;
-			if (tokenCounter is not null) {
+			// Build new context window for token counting and breakdown
+			if (lisOptions.Value.CompactionNotify) {
 				try {
 					string systemPrompt = await promptComposer.BuildAsync(db, ct);
 					List<MessageEntity> keptMessages = await db.Messages
@@ -116,18 +120,32 @@ public sealed class CompactionService(
 						.ToListAsync(ct);
 					ChatHistory newCtx = contextWindowBuilder.Build(
 						systemPrompt, keptMessages, newSession, session, lisOptions.Value);
-					string json = ChatHistorySerializer.ToAnthropicJson(newCtx, modelSettings.Model);
-					actualTotal = await tokenCounter.CountAsync(json, ct);
+
+					// Count tokens with and without tool definitions to measure tool def cost
+					int? totalWithTools = null;
+					int? totalWithoutTools = null;
+					if (tokenCounter is not null) {
+						string jsonWithTools = ChatHistorySerializer.ToAnthropicJson(newCtx, modelSettings.Model, kernel);
+						totalWithTools = await tokenCounter.CountAsync(jsonWithTools, ct);
+						string jsonNoTools = ChatHistorySerializer.ToAnthropicJson(newCtx, modelSettings.Model);
+						totalWithoutTools = await tokenCounter.CountAsync(jsonNoTools, ct);
+					}
+
+					int total = totalWithTools ?? EstimateTotalTokens(newCtx, kernel);
+					int toolDefTokens = (totalWithTools is not null && totalWithoutTools is not null)
+						? totalWithTools.Value - totalWithoutTools.Value
+						: EstimateToolDefTokens(kernel);
+					int contentTotal = total - toolDefTokens;
+					(int sysTokens, int sumTokens, int keptTokens, int toolCallTokens) =
+						EstimateBreakdown(newCtx, contentTotal);
+
+					await this.NotifyCompactionAsync(
+						externalChatId, session.ContextTokens, total,
+						sysTokens, sumTokens, keptTokens, toolDefTokens, toolCallTokens, ct);
 				} catch (Exception ex) {
-					logger.LogWarning(ex, "Token counting failed; using estimation");
+					logger.LogWarning(ex, "Token counting or notification failed");
 				}
 			}
-
-			// Notify user
-			if (lisOptions.Value.CompactionNotify)
-				await this.NotifyCompactionAsync(
-					externalChatId, session.ContextTokens,
-					summaryTokens, keptTokens, toolTokens, actualTotal, ct);
 
 			if (logger.IsEnabled(LogLevel.Information))
 				logger.LogInformation(
@@ -266,26 +284,19 @@ public sealed class CompactionService(
 
 	private async Task NotifyCompactionAsync(
 		string chatId, long oldInputTokens,
-		int summaryTokens, int keptTokens, int toolTokens,
-		int? actualTotal, CancellationToken ct) {
+		int newTotal, int systemTokens, int summaryTokens, int keptTokens,
+		int toolDefTokens, int toolCallTokens, CancellationToken ct) {
 		try {
 			int budget = modelSettings.ContextBudget;
-			int newTotal = actualTotal ?? (summaryTokens + keptTokens);
 			int pct = budget > 0 ? (int)((long)newTotal * 100 / budget) : 0;
+			int totalToolTokens = toolDefTokens + toolCallTokens;
 
-			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {FormatTokens(newTotal)})";
-
-			// System tokens = actual total - summary - kept (only when actual count available)
-			if (actualTotal is not null) {
-				int systemTokens = actualTotal.Value - summaryTokens - keptTokens;
-				if (systemTokens > 0)
-					msg += $"\n  🔧 System: {FormatTokens(systemTokens)} tokens";
-			}
-
-			msg += $"\n  📝 Summary: {FormatTokens(summaryTokens)} tokens"
-			     + $"\n  💬 Kept context: {FormatTokens(keptTokens - toolTokens)} tokens"
-			     + $"\n  🛠️ Tools: {FormatTokens(toolTokens)} tokens"
-			     + $"\n  📊 Total: {FormatTokens(newTotal)}/{FormatTokens(budget)} ({pct}%)";
+			string msg = $"⚙️ Compacted ({FormatTokens(oldInputTokens)} → {FormatTokens(newTotal)})"
+			           + $"\n  🔧 System: {FormatTokens(systemTokens)} tokens"
+			           + $"\n  📝 Summary: {FormatTokens(summaryTokens)} tokens"
+			           + $"\n  💬 Kept context: {FormatTokens(keptTokens)} tokens"
+			           + $"\n  🛠️ Tools: {FormatTokens(totalToolTokens)} tokens ({FormatTokens(toolDefTokens)} defs + {FormatTokens(toolCallTokens)} calls)"
+			           + $"\n  📊 Total: {FormatTokens(newTotal)}/{FormatTokens(budget)} ({pct}%)";
 
 			using IServiceScope scope = scopeFactory.CreateScope();
 			IChannelClient channel = scope.ServiceProvider.GetRequiredService<IChannelClient>();
@@ -293,6 +304,67 @@ public sealed class CompactionService(
 		} catch (Exception ex) {
 			logger.LogWarning(ex, "Failed to send compaction notification");
 		}
+	}
+
+	/// <summary>
+	/// Estimates token breakdown for system/summary/kept/tool-calls by measuring
+	/// character lengths and scaling proportionally to the known total.
+	/// Tool definitions are excluded (counted separately via tokenCounter).
+	/// </summary>
+	private static (int System, int Summary, int Kept, int ToolCalls) EstimateBreakdown(ChatHistory history, int totalTokens) {
+		int systemChars = 0, summaryChars = 0, toolCallChars = 0, keptChars = 0;
+
+		foreach (ChatMessageContent msg in history) {
+			int chars = MeasureContentChars(msg);
+
+			if (msg.Role == AuthorRole.System) {
+				systemChars += chars;
+			} else if (msg.Role == AuthorRole.Assistant && (msg.Content?.StartsWith("Here is context from") ?? false)) {
+				summaryChars += chars;
+			} else if (msg.Role == AuthorRole.Tool || msg.Items.OfType<FunctionCallContent>().Any()) {
+				toolCallChars += chars;
+			} else {
+				keptChars += chars;
+			}
+		}
+
+		int totalChars = systemChars + summaryChars + toolCallChars + keptChars;
+		if (totalChars == 0) return (totalTokens, 0, 0, 0);
+
+		int sys = (int)((long)totalTokens * systemChars / totalChars);
+		int sum = (int)((long)totalTokens * summaryChars / totalChars);
+		int tools = (int)((long)totalTokens * toolCallChars / totalChars);
+		int kept = totalTokens - sys - sum - tools;
+
+		return (sys, sum, kept, tools);
+	}
+
+	private static int MeasureContentChars(ChatMessageContent msg) {
+		int chars = msg.Content?.Length ?? 0;
+		foreach (KernelContent item in msg.Items) {
+			if (item is FunctionCallContent fc) {
+				chars += fc.FunctionName?.Length ?? 0;
+				if (fc.Arguments is not null)
+					chars += System.Text.Json.JsonSerializer.Serialize(fc.Arguments).Length;
+			} else if (item is FunctionResultContent fr) {
+				chars += fr.Result?.ToString()?.Length ?? 0;
+				chars += fr.FunctionName?.Length ?? 0;
+			}
+		}
+		return chars;
+	}
+
+	private static int EstimateTotalTokens(ChatHistory history, Kernel? kernel) {
+		int totalChars = 0;
+		foreach (ChatMessageContent msg in history)
+			totalChars += MeasureContentChars(msg);
+		return totalChars / 4 + EstimateToolDefTokens(kernel);
+	}
+
+	private static int EstimateToolDefTokens(Kernel? kernel) {
+		if (kernel is null) return 0;
+		JsonArray tools = ChatHistorySerializer.BuildToolsArray(kernel);
+		return tools.ToJsonString().Length / 4;
 	}
 
 	private static string FormatTokens(long tokens) =>

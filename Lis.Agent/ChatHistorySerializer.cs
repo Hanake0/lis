@@ -11,7 +11,7 @@ namespace Lis.Agent;
 /// Used by ITokenCounter to count tokens via the count_tokens endpoint.
 /// </summary>
 public static class ChatHistorySerializer {
-	public static string ToAnthropicJson(ChatHistory history, string model) {
+	public static string ToAnthropicJson(ChatHistory history, string model, Kernel? kernel = null) {
 		JsonArray system = [];
 		JsonArray messages = [];
 
@@ -73,10 +73,16 @@ public static class ChatHistorySerializer {
 		JsonArray merged = MergeConsecutiveRoles(messages);
 
 		JsonObject root = new() {
-			["model"]   = model,
-			["system"]  = system,
+			["model"]    = model,
+			["system"]   = system,
 			["messages"] = merged
 		};
+
+		if (kernel is not null) {
+			JsonArray tools = BuildToolsArray(kernel);
+			if (tools.Count > 0)
+				root["tools"] = tools;
+		}
 
 		return root.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
 	}
@@ -131,5 +137,42 @@ public static class ChatHistorySerializer {
 		JsonArray newArr = [new JsonObject { ["type"] = "text", ["text"] = text }];
 		msg["content"] = newArr;
 		return newArr;
+	}
+
+	/// <summary>
+	/// Builds the Anthropic-format tools array from Kernel plugin functions.
+	/// </summary>
+	internal static JsonArray BuildToolsArray(Kernel kernel) {
+		JsonArray tools = [];
+		foreach (KernelPlugin plugin in kernel.Plugins) {
+			foreach (KernelFunction func in plugin) {
+				string name = $"{plugin.Name}-{func.Name}";
+				JsonObject tool = new() {
+					["name"]        = name,
+					["description"] = func.Description ?? ""
+				};
+
+				JsonObject properties = [];
+				JsonArray required = [];
+				foreach (KernelParameterMetadata param in func.Metadata.Parameters) {
+					JsonObject prop = new() { ["type"] = "string" };
+					if (param.Description is { Length: > 0 } desc)
+						prop["description"] = desc;
+					if (param.Schema is { } schema)
+						prop = JsonNode.Parse(schema.ToString())?.AsObject() ?? prop;
+					properties[param.Name] = prop;
+					if (param.IsRequired) required.Add(param.Name);
+				}
+
+				tool["input_schema"] = new JsonObject {
+					["type"]       = "object",
+					["properties"] = properties,
+					["required"]   = required
+				};
+
+				tools.Add(tool);
+			}
+		}
+		return tools;
 	}
 }
