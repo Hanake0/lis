@@ -190,8 +190,17 @@ public sealed class ConversationService(
 
 		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, kernel, settings, ct)) {
 			string? externalId = null;
-			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content))
-				externalId = await channelClient.SendMessageAsync(message.ChatId, msg.Content, message.ExternalId, ct);
+			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content)) {
+				(string? content, bool shouldQuote) = ResponseDirectives.Parse(msg.Content);
+				if (content is not null)
+					externalId = await channelClient.SendMessageAsync(
+						message.ChatId, content, shouldQuote ? message.ExternalId : null, ct);
+
+				// Persist cleaned content (without directives)
+				msg.Items.Clear();
+				if (content is not null)
+					msg.Items.Add(new TextContent(content));
+			}
 
 			// Usage is attached per-message by ToolRunner (only on assistant messages)
 			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
