@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Lis.Channels.WhatsApp.Schemas;
@@ -13,7 +14,14 @@ public sealed class WebhookEnvelope {
 	public WebhookPayload? Payload { get; init; }
 }
 
+/// <summary>
+/// Gowa webhook payload. Media is sent as nested objects (e.g. "image", "audio", "sticker")
+/// rather than flat fields. JsonExtensionData captures these and computed
+/// properties derive <see cref="MediaType"/>, <see cref="MediaPath"/>, and <see cref="MediaCaption"/>.
+/// </summary>
 public sealed class WebhookPayload {
+	private static readonly string[] MediaKeys = ["image", "audio", "sticker", "video", "document"];
+
 	[JsonPropertyName("id")]
 	public string? Id { get; init; }
 
@@ -38,9 +46,37 @@ public sealed class WebhookPayload {
 	[JsonPropertyName("quoted_message")]
 	public string? QuotedMessage { get; init; }
 
-	[JsonPropertyName("media_type")]
-	public string? MediaType { get; init; }
+	[JsonExtensionData]
+	public Dictionary<string, JsonElement>? Extensions { get; set; }
 
-	[JsonPropertyName("media_caption")]
-	public string? MediaCaption { get; init; }
+	/// <summary>Derived from which nested media field is present.</summary>
+	public string? MediaType {
+		get {
+			if (this.Extensions is null) return null;
+			foreach (string key in MediaKeys)
+				if (this.Extensions.ContainsKey(key))
+					return key;
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// File path from auto-download mode (string or {"path":"..."}).
+	/// Null when auto-download is OFF (webhook has {"url":"..."} instead).
+	/// </summary>
+	public string? MediaPath => this.GetMediaField("path") ?? this.GetMediaString();
+
+	/// <summary>Caption from {"path":"...", "caption":"..."} or {"url":"...", "caption":"..."}.</summary>
+	public string? MediaCaption => this.GetMediaField("caption");
+
+	private string? GetMediaString() {
+		if (this.MediaType is null || this.Extensions?.TryGetValue(this.MediaType, out JsonElement el) != true) return null;
+		return el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+	}
+
+	private string? GetMediaField(string field) {
+		if (this.MediaType is null || this.Extensions?.TryGetValue(this.MediaType, out JsonElement el) != true) return null;
+		if (el.ValueKind != JsonValueKind.Object) return null;
+		return el.TryGetProperty(field, out JsonElement prop) ? prop.GetString() : null;
+	}
 }

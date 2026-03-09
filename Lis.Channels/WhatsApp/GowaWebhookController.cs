@@ -62,7 +62,8 @@ public class GowaWebhookController(
 			IsGroup      = isGroup,
 			Body         = payload.Body,
 			MediaType    = payload.MediaType,
-			MediaCaption = payload.MediaCaption
+			MediaCaption = payload.MediaCaption,
+			MediaPath    = payload.MediaPath
 		};
 
 		// Echoes of our own messages → backfill sender info on the persisted record
@@ -77,7 +78,7 @@ public class GowaWebhookController(
 			return this.Ok();
 		}
 
-		if (string.IsNullOrEmpty(payload.Body))
+		if (string.IsNullOrEmpty(payload.Body) && payload.MediaType is null)
 			return this.Ok();
 
 		_ = Task.Run(async () => {
