@@ -162,6 +162,7 @@ public sealed class ConversationService(
 
 		ToolContext.ChatId               = message.ChatId;
 		ToolContext.Channel              = channelClient;
+		ToolContext.MessageExternalId    = message.ExternalId;
 		ToolContext.NotificationsEnabled = agent.ToolNotifications;
 		ToolContext.AgentId              = agent.Id;
 
