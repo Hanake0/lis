@@ -22,7 +22,9 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
+		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
 		List<PromptSectionEntity> sections = await db.PromptSections
+													 .Where(s => s.AgentId == agentId)
 													 .OrderBy(s => s.SortOrder)
 													 .ToListAsync();
 
@@ -55,8 +57,9 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
+		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
 		PromptSectionEntity? section = await db.PromptSections
-											   .FirstOrDefaultAsync(s => s.Name == name);
+											   .FirstOrDefaultAsync(s => s.AgentId == agentId && s.Name == name);
 
 		if (section is null) return $"Section '{name}' not found.";
 
@@ -75,8 +78,9 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
+		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
 		PromptSectionEntity? section = await db.PromptSections
-											   .FirstOrDefaultAsync(s => s.Name == name);
+											   .FirstOrDefaultAsync(s => s.AgentId == agentId && s.Name == name);
 
 		if (section is null) return $"Section '{name}' not found.";
 
