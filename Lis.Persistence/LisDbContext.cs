@@ -12,6 +12,8 @@ public sealed class LisDbContext(DbContextOptions<LisDbContext> options) :DbCont
 	public DbSet<PromptSectionEntity>       PromptSections     { get; init; } = null!;
 	public DbSet<MemoryEntity>              Memories           { get; init; } = null!;
 	public DbSet<SessionEntity>             Sessions           { get; init; } = null!;
+	public DbSet<AgentEntity>               Agents             { get; init; } = null!;
+	public DbSet<ChatAllowedSenderEntity>   ChatAllowedSenders { get; init; } = null!;
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
 		modelBuilder.HasPostgresExtension("vector");
