@@ -8,6 +8,7 @@ using Lis.Core.Util;
 using Lis.Persistence;
 using Lis.Providers.Anthropic;
 using Lis.Providers.Embedding;
+using Lis.Providers.OpenAi;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -82,6 +83,9 @@ builder.Services.AddSingleton(new ModelSettings());
 
 // AI Provider
 if (Env("ANTHROPIC_ENABLED") == "true") builder.Services.AddAnthropic();
+
+// Audio transcription (optional — audio messages fall back to placeholder without it)
+if (Env("OPENAI_API_KEY") is { Length: > 0 }) builder.Services.AddOpenAiTranscription();
 
 // Compaction client (keyed IChatClient for summarization — falls back to main)
 if (Env("LIS_COMPACTION_PROVIDER") is { Length: > 0 } compProvider
