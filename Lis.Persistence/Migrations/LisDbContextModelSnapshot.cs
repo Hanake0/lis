@@ -24,6 +24,138 @@ namespace Lis.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Lis.Persistence.Entities.AgentEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("CompactionThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("compaction_threshold")
+                        .HasJsonPropertyName("compaction_threshold");
+
+                    b.Property<int>("ContextBudget")
+                        .HasColumnType("integer")
+                        .HasColumnName("context_budget")
+                        .HasJsonPropertyName("context_budget");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasJsonPropertyName("created_at");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("display_name")
+                        .HasJsonPropertyName("display_name");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default")
+                        .HasJsonPropertyName("is_default");
+
+                    b.Property<int>("KeepRecentTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("keep_recent_tokens")
+                        .HasJsonPropertyName("keep_recent_tokens");
+
+                    b.Property<int>("MaxTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_tokens")
+                        .HasJsonPropertyName("max_tokens");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("model")
+                        .HasJsonPropertyName("model");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("name")
+                        .HasJsonPropertyName("name");
+
+                    b.Property<string>("ThinkingEffort")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("thinking_effort")
+                        .HasJsonPropertyName("thinking_effort");
+
+                    b.Property<int>("ToolKeepThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("tool_keep_threshold")
+                        .HasJsonPropertyName("tool_keep_threshold");
+
+                    b.Property<bool>("ToolNotifications")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tool_notifications")
+                        .HasJsonPropertyName("tool_notifications");
+
+                    b.Property<int>("ToolPruneThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("tool_prune_threshold")
+                        .HasJsonPropertyName("tool_prune_threshold");
+
+                    b.Property<string>("ToolSummarizationPolicy")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("tool_summarization_policy")
+                        .HasJsonPropertyName("tool_summarization_policy");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("agent");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.ChatAllowedSenderEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("chat_id")
+                        .HasJsonPropertyName("chat_id");
+
+                    b.Property<string>("SenderId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("sender_id")
+                        .HasJsonPropertyName("sender_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatId");
+
+                    b.HasIndex("ChatId", "SenderId")
+                        .IsUnique();
+
+                    b.ToTable("chat_allowed_sender");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.ChatEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -34,6 +166,11 @@ namespace Lis.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<long?>("AgentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("agent_id")
+                        .HasJsonPropertyName("agent_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
@@ -43,6 +180,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("current_session_id")
                         .HasJsonPropertyName("current_session_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled")
+                        .HasJsonPropertyName("enabled");
 
                     b.Property<string>("ExternalId")
                         .IsRequired()
@@ -62,12 +204,19 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("name")
                         .HasJsonPropertyName("name");
 
+                    b.Property<bool>("RequireMention")
+                        .HasColumnType("boolean")
+                        .HasColumnName("require_mention")
+                        .HasJsonPropertyName("require_mention");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at")
                         .HasJsonPropertyName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AgentId");
 
                     b.HasIndex("CurrentSessionId");
 
@@ -344,6 +493,11 @@ namespace Lis.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<long>("AgentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("agent_id")
+                        .HasJsonPropertyName("agent_id");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text")
@@ -379,7 +533,7 @@ namespace Lis.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("AgentId", "Name")
                         .IsUnique();
 
                     b.ToTable("prompt_section");
@@ -479,12 +633,30 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("session");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.ChatAllowedSenderEntity", b =>
+                {
+                    b.HasOne("Lis.Persistence.Entities.ChatEntity", "Chat")
+                        .WithMany("AllowedSenders")
+                        .HasForeignKey("ChatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Chat");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.ChatEntity", b =>
                 {
+                    b.HasOne("Lis.Persistence.Entities.AgentEntity", "Agent")
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Lis.Persistence.Entities.SessionEntity", "CurrentSession")
                         .WithMany()
                         .HasForeignKey("CurrentSessionId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Agent");
 
                     b.Navigation("CurrentSession");
                 });
@@ -529,6 +701,17 @@ namespace Lis.Persistence.Migrations
                     b.Navigation("Session");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.PromptSectionEntity", b =>
+                {
+                    b.HasOne("Lis.Persistence.Entities.AgentEntity", "Agent")
+                        .WithMany("PromptSections")
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agent");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.SessionEntity", b =>
                 {
                     b.HasOne("Lis.Persistence.Entities.ChatEntity", "Chat")
@@ -547,8 +730,15 @@ namespace Lis.Persistence.Migrations
                     b.Navigation("ParentSession");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.AgentEntity", b =>
+                {
+                    b.Navigation("PromptSections");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.ChatEntity", b =>
                 {
+                    b.Navigation("AllowedSenders");
+
                     b.Navigation("Messages");
                 });
 
