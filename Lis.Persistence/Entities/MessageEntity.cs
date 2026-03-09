@@ -51,6 +51,15 @@ public sealed class MessageEntity {
 	[JsonPropertyName("media_caption")]
 	public string? MediaCaption { get; set; }
 
+	[Column("media_data")]
+	[JsonIgnore]
+	public byte[]? MediaData { get; set; }
+
+	[MaxLength(64)]
+	[Column("media_mime_type", TypeName = "varchar(64)")]
+	[JsonPropertyName("media_mime_type")]
+	public string? MediaMimeType { get; set; }
+
 	[MaxLength(128)]
 	[Column("reply_to_id", TypeName = "varchar(128)")]
 	[JsonPropertyName("reply_to_id")]
