@@ -33,6 +33,10 @@ public sealed class PromptSectionEntity {
 	[JsonPropertyName("is_enabled")]
 	public bool IsEnabled { get; set; } = true;
 
+	[Column("agent_id")]
+	[JsonPropertyName("agent_id")]
+	public long AgentId { get; set; }
+
 	[Column("created_at")]
 	[JsonPropertyName("created_at")]
 	public DateTimeOffset CreatedAt { get; set; }
@@ -40,10 +44,17 @@ public sealed class PromptSectionEntity {
 	[Column("updated_at")]
 	[JsonPropertyName("updated_at")]
 	public DateTimeOffset UpdatedAt { get; set; }
+
+	public AgentEntity Agent { get; set; } = null!;
 }
 
-public class PromptSectionEntityConfiguration :IEntityTypeConfiguration<PromptSectionEntity> {
+public class PromptSectionEntityConfiguration : IEntityTypeConfiguration<PromptSectionEntity> {
 	public void Configure(EntityTypeBuilder<PromptSectionEntity> builder) {
-		builder.HasIndex(e => e.Name).IsUnique();
+		builder.HasIndex(e => new { e.AgentId, e.Name }).IsUnique();
+
+		builder.HasOne(e => e.Agent)
+			   .WithMany(a => a.PromptSections)
+			   .HasForeignKey(e => e.AgentId)
+			   .OnDelete(DeleteBehavior.Cascade);
 	}
 }
