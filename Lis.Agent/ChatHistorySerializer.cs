@@ -65,7 +65,27 @@ public static class ChatHistorySerializer {
 				continue;
 			}
 
-			// User messages
+			// User messages with images → multimodal content blocks (for token counting)
+			if (msg.Items.Any(i => i is ImageContent)) {
+				JsonArray imgContent = [];
+				foreach (KernelContent item in msg.Items) {
+					if (item is TextContent tc && tc.Text is { Length: > 0 })
+						imgContent.Add(new JsonObject { ["type"] = "text", ["text"] = tc.Text });
+					else if (item is ImageContent ic && ic.Data is { IsEmpty: false } data)
+						imgContent.Add(new JsonObject {
+							["type"]   = "image",
+							["source"] = new JsonObject {
+								["type"]       = "base64",
+								["media_type"] = ic.MimeType ?? "image/jpeg",
+								["data"]       = Convert.ToBase64String(data.ToArray())
+							}
+						});
+				}
+				messages.Add(new JsonObject { ["role"] = "user", ["content"] = imgContent });
+				continue;
+			}
+
+			// Plain text user messages
 			messages.Add(new JsonObject { ["role"] = "user", ["content"] = msg.Content ?? "" });
 		}
 

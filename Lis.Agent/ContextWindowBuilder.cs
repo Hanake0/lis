@@ -58,7 +58,15 @@ public sealed class ContextWindowBuilder {
 					} else if (msg.Id >= keepFromId) {
 						// auto: ToolKeepThreshold keeps recent outputs unpruned
 						history.Add(skMsg);
-					} else {
+					} else if (msg.MediaData is not null && msg.MediaType is "image" or "sticker") {
+				ChatMessageContent imgMsg = new(AuthorRole.User, content: (string?)null);
+				if (msg.Body is { Length: > 0 } bodyText)
+					imgMsg.Items.Add(new TextContent(bodyText));
+				else if (msg.MediaCaption is { Length: > 0 } caption)
+					imgMsg.Items.Add(new TextContent(caption));
+				imgMsg.Items.Add(new ImageContent(msg.MediaData, msg.MediaMimeType ?? "image/jpeg"));
+				history.Add(imgMsg);
+			} else {
 						// auto: check per-tool [ToolSummarization] attribute
 						FunctionResultContent? frc = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();
 						if (frc is not null && HasSummarizePolicy(frc.FunctionName))
@@ -77,8 +85,16 @@ public sealed class ContextWindowBuilder {
 				ChatMessageContent? skMsg = JsonSerializer.Deserialize<ChatMessageContent>(msg.SkContent, SkJsonOptions);
 				if (skMsg is not null) { history.Add(skMsg); }
 				else { history.AddAssistantMessage(msg.Body ?? "[media]"); }
+			} else if (msg.MediaData is not null && msg.MediaType is "image" or "sticker") {
+				ChatMessageContent imgMsg = new(AuthorRole.User, content: (string?)null);
+				if (msg.Body is { Length: > 0 } bodyText)
+					imgMsg.Items.Add(new TextContent(bodyText));
+				else if (msg.MediaCaption is { Length: > 0 } caption)
+					imgMsg.Items.Add(new TextContent(caption));
+				imgMsg.Items.Add(new ImageContent(msg.MediaData, msg.MediaMimeType ?? "image/jpeg"));
+				history.Add(imgMsg);
 			} else {
-				string content = msg.Body ?? "[media]";
+				string content = msg.Body ?? msg.MediaCaption ?? "[media]";
 				if (msg.IsFromMe) history.AddAssistantMessage(content);
 				else              history.AddUserMessage(content);
 			}
