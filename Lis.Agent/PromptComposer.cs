@@ -17,11 +17,11 @@ public sealed class PromptComposer(
 	private const int MAX_SECTION_CHARS = 20_000;
 	private const int MAX_MEMORY_CHARS  = 5_000;
 
-	public async Task<string> BuildAsync(LisDbContext db, CancellationToken ct) {
+	public async Task<string> BuildAsync(LisDbContext db, long agentId, CancellationToken ct) {
 		StringBuilder sb = new();
 
 		List<PromptSectionEntity> sections = await db.PromptSections
-			.Where(s => s.IsEnabled)
+			.Where(s => s.IsEnabled && s.AgentId == agentId)
 			.OrderBy(s => s.SortOrder)
 			.ToListAsync(ct);
 
