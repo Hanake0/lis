@@ -29,6 +29,7 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<PromptPlugin>(pluginName: "prompt", serviceProvider: sp);
 			kernel.Plugins.AddFromType<MemoryPlugin>(pluginName: "mem", serviceProvider: sp);
 			kernel.Plugins.AddFromType<ConfigPlugin>(pluginName: "cfg", serviceProvider: sp);
+			kernel.Plugins.AddFromType<ResponsePlugin>(pluginName: "resp", serviceProvider: sp);
 
 			return kernel;
 		});
