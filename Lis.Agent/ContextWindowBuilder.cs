@@ -87,16 +87,16 @@ public sealed class ContextWindowBuilder {
 				else { history.AddAssistantMessage(msg.Body ?? "[media]"); }
 			} else if (msg.MediaData is not null && msg.MediaType is "image" or "sticker") {
 				ChatMessageContent imgMsg = new(AuthorRole.User, content: (string?)null);
-				if (msg.Body is { Length: > 0 } bodyText)
-					imgMsg.Items.Add(new TextContent(bodyText));
-				else if (msg.MediaCaption is { Length: > 0 } caption)
-					imgMsg.Items.Add(new TextContent(caption));
+				string imgText = msg.Body is { Length: > 0 } bodyText ? bodyText
+					: msg.MediaCaption is { Length: > 0 } caption ? caption
+					: "[image]";
+				imgMsg.Items.Add(new TextContent(UserPrefix(msg) + imgText));
 				imgMsg.Items.Add(new ImageContent(msg.MediaData, msg.MediaMimeType ?? "image/jpeg"));
 				history.Add(imgMsg);
 			} else {
-				string content = msg.Body ?? msg.MediaCaption ?? "[media]";
-				if (msg.IsFromMe) history.AddAssistantMessage(content);
-				else              history.AddUserMessage(content);
+				string body = msg.Body ?? msg.MediaCaption ?? "[media]";
+				if (msg.IsFromMe) history.AddAssistantMessage(body);
+				else              history.AddUserMessage(UserPrefix(msg) + body);
 			}
 
 			if (inPruneWindow)
@@ -110,6 +110,11 @@ public sealed class ContextWindowBuilder {
 
 		return history;
 	}
+
+	private static string UserPrefix(MessageEntity msg) =>
+		msg.SenderName is { Length: > 0 } name
+			? $"[{msg.Id}] {name}: "
+			: $"[{msg.Id}] ";
 
 	private static void PruneToolResult(ChatHistory history, ChatMessageContent skMsg) {
 		FunctionResultContent? original = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();
