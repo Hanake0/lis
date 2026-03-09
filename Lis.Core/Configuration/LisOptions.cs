@@ -21,4 +21,7 @@ public sealed class LisOptions {
 
 	// Resume
 	public int    ResumeTokenBudget       { get; init; }           // 0 → 70% of ContextBudget
+
+	// Agent
+	public bool   NewSessionOnAgentSwitch { get; init; } = true;
 }
