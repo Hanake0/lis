@@ -42,7 +42,7 @@ public static class AgentSetup {
 		services.AddSingleton<CommandRouter>();
 
 		// Media
-		services.AddSingleton<IMediaProcessor, MediaProcessor>();
+		services.AddScoped<IMediaProcessor, MediaProcessor>();
 
 		// Compaction
 		services.AddSingleton<CompactionService>();
