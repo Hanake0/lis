@@ -27,6 +27,7 @@ public static class WhatsAppSetup {
 			}
 		}).AddStandardResilienceHandler();
 
+		services.AddSingleton<IMessageFormatter, WhatsAppFormatter>();
 		services.AddScoped<IChannelClient, WhatsAppClient>();
 
 		return services;

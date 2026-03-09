@@ -4,13 +4,14 @@ using Lis.Core.Util;
 
 namespace Lis.Channels.WhatsApp;
 
-public sealed class WhatsAppClient(GowaClient gowa) : IChannelClient {
+public sealed class WhatsAppClient(GowaClient gowa, IMessageFormatter formatter) : IChannelClient {
 
 	[Trace("WhatsAppClient > SendMessageAsync")]
 	public async Task<string?> SendMessageAsync(
 		string chatId, string message, string? replyToId = null, CancellationToken ct = default) {
+		string formatted = formatter.Format(message);
 		SendResult? result = await gowa.SendMessageAsync(
-			StripJidSuffix(chatId), message, replyToId, ct: ct);
+			StripJidSuffix(chatId), formatted, replyToId, ct: ct);
 		return result?.MessageId;
 	}
 
