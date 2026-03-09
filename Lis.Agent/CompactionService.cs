@@ -23,7 +23,7 @@ namespace Lis.Agent;
 
 public sealed class CompactionService(
 	[FromKeyedServices("compaction")] IChatClient compactionClient,
-	ModelSettings                                  modelSettings,
+	AgentService                                  agentService,
 	IServiceScopeFactory                          scopeFactory,
 	IOptions<LisOptions>                          lisOptions,
 	ILogger<CompactionService>                    logger,
@@ -41,11 +41,14 @@ public sealed class CompactionService(
 
 			ChatEntity? chat = await db.Chats
 				.Include(c => c.CurrentSession)
+				.Include(c => c.Agent)
 				.FirstOrDefaultAsync(c => c.ExternalId == externalChatId, ct);
 
 			if (chat?.CurrentSession is null) return;
 
-			SessionEntity session = chat.CurrentSession;
+			AgentEntity   agent              = await agentService.ResolveForChatAsync(db, chat, ct);
+			ModelSettings agentModelSettings = AgentService.ToModelSettings(agent);
+			SessionEntity session            = chat.CurrentSession;
 
 			// Atomic claim — prevents concurrent compactions
 			int claimed = await db.Database.ExecuteSqlInterpolatedAsync(
@@ -69,7 +72,7 @@ public sealed class CompactionService(
 			string conversationText = BuildConversationText(messages, session.Summary);
 
 			// Call compaction LLM
-			(string summary, int summaryTokens) = await this.SummarizeAsync(conversationText, ct);
+			(string summary, int summaryTokens) = await this.SummarizeAsync(conversationText, agentModelSettings.Model, ct);
 
 			// Generate embedding
 			Vector? embedding = null;
@@ -113,7 +116,7 @@ public sealed class CompactionService(
 			// Build new context window for token counting and breakdown
 			if (lisOptions.Value.CompactionNotify) {
 				try {
-					string systemPrompt = await promptComposer.BuildAsync(db, ct);
+					string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct);
 					List<MessageEntity> keptMessages = await db.Messages
 						.Where(m => m.SessionId == newSession.Id)
 						.OrderBy(m => m.Timestamp)
@@ -125,9 +128,9 @@ public sealed class CompactionService(
 					int? totalWithTools = null;
 					int? totalWithoutTools = null;
 					if (tokenCounter is not null) {
-						string jsonWithTools = ChatHistorySerializer.ToAnthropicJson(newCtx, modelSettings.Model, kernel);
+						string jsonWithTools = ChatHistorySerializer.ToAnthropicJson(newCtx, agentModelSettings.Model, kernel);
 						totalWithTools = await tokenCounter.CountAsync(jsonWithTools, ct);
-						string jsonNoTools = ChatHistorySerializer.ToAnthropicJson(newCtx, modelSettings.Model);
+						string jsonNoTools = ChatHistorySerializer.ToAnthropicJson(newCtx, agentModelSettings.Model);
 						totalWithoutTools = await tokenCounter.CountAsync(jsonNoTools, ct);
 					}
 
@@ -140,7 +143,7 @@ public sealed class CompactionService(
 						EstimateBreakdown(newCtx, contentTotal);
 
 					await this.NotifyCompactionAsync(
-						externalChatId, session.ContextTokens, total,
+						externalChatId, agent, session.ContextTokens, total,
 						sysTokens, sumTokens, keptTokens, toolDefTokens, toolCallTokens, ct);
 				} catch (Exception ex) {
 					logger.LogWarning(ex, "Token counting or notification failed");
@@ -221,6 +224,14 @@ public sealed class CompactionService(
 		SessionEntity? session = await db.Sessions.FindAsync([sessionId], ct);
 		if (session is null) return;
 
+		ChatEntity? chat = await db.Chats
+			.Include(c => c.Agent)
+			.FirstOrDefaultAsync(c => c.Id == session.ChatId, ct);
+		if (chat is null) return;
+
+		AgentEntity   agent              = await agentService.ResolveForChatAsync(db, chat, ct);
+		ModelSettings agentModelSettings = AgentService.ToModelSettings(agent);
+
 		List<MessageEntity> messages = await db.Messages
 			.Where(m => m.SessionId == session.Id && !m.Queued)
 			.OrderBy(m => m.Timestamp)
@@ -229,7 +240,7 @@ public sealed class CompactionService(
 		if (messages.Count == 0) return;
 
 		string conversationText = BuildConversationText(messages, null);
-		(string summary, _) = await this.SummarizeAsync(conversationText, ct);
+		(string summary, _) = await this.SummarizeAsync(conversationText, agentModelSettings.Model, ct);
 
 		Vector? embedding = null;
 		if (embeddingGenerator is not null) {
@@ -245,7 +256,7 @@ public sealed class CompactionService(
 		await db.SaveChangesAsync(ct);
 	}
 
-	private async Task<(string Text, int OutputTokens)> SummarizeAsync(string conversationText, CancellationToken ct) {
+	private async Task<(string Text, int OutputTokens)> SummarizeAsync(string conversationText, string agentModel, CancellationToken ct) {
 		string prompt = $"""
 			Summarize the following conversation concisely. Preserve:
 			- Key facts, names, dates, and decisions made
@@ -260,7 +271,7 @@ public sealed class CompactionService(
 			{conversationText}
 			""";
 
-		string model = lisOptions.Value.CompactionModel is { Length: > 0 } m ? m : modelSettings.Model;
+		string model = lisOptions.Value.CompactionModel is { Length: > 0 } m ? m : agentModel;
 		ChatOptions options = new() { ModelId = model };
 		ChatResponse result = await compactionClient.GetResponseAsync(prompt, options, ct);
 		int outputTokens = (int)(result.Usage?.OutputTokenCount ?? 0);
@@ -283,11 +294,11 @@ public sealed class CompactionService(
 	}
 
 	private async Task NotifyCompactionAsync(
-		string chatId, long oldInputTokens,
+		string chatId, AgentEntity agent, long oldInputTokens,
 		int newTotal, int systemTokens, int summaryTokens, int keptTokens,
 		int toolDefTokens, int toolCallTokens, CancellationToken ct) {
 		try {
-			int budget = modelSettings.ContextBudget;
+			int budget = agent.ContextBudget;
 			int pct = budget > 0 ? (int)((long)newTotal * 100 / budget) : 0;
 			int totalToolTokens = toolDefTokens + toolCallTokens;
 

@@ -1,28 +1,26 @@
 using System.Text;
 
-using Lis.Core.Configuration;
-
 using Microsoft.EntityFrameworkCore;
 
 namespace Lis.Agent.Commands;
 
-public sealed class StatusCommand(ModelSettings modelSettings) : IChatCommand {
+public sealed class StatusCommand : IChatCommand {
 	public string[] Triggers => ["/status"];
 
 	public async Task<string> ExecuteAsync(CommandContext ctx, CancellationToken ct) {
 		StringBuilder sb = new();
 
-		sb.AppendLine("🤖 Lis");
+		sb.AppendLine($"🤖 Agent: {ctx.Agent.DisplayName ?? ctx.Agent.Name}");
 
 		// Model + thinking
-		string thinkingLabel = modelSettings.ThinkingEffort switch {
+		string thinkingLabel = ctx.Agent.ThinkingEffort switch {
 			"low"    => " · Think: low",
 			"medium" => " · Think: medium",
 			"high"   => " · Think: high",
 			{ Length: > 0 } t => $" · Think: {t}",
 			_        => ""
 		};
-		sb.AppendLine($"🧠 Model: {modelSettings.Model}{thinkingLabel}");
+		sb.AppendLine($"🧠 Model: {ctx.Agent.Model}{thinkingLabel}");
 
 		if (ctx.Session is not null) {
 			// Last API response tokens (from latest message with usage data)
@@ -45,7 +43,7 @@ public sealed class StatusCommand(ModelSettings modelSettings) : IChatCommand {
 
 			// Context usage
 			long contextTokens = ctx.Session.ContextTokens;
-			int budget = modelSettings.ContextBudget;
+			int budget = ctx.Agent.ContextBudget;
 			// Count ancestor sessions (compaction chain depth) via recursive CTE
 			int compactions = ctx.Session.ParentSessionId is not null
 				? await ctx.Db.Database.SqlQuery<int>($"""

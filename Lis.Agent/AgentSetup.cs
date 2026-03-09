@@ -32,6 +32,9 @@ public static class AgentSetup {
 			return kernel;
 		});
 
+		// Agent
+		services.AddSingleton<AgentService>();
+
 		// Commands
 		services.AddSingleton<IChatCommand, StatusCommand>();
 		services.AddSingleton<IChatCommand, NewSessionCommand>();
