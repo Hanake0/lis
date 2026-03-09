@@ -18,6 +18,7 @@ namespace Lis.Agent;
 public sealed class MessageDebouncer(
 	IServiceScopeFactory      scopeFactory,
 	CommandRouter             commandRouter,
+	AgentService              agentService,
 	IOptions<LisOptions>      lisOptions,
 	ILogger<MessageDebouncer> logger) : IConversationService, IDisposable {
 
@@ -39,7 +40,7 @@ public sealed class MessageDebouncer(
 
 		// If AI is responding: react clock immediately, then ingest as queued
 		if (isQueued) {
-			if (!this.ShouldRespond(message)) {
+			if (!await this.ShouldRespondAsync(message, ct)) {
 				await this.IngestAsync(message, queued: true, ct);
 				return;
 			}
@@ -156,11 +157,19 @@ public sealed class MessageDebouncer(
 			logger.LogInformation("Triggered pending responses for {Count} chats after crash recovery", chatIds.Count);
 	}
 
-	private bool ShouldRespond(IncomingMessage message) {
-		string ownerJid = lisOptions.Value.OwnerJid;
-		if (string.IsNullOrEmpty(ownerJid)) return !message.IsGroup;
-		if (message.IsGroup) return false;
-		return message.SenderId == ownerJid;
+	[Trace("MessageDebouncer > ShouldRespondAsync")]
+	private async Task<bool> ShouldRespondAsync(IncomingMessage message, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		ChatEntity? chat = await db.Chats
+			.Include(c => c.AllowedSenders)
+			.Include(c => c.Agent)
+			.FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
+
+		if (chat is null) return false;
+
+		return agentService.ShouldRespond(chat, message, lisOptions.Value.OwnerJid);
 	}
 
 	private async Task IngestAsync(IncomingMessage message, bool queued, CancellationToken ct) {
@@ -242,9 +251,14 @@ public sealed class MessageDebouncer(
 			try { await channel.ReactAsync(id, chatId, ""); }
 			catch (Exception ex) { logger.LogWarning(ex, "Failed to remove reaction from {MessageId}", id); }
 
-		ChatEntity? chat = await db.Chats.Include(c => c.CurrentSession)
+		ChatEntity? chat = await db.Chats
+			.Include(c => c.CurrentSession)
+			.Include(c => c.AllowedSenders)
+			.Include(c => c.Agent)
 			.FirstOrDefaultAsync(c => c.ExternalId == chatId);
 		if (chat?.CurrentSession is null) return false;
+
+		AgentEntity agent = await agentService.ResolveForChatAsync(db, chat, CancellationToken.None);
 
 		List<MessageEntity> queued = await db.Messages
 			.Where(m => m.ChatId == chat.Id && m.Queued)
@@ -274,7 +288,7 @@ public sealed class MessageDebouncer(
 				Body       = msg.Body,
 				Timestamp  = msg.Timestamp
 			};
-			CommandContext ctx      = new(im, chat, session, db, match.Args);
+			CommandContext ctx      = new(im, chat, session, db, agent, match.Args);
 			string        response = await match.Command.ExecuteAsync(ctx, CancellationToken.None);
 			await channel.SendMessageAsync(chatId, response, msg.ExternalId);
 
