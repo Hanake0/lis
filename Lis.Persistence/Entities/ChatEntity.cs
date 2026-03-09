@@ -41,9 +41,25 @@ public sealed class ChatEntity {
 	[JsonPropertyName("current_session_id")]
 	public long? CurrentSessionId { get; set; }
 
+	[Column("agent_id")]
+	[JsonPropertyName("agent_id")]
+	public long? AgentId { get; set; }
+
+	[Column("enabled")]
+	[JsonPropertyName("enabled")]
+	public bool Enabled { get; set; } = true;
+
+	[Column("require_mention")]
+	[JsonPropertyName("require_mention")]
+	public bool RequireMention { get; set; }
+
 	public SessionEntity? CurrentSession { get; set; }
 
+	public AgentEntity? Agent { get; set; }
+
 	public ICollection<MessageEntity> Messages { get; set; } = [];
+
+	public ICollection<ChatAllowedSenderEntity> AllowedSenders { get; set; } = [];
 }
 
 public class ChatEntityConfiguration : IEntityTypeConfiguration<ChatEntity> {
@@ -53,6 +69,11 @@ public class ChatEntityConfiguration : IEntityTypeConfiguration<ChatEntity> {
 		builder.HasOne(e => e.CurrentSession)
 			   .WithMany()
 			   .HasForeignKey(e => e.CurrentSessionId)
+			   .OnDelete(DeleteBehavior.SetNull);
+
+		builder.HasOne(e => e.Agent)
+			   .WithMany()
+			   .HasForeignKey(e => e.AgentId)
 			   .OnDelete(DeleteBehavior.SetNull);
 	}
 }
