@@ -26,7 +26,7 @@ public sealed class ConversationService(
 	PromptComposer               promptComposer,
 	CompactionService            compactionService,
 	CommandRouter                commandRouter,
-	ModelSettings                modelSettings,
+	AgentService                 agentService,
 	IMediaProcessor              mediaProcessor,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
@@ -82,7 +82,7 @@ public sealed class ConversationService(
 			logger.LogWarning(ex, "Failed to mark message as read");
 		}
 
-		return (chat, this.ShouldRespond(message));
+		return (chat, agentService.ShouldRespond(chat, message, lisOptions.Value.OwnerJid));
 	}
 
 	[Trace("ConversationService > RespondAsync")]
@@ -95,6 +95,8 @@ public sealed class ConversationService(
 
 		ChatEntity? chat = await db.Chats
 			.Include(c => c.CurrentSession)
+			.Include(c => c.AllowedSenders)
+			.Include(c => c.Agent)
 			.FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
 
 		if (chat is null) {
@@ -102,11 +104,13 @@ public sealed class ConversationService(
 			return;
 		}
 
-		SessionEntity session = chat.CurrentSession!;
+		AgentEntity    agent              = await agentService.ResolveForChatAsync(db, chat, ct);
+		ModelSettings  agentModelSettings = AgentService.ToModelSettings(agent);
+		SessionEntity  session            = chat.CurrentSession!;
 
 		// Handle commands before AI processing
 		if (commandRouter.Match(message.Body) is { } match) {
-			CommandContext ctx = new(message, chat, session, db, match.Args);
+			CommandContext ctx = new(message, chat, session, db, agent, match.Args);
 			string response = await match.Command.ExecuteAsync(ctx, ct);
 			await channelClient.SendMessageAsync(message.ChatId, response, message.ExternalId, ct);
 
@@ -133,7 +137,7 @@ public sealed class ConversationService(
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 
-		string systemPrompt = await promptComposer.BuildAsync(db, ct);
+		string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct);
 
 		// Load parent session for continuity
 		SessionEntity? parentSession = session.ParentSessionId is not null
@@ -144,13 +148,13 @@ public sealed class ConversationService(
 			systemPrompt, recentMessages, session, parentSession, lisOptions.Value);
 
 		// Pre-send validation: count tokens when context is likely large
-		if (tokenCounter is not null && session.ContextTokens > modelSettings.ContextBudget * 0.7) {
+		if (tokenCounter is not null && session.ContextTokens > agentModelSettings.ContextBudget * 0.7) {
 			try {
-				string countJson = ChatHistorySerializer.ToAnthropicJson(chatHistory, modelSettings.Model);
+				string countJson = ChatHistorySerializer.ToAnthropicJson(chatHistory, agentModelSettings.Model);
 				int? tokenCount = await tokenCounter.CountAsync(countJson, ct);
-				if (tokenCount > modelSettings.ContextBudget)
+				if (tokenCount > agentModelSettings.ContextBudget)
 					logger.LogWarning("Pre-send token count ({Tokens}) exceeds budget ({Budget})",
-						tokenCount, modelSettings.ContextBudget);
+						tokenCount, agentModelSettings.ContextBudget);
 			} catch (Exception ex) {
 				logger.LogWarning(ex, "Pre-send token counting failed");
 			}
@@ -158,12 +162,13 @@ public sealed class ConversationService(
 
 		ToolContext.ChatId               = message.ChatId;
 		ToolContext.Channel              = channelClient;
-		ToolContext.NotificationsEnabled = lisOptions.Value.ToolNotifications;
+		ToolContext.NotificationsEnabled = agent.ToolNotifications;
+		ToolContext.AgentId              = agent.Id;
 
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 
-		Dictionary<string, object> extensionData = new() { ["max_tokens"] = modelSettings.MaxTokens };
-		if (modelSettings.ThinkingEffort is { Length: > 0 } effort)
+		Dictionary<string, object> extensionData = new() { ["max_tokens"] = agentModelSettings.MaxTokens };
+		if (agentModelSettings.ThinkingEffort is { Length: > 0 } effort)
 			extensionData["thinking"] = new Dictionary<string, object> {
 				["type"] = "enabled",
 				["budget_tokens"] = effort switch {
@@ -175,7 +180,7 @@ public sealed class ConversationService(
 			};
 
 		PromptExecutionSettings settings = new() {
-			ModelId                = modelSettings.Model,
+			ModelId                = agentModelSettings.Model,
 			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: false),
 			ExtensionData          = extensionData
 		};
@@ -211,16 +216,16 @@ public sealed class ConversationService(
 			session.UpdatedAt                 = DateTimeOffset.UtcNow;
 			await db.SaveChangesAsync(ct);
 
-			await this.CheckCompactionTriggersAsync(db, session, lastUsage, message.ChatId, ct);
+			await this.CheckCompactionTriggersAsync(db, session, agent, lastUsage, message.ChatId, ct);
 		}
 	}
 
 	private async Task CheckCompactionTriggersAsync(
-		LisDbContext db, SessionEntity session, TokenUsage usage, string chatId, CancellationToken ct) {
+		LisDbContext db, SessionEntity session, AgentEntity agent, TokenUsage usage, string chatId, CancellationToken ct) {
 		int totalInput = usage.TotalInputTokens;
-		int compactionThreshold = lisOptions.Value.CompactionThreshold > 0
-			? lisOptions.Value.CompactionThreshold
-			: (int)(modelSettings.ContextBudget * 0.8);
+		int compactionThreshold = agent.CompactionThreshold > 0
+			? agent.CompactionThreshold
+			: (int)(agent.ContextBudget * 0.8);
 
 		// Full compaction takes priority — calculate split point from recent messages
 		if (totalInput > compactionThreshold && !session.IsCompacting) {
@@ -241,7 +246,7 @@ public sealed class ConversationService(
 				.OrderByDescending(m => m.Id)
 				.ToListAsync(ct);
 
-			long splitId = CompactionService.CalculateSplitPoint(allMsgs, lisOptions.Value.KeepRecentTokens);
+			long splitId = CompactionService.CalculateSplitPoint(allMsgs, agent.KeepRecentTokens);
 
 			if (splitId > 0)
 				_ = Task.Run(() => compactionService.CompactAsync(chatId, splitId, CancellationToken.None), CancellationToken.None);
@@ -254,7 +259,7 @@ public sealed class ConversationService(
 				.Where(m => m.SessionId == session.Id && !m.Queued && m.Role == "tool")
 				.SumAsync(m => m.OutputTokens ?? 0, ct);
 
-			if (toolTokens > lisOptions.Value.ToolPruneThreshold) {
+			if (toolTokens > agent.ToolPruneThreshold) {
 				int toolCount = await db.Messages
 					.Where(m => m.SessionId == session.Id && !m.Queued && m.Role == "tool")
 					.CountAsync(ct);
@@ -269,11 +274,11 @@ public sealed class ConversationService(
 
 				if (lisOptions.Value.CompactionNotify) {
 					int prunedEstimate = toolCount * 10; // ~10 tokens per pruned result
-					int pct = totalInput > 0 ? (int)((long)(totalInput - toolTokens + prunedEstimate) * 100 / modelSettings.ContextBudget) : 0;
+					int pct = totalInput > 0 ? (int)((long)(totalInput - toolTokens + prunedEstimate) * 100 / agent.ContextBudget) : 0;
 					int savings = toolTokens > 0 ? (int)((long)(toolTokens - prunedEstimate) * 100 / toolTokens) : 0;
 					await ToolContext.NotifyAsync(
 						$"🔧 Tool outputs pruned ({Fmt(toolTokens)} → {Fmt(prunedEstimate)}, -{savings}%)"
-						+ $"\n  📊 Context: {Fmt(totalInput - toolTokens + prunedEstimate)}/{Fmt(modelSettings.ContextBudget)} ({pct}%)", ct);
+						+ $"\n  📊 Context: {Fmt(totalInput - toolTokens + prunedEstimate)}/{Fmt(agent.ContextBudget)} ({pct}%)", ct);
 				}
 			}
 		}
@@ -299,20 +304,12 @@ public sealed class ConversationService(
 		return session;
 	}
 
-	private bool ShouldRespond(IncomingMessage message) {
-		string ownerJid = lisOptions.Value.OwnerJid;
-
-		if (string.IsNullOrEmpty(ownerJid)) return !message.IsGroup;
-
-		if (message.IsGroup) return false;
-
-		return message.SenderId == ownerJid;
-	}
-
 	private static async Task<ChatEntity> UpsertChatAsync(
 		LisDbContext db, IncomingMessage message, CancellationToken ct) {
 		ChatEntity? chat = await db.Chats
 								   .Include(c => c.CurrentSession)
+								   .Include(c => c.AllowedSenders)
+								   .Include(c => c.Agent)
 								   .FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
 
 		if (chat is null) {
