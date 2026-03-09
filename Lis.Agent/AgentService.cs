@@ -96,6 +96,13 @@ public sealed class AgentService(
 
 		db.Agents.Add(agent);
 		await db.SaveChangesAsync(ct);
+
+		// Reassign any orphan prompt sections (agent_id == 0 from before agents existed)
+		int orphans = await db.PromptSections
+			.Where(s => s.AgentId == 0)
+			.ExecuteUpdateAsync(s => s.SetProperty(p => p.AgentId, agent.Id), ct);
+		if (orphans > 0 && logger.IsEnabled(LogLevel.Information))
+			logger.LogInformation("Reassigned {Count} orphan prompt sections to default agent", orphans);
 		if (logger.IsEnabled(LogLevel.Information))
 			logger.LogInformation("Seeded default agent with model {Model}", agent.Model);
 	}

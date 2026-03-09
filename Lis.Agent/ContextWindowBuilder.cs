@@ -18,7 +18,7 @@ public sealed class ContextWindowBuilder {
 		SessionEntity? session = null, SessionEntity? parentSession = null,
 		LisOptions? options = null) {
 
-		ChatHistory history = new(systemPrompt);
+		ChatHistory history = string.IsNullOrWhiteSpace(systemPrompt) ? new() : new(systemPrompt);
 
 		// Inject parent session summary for continuity
 		if (parentSession?.Summary is { Length: > 0 } parentSummary)
