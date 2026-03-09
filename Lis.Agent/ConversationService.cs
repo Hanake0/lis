@@ -27,6 +27,7 @@ public sealed class ConversationService(
 	CompactionService            compactionService,
 	CommandRouter                commandRouter,
 	ModelSettings                modelSettings,
+	IMediaProcessor              mediaProcessor,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
 	ITokenCounter?               tokenCounter = null) : IConversationService {
@@ -71,6 +72,9 @@ public sealed class ConversationService(
 		ChatEntity chat = await UpsertChatAsync(db, message, ct);
 		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
 		await PersistMessageAsync(db, session, message, queued, ct);
+
+		if (message.MediaType is not null)
+			await this.ProcessMediaAsync(db, message, ct);
 
 		try {
 			await channelClient.MarkReadAsync(message.ExternalId, message.ChatId, ct);
@@ -375,6 +379,28 @@ public sealed class ConversationService(
 			CreatedAt           = DateTimeOffset.UtcNow
 		});
 		await db.SaveChangesAsync(ct);
+	}
+
+	private async Task ProcessMediaAsync(LisDbContext db, IncomingMessage message, CancellationToken ct) {
+		try {
+			ProcessedMedia? media = await mediaProcessor.ProcessAsync(message, ct);
+			if (media is null) return;
+
+			MessageEntity? entity = await db.Messages.FindAsync([message.DbId], ct);
+			if (entity is null) return;
+
+			entity.MediaData     = media.Data;
+			entity.MediaMimeType = media.MimeType;
+
+			if (media.Transcription is { Length: > 0 } transcript)
+				entity.Body = $"<Audio transcript: {transcript}>";
+			else if (message.MediaType is "audio" or "ptt")
+				entity.Body = "<Audio message>";
+
+			await db.SaveChangesAsync(ct);
+		} catch (Exception ex) {
+			logger.LogWarning(ex, "Failed to process media for {Id}", message.ExternalId);
+		}
 	}
 
 	private static string Fmt(long tokens) =>

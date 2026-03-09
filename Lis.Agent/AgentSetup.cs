@@ -41,6 +41,9 @@ public static class AgentSetup {
 		services.AddSingleton<IChatCommand, AbortCommand>();
 		services.AddSingleton<CommandRouter>();
 
+		// Media
+		services.AddSingleton<IMediaProcessor, MediaProcessor>();
+
 		// Compaction
 		services.AddSingleton<CompactionService>();
 
