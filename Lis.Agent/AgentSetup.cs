@@ -28,6 +28,7 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<DateTimePlugin>(pluginName: "dt", serviceProvider: sp);
 			kernel.Plugins.AddFromType<PromptPlugin>(pluginName: "prompt", serviceProvider: sp);
 			kernel.Plugins.AddFromType<MemoryPlugin>(pluginName: "mem", serviceProvider: sp);
+			kernel.Plugins.AddFromType<ConfigPlugin>(pluginName: "cfg", serviceProvider: sp);
 
 			return kernel;
 		});
@@ -42,6 +43,10 @@ public static class AgentSetup {
 		services.AddSingleton<IChatCommand, PruneToolsCommand>();
 		services.AddSingleton<IChatCommand, ResumeCommand>();
 		services.AddSingleton<IChatCommand, AbortCommand>();
+		services.AddSingleton<IChatCommand, AgentCommand>();
+		services.AddSingleton<IChatCommand, AgentsCommand>();
+		services.AddSingleton<IChatCommand, ModelCommand>();
+		services.AddSingleton<IChatCommand, ModelsCommand>();
 		services.AddSingleton<CommandRouter>();
 
 		// Media

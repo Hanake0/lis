@@ -69,7 +69,8 @@ builder.Services.AddSingleton(Options.Create(new LisOptions {
 												 ToolSummarizationPolicy = Env("LIS_TOOL_SUMMARIZATION_POLICY") is { Length: > 0 } p ? p : "auto",
 												 ReactOnMessageQueued      = Env("LIS_REACT_ON_MESSAGE_QUEUED") == "true",
 												 ReactOnMessageQueuedEmoji = Env("LIS_REACT_ON_MESSAGE_QUEUED_EMOJI") is { Length: > 0 } e ? e : "🕐",
-												 ResumeTokenBudget       = EnvInt("LIS_RESUME_TOKEN_BUDGET",       0)
+												 ResumeTokenBudget       = EnvInt("LIS_RESUME_TOKEN_BUDGET",       0),
+											 NewSessionOnAgentSwitch = Env("LIS_NEW_SESSION_ON_AGENT_SWITCH") != "false"
 											 }));
 
 // Database
@@ -119,10 +120,15 @@ if (Env("ANTHROPIC_ENABLED") == "true" && Env("GOWA_ENABLED") == "true") {
 
 WebApplication app = builder.Build();
 
-// Apply migrations on startup
+// Apply migrations on startup + seed default agent
 using (IServiceScope scope = app.Services.CreateScope()) {
 	LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 	await db.Database.MigrateAsync();
+
+	AgentService agentService = scope.ServiceProvider.GetRequiredService<AgentService>();
+	ModelSettings envModelSettings = scope.ServiceProvider.GetRequiredService<ModelSettings>();
+	LisOptions lisOpts = scope.ServiceProvider.GetRequiredService<IOptions<LisOptions>>().Value;
+	await agentService.SeedDefaultAsync(db, envModelSettings, lisOpts, CancellationToken.None);
 }
 
 // Flush queued messages from crash recovery
