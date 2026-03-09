@@ -243,6 +243,15 @@ public sealed partial class GowaClient(HttpClient httpClient) {
 		return result?.Results;
 	}
 
+	// ── Static Files ────────────────────────────────────────────────
+
+	[Trace("GowaClient > FetchFileAsync")]
+	public async Task<byte[]> FetchFileAsync(string path, CancellationToken ct = default) {
+		HttpResponseMessage response = await httpClient.GetAsync($"/{path}", ct);
+		response.EnsureSuccessStatusCode();
+		return await response.Content.ReadAsByteArrayAsync(ct);
+	}
+
 	// ── Presence ─────────────────────────────────────────────────────
 
 	[Trace("GowaClient > SendChatPresenceAsync")]
