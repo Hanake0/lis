@@ -14,6 +14,7 @@ public sealed record CommandContext(
 	ChatEntity      Chat,
 	SessionEntity?  Session,
 	LisDbContext    Db,
+	AgentEntity     Agent,
 	string?         Args = null);
 
 public sealed record CommandMatch(IChatCommand Command, string? Args);
