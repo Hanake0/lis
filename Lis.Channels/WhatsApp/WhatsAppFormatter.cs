@@ -41,13 +41,13 @@ public sealed partial class WhatsAppFormatter : IMessageFormatter {
 	private static partial Regex ExcessiveNewlinesRegex();
 
 	// Matches a full markdown table (header row, separator row, data rows)
-	[GeneratedRegex(@"(?:^\|.+\|\s*\n){2,}", RegexOptions.Multiline)]
+	[GeneratedRegex(@"(?:^\|.+\|[ \t]*\n)*^\|.+\|[ \t]*$", RegexOptions.Multiline)]
 	private static partial Regex TableBlockRegex();
 
 	// ── Public API ──────────────────────────────────────────────────
 
 	public string Format(string content) {
-		if (string.IsNullOrWhiteSpace(content)) return content ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(content)) return string.Empty;
 
 		string result = content;
 		result = ProtectCodeBlocks(result, out List<string> codeBlocks);
@@ -66,21 +66,22 @@ public sealed partial class WhatsAppFormatter : IMessageFormatter {
 	// ── Pipeline Steps ──────────────────────────────────────────────
 
 	private static string ProtectCodeBlocks(string input, out List<string> codeBlocks) {
-		codeBlocks = [];
-		int index  = 0;
+		List<string> blocks = [];
+		int index = 0;
 
 		// Fenced blocks first (``` ... ```)
 		string result = FencedCodeRegex().Replace(input, match => {
-			codeBlocks.Add(match.Value);
+			blocks.Add(match.Value);
 			return $"\x00CODE{index++}\x00";
 		});
 
 		// Then inline code (` ... `)
 		result = InlineCodeRegex().Replace(result, match => {
-			codeBlocks.Add(match.Value);
+			blocks.Add(match.Value);
 			return $"\x00CODE{index++}\x00";
 		});
 
+		codeBlocks = blocks;
 		return result;
 	}
 

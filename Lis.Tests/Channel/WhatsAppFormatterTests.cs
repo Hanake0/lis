@@ -143,7 +143,10 @@ public class WhatsAppFormatterTests {
 		string input = "| Campo | Valor |\n|---|---|\n| Nome | Lis |\n| Modelo | claude-opus-4-6 |";
 		string result = this._sut.Format(input);
 
-		Assert.Contains("*Lis*", result);
+		// First column becomes bold label, second column becomes bullet value
+		Assert.Contains("*Nome*", result);
+		Assert.Contains("• Valor: Lis", result);
+		Assert.Contains("*Modelo*", result);
 		Assert.Contains("• Valor: claude-opus-4-6", result);
 		Assert.DoesNotContain("|", result);
 	}
