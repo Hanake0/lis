@@ -195,11 +195,6 @@ public sealed class ConversationService(
 				if (content is not null)
 					externalId = await channelClient.SendMessageAsync(
 						message.ChatId, content, shouldQuote ? message.ExternalId : null, ct);
-
-				// Persist cleaned content (without directives)
-				msg.Items.Clear();
-				if (content is not null)
-					msg.Items.Add(new TextContent(content));
 			}
 
 			// Usage is attached per-message by ToolRunner (only on assistant messages)
