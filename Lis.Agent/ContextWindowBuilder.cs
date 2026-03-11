@@ -94,13 +94,13 @@ public sealed class ContextWindowBuilder {
 				string imgText = msg.Body is { Length: > 0 } bodyText ? bodyText
 					: msg.MediaCaption is { Length: > 0 } caption ? caption
 					: "[image]";
-				imgMsg.Items.Add(new TextContent(UserPrefix(msg) + imgText));
+				imgMsg.Items.Add(new TextContent(UserPrefix(msg, messages) + imgText));
 				imgMsg.Items.Add(new ImageContent(msg.MediaData, msg.MediaMimeType ?? "image/jpeg"));
 				history.Add(imgMsg);
 			} else {
 				string body = msg.Body ?? msg.MediaCaption ?? "[media]";
 				if (msg.IsFromMe) history.AddAssistantMessage(body);
-				else              history.AddUserMessage(UserPrefix(msg) + body);
+				else              history.AddUserMessage(UserPrefix(msg, messages) + body);
 			}
 
 			if (inPruneWindow)
@@ -115,10 +115,57 @@ public sealed class ContextWindowBuilder {
 		return history;
 	}
 
-	private static string UserPrefix(MessageEntity msg) =>
-		msg.SenderName is { Length: > 0 } name
-			? $"[{msg.Id}] {name}: "
-			: $"[{msg.Id}] ";
+	private static string UserPrefix(MessageEntity msg, IReadOnlyList<MessageEntity>? allMessages = null) {
+		string prefix = msg.SenderName is { Length: > 0 } name
+			? $"[{msg.Id}] {name}"
+			: $"[{msg.Id}]";
+
+		// Append reply context if available
+		if (msg.ReplyToId is { Length: > 0 }) {
+			string replyInfo = BuildReplyContext(msg, allMessages);
+			if (replyInfo.Length > 0) prefix += $" ({replyInfo})";
+		}
+
+		return prefix + ": ";
+	}
+
+	private static string BuildReplyContext(MessageEntity msg, IReadOnlyList<MessageEntity>? allMessages) {
+		// Try to resolve the replied-to message for sender name
+		MessageEntity? repliedMsg = allMessages?
+			.FirstOrDefault(m => m.ExternalId == msg.ReplyToId);
+
+		string senderPart = repliedMsg?.SenderName is { Length: > 0 } rn
+			? rn
+			: repliedMsg?.IsFromMe == true
+				? "bot"
+				: null!;
+
+		// Build quoted text from stored ReplyContent, or from the resolved message
+		string? quotedText = msg.ReplyContent;
+		if (quotedText is null && repliedMsg is not null) {
+			quotedText = repliedMsg.Body ?? repliedMsg.MediaCaption;
+			if (quotedText is null && repliedMsg.MediaType is { Length: > 0 } mt)
+				quotedText = $"[{mt}]";
+		}
+
+		// Format quoted text — truncate and handle media
+		string quotePart = FormatQuotedText(quotedText, 500);
+
+		if (senderPart is not null && quotePart.Length > 0)
+			return $"replying to {senderPart}: \"{quotePart}\"";
+		if (senderPart is not null)
+			return $"replying to {senderPart}";
+		if (quotePart.Length > 0)
+			return $"replying to: \"{quotePart}\"";
+		return "replying to a message";
+	}
+
+	private static string FormatQuotedText(string? text, int maxLength) {
+		if (text is null or { Length: 0 }) return "";
+		if (text.Length > maxLength) text = text[..maxLength] + "…";
+		// Collapse newlines for inline display
+		return text.ReplaceLineEndings(" ");
+	}
 
 	private static void PruneToolResult(ChatHistory history, ChatMessageContent skMsg) {
 		FunctionResultContent? original = skMsg.Items.OfType<FunctionResultContent>().FirstOrDefault();

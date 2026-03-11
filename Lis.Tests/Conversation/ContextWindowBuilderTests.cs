@@ -228,6 +228,49 @@ public sealed class ContextWindowBuilderTests {
 	}
 
 	[Fact]
+	public void Build_IncludesReplyContext() {
+		List<MessageEntity> messages = [
+			new() { Id = 10, ExternalId = "ext-10", SenderId = "bob", SenderName = "Bob",
+			        IsFromMe = false, Body = "The meeting is at 3pm",
+			        Timestamp = DateTimeOffset.UtcNow.AddSeconds(1) },
+			new() { Id = 11, ExternalId = "ext-11", SenderId = "alice", SenderName = "Alice",
+			        IsFromMe = false, Body = "I agree",
+			        ReplyToId = "ext-10", ReplyContent = "The meeting is at 3pm",
+			        Timestamp = DateTimeOffset.UtcNow.AddSeconds(2) },
+		];
+
+		ChatHistory history = this.builder.Build("System", messages);
+
+		// Alice's message should include reply context
+		string? content = history[2].Content;
+		Assert.NotNull(content);
+		Assert.Contains("replying to Bob", content);
+		Assert.Contains("The meeting is at 3pm", content);
+	}
+
+	[Fact]
+	public void Build_ReplyContextTruncatesLongText() {
+		string longText = new('x', 1000);
+		List<MessageEntity> messages = [
+			new() { Id = 10, ExternalId = "ext-10", SenderId = "bob", SenderName = "Bob",
+			        IsFromMe = false, Body = longText,
+			        Timestamp = DateTimeOffset.UtcNow.AddSeconds(1) },
+			new() { Id = 11, ExternalId = "ext-11", SenderId = "alice", SenderName = "Alice",
+			        IsFromMe = false, Body = "wow",
+			        ReplyToId = "ext-10", ReplyContent = longText,
+			        Timestamp = DateTimeOffset.UtcNow.AddSeconds(2) },
+		];
+
+		ChatHistory history = this.builder.Build("System", messages);
+
+		string? content = history[2].Content;
+		Assert.NotNull(content);
+		// 500 chars + "…" = 501 total in the quoted part, so total content should be shorter than original
+		Assert.True(content.Length < longText.Length);
+		Assert.Contains("…", content);
+	}
+
+	[Fact]
 	public void GroupWindowing_NoOpForSmallConversations() {
 		List<MessageEntity> messages = [
 			CreateMessage("hello", isFromMe: false, timestamp: 1, senderId: "u1"),
