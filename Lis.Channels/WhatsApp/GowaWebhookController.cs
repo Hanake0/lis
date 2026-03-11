@@ -53,17 +53,19 @@ public class GowaWebhookController(
 			: DateTimeOffset.UtcNow;
 
 		IncomingMessage message = new() {
-			ExternalId   = payload.Id,
-			ChatId       = payload.ChatId ?? "",
-			SenderId     = payload.From   ?? "",
-			SenderName   = payload.FromName,
-			Timestamp    = timestamp,
-			IsFromMe     = payload.IsFromMe,
-			IsGroup      = isGroup,
-			Body         = payload.Body,
-			MediaType    = payload.MediaType,
-			MediaCaption = payload.MediaCaption,
-			MediaPath    = payload.MediaPath
+			ExternalId     = payload.Id,
+			ChatId         = payload.ChatId ?? "",
+			SenderId       = payload.From   ?? "",
+			SenderName     = payload.FromName,
+			Timestamp      = timestamp,
+			IsFromMe       = payload.IsFromMe,
+			IsGroup        = isGroup,
+			Body           = payload.Body,
+			RepliedId      = payload.RepliedToId,
+			RepliedContent = payload.QuotedBody,
+			MediaType      = payload.MediaType,
+			MediaCaption   = payload.MediaCaption,
+			MediaPath      = payload.MediaPath
 		};
 
 		// Echoes of our own messages → backfill sender info on the persisted record

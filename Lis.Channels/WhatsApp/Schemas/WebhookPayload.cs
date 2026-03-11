@@ -43,8 +43,23 @@ public sealed class WebhookPayload {
 	[JsonPropertyName("body")]
 	public string? Body { get; init; }
 
-	[JsonPropertyName("quoted_message")]
-	public string? QuotedMessage { get; init; }
+	[JsonPropertyName("replied_to_id")]
+	public string? RepliedToId { get; init; }
+
+	[JsonPropertyName("quoted_body")]
+	public string? QuotedBody { get; init; }
+
+	[JsonPropertyName("from_lid")]
+	public string? FromLid { get; init; }
+
+	[JsonPropertyName("chat_lid")]
+	public string? ChatLid { get; init; }
+
+	[JsonPropertyName("forwarded")]
+	public bool Forwarded { get; init; }
+
+	[JsonPropertyName("view_once")]
+	public bool ViewOnce { get; init; }
 
 	[JsonExtensionData]
 	public Dictionary<string, JsonElement>? Extensions { get; set; }

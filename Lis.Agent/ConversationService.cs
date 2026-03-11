@@ -349,8 +349,9 @@ public sealed class ConversationService(
 			Body         = message.Body,
 			MediaType    = message.MediaType,
 			MediaCaption = message.MediaCaption,
-			ReplyToId    = message.RepliedId,
-			Queued       = queued,
+			ReplyToId      = message.RepliedId,
+			ReplyContent   = message.RepliedContent,
+			Queued         = queued,
 			Timestamp    = message.Timestamp,
 			CreatedAt    = DateTimeOffset.UtcNow
 		};
