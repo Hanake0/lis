@@ -141,6 +141,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		sb.AppendLine($"require_mention: {chat.RequireMention}");
 		sb.AppendLine($"open_group: {chat.OpenGroup}");
 		sb.AppendLine($"group_context_messages: {chat.GroupContextMessages?.ToString() ?? "(default)"}");
+		sb.AppendLine($"debounce_ms: {chat.DebounceMs?.ToString() ?? "(default)"}");
 		sb.AppendLine($"agent: {chat.Agent?.Name ?? "(none)"}");
 		string senders = chat.AllowedSenders.Count > 0
 			? string.Join(", ", chat.AllowedSenders.Select(s => s.SenderId))
@@ -151,10 +152,10 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	}
 
 	[KernelFunction("update_chat_config")]
-	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int).")]
+	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int).")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> UpdateChatConfigAsync(
-		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages)")] string key,
+		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages, debounce_ms)")] string key,
 		[Description("New value")] string value) {
 		await ToolContext.NotifyAsync($"✏️ Updating chat config\n{key} = {value}");
 		using IServiceScope scope = scopeFactory.CreateScope();
@@ -183,8 +184,12 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 				if (!int.TryParse(value, out int groupCtx)) return "Invalid integer value for group_context_messages.";
 				chat.GroupContextMessages = groupCtx;
 				break;
+			case "debounce_ms":
+				if (!int.TryParse(value, out int debounce)) return "Invalid integer value for debounce_ms.";
+				chat.DebounceMs = debounce;
+				break;
 			default:
-				return $"Unknown config key '{key}'. Valid keys: enabled, require_mention, open_group, group_context_messages.";
+				return $"Unknown config key '{key}'. Valid keys: enabled, require_mention, open_group, group_context_messages, debounce_ms.";
 		}
 
 		chat.UpdatedAt = DateTimeOffset.UtcNow;

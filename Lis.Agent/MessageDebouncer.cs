@@ -66,10 +66,11 @@ public sealed class MessageDebouncer(
 		}
 
 		// Normal path: ingest first, then decide
+		ChatEntity chat;
 		bool shouldRespond;
 		using (IServiceScope scope = scopeFactory.CreateScope()) {
 			ConversationService svc = scope.ServiceProvider.GetRequiredService<ConversationService>();
-			(_, shouldRespond) = await svc.IngestMessageAsync(message, queued: false, ct);
+			(chat, shouldRespond) = await svc.IngestMessageAsync(message, queued: false, ct);
 		}
 		if (!shouldRespond) return;
 
@@ -80,8 +81,8 @@ public sealed class MessageDebouncer(
 			return;
 		}
 
-		// Normal messages: debounce then AI response
-		int debounceMs = lisOptions.Value.MessageDebounceMs;
+		// Normal messages: debounce then AI response (per-chat override → global default)
+		int debounceMs = chat.DebounceMs ?? lisOptions.Value.MessageDebounceMs;
 		if (debounceMs <= 0) {
 			await this.RespondInScopeAsync(message);
 			return;

@@ -61,6 +61,10 @@ public sealed class ChatEntity {
 	[JsonPropertyName("group_context_messages")]
 	public int? GroupContextMessages { get; set; }
 
+	[Column("debounce_ms")]
+	[JsonPropertyName("debounce_ms")]
+	public int? DebounceMs { get; set; }
+
 	public SessionEntity? CurrentSession { get; set; }
 
 	public AgentEntity? Agent { get; set; }
