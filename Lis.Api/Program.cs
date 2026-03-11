@@ -70,6 +70,7 @@ builder.Services.AddSingleton(Options.Create(new LisOptions {
 												 ReactOnMessageQueued      = Env("LIS_REACT_ON_MESSAGE_QUEUED") == "true",
 												 ReactOnMessageQueuedEmoji = Env("LIS_REACT_ON_MESSAGE_QUEUED_EMOJI") is { Length: > 0 } e ? e : "🕐",
 												 ResumeTokenBudget       = EnvInt("LIS_RESUME_TOKEN_BUDGET",       0),
+											 GroupContextMessages    = EnvInt("LIS_GROUP_CONTEXT_MESSAGES",    5),
 											 NewSessionOnAgentSwitch = Env("LIS_NEW_SESSION_ON_AGENT_SWITCH") != "false"
 											 }));
 

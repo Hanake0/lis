@@ -16,9 +16,13 @@ public sealed class ContextWindowBuilder {
 	public ChatHistory Build(
 		string systemPrompt, IReadOnlyList<MessageEntity> messages,
 		SessionEntity? session = null, SessionEntity? parentSession = null,
-		LisOptions? options = null) {
+		LisOptions? options = null, ChatEntity? chat = null) {
 
 		ChatHistory history = string.IsNullOrWhiteSpace(systemPrompt) ? new() : new(systemPrompt);
+
+		// Apply group context windowing — reduces noise from non-relevant messages
+		if (chat is { IsGroup: true })
+			messages = ApplyGroupWindowing(messages, chat.GroupContextMessages ?? options?.GroupContextMessages ?? 5);
 
 		// Inject parent session summary for continuity
 		if (parentSession?.Summary is { Length: > 0 } parentSummary)
@@ -148,6 +152,50 @@ public sealed class ContextWindowBuilder {
 		}
 
 		return keepFrom; // everything fits within threshold — keep all tools
+	}
+
+	/// <summary>
+	/// Filters group messages to reduce noise. Keeps all bot messages (assistant/tool)
+	/// and limits non-bot messages to the last N before each bot response.
+	/// </summary>
+	internal static IReadOnlyList<MessageEntity> ApplyGroupWindowing(
+		IReadOnlyList<MessageEntity> messages, int keepCount) {
+		if (keepCount <= 0 || messages.Count == 0) return messages;
+
+		// Find indices of "relevant" messages (bot turns: assistant/tool or IsFromMe)
+		HashSet<int> keep = new();
+		for (int i = 0; i < messages.Count; i++) {
+			MessageEntity msg = messages[i];
+			if (msg.IsFromMe || msg.Role is "assistant" or "tool")
+				keep.Add(i);
+		}
+
+		// For each relevant message, walk backwards and keep up to N non-relevant messages before it
+		foreach (int idx in keep.ToList()) {
+			int kept = 0;
+			for (int j = idx - 1; j >= 0 && kept < keepCount; j--) {
+				if (keep.Contains(j)) break; // hit another relevant message, stop
+				keep.Add(j);
+				kept++;
+			}
+		}
+
+		// Keep last N messages after the final bot response (trailing user messages)
+		if (messages.Count > 0) {
+			int kept = 0;
+			for (int j = messages.Count - 1; j >= 0 && kept < keepCount; j--) {
+				if (keep.Contains(j)) break;
+				keep.Add(j);
+				kept++;
+			}
+		}
+
+		List<MessageEntity> filtered = new(keep.Count);
+		for (int i = 0; i < messages.Count; i++)
+			if (keep.Contains(i))
+				filtered.Add(messages[i]);
+
+		return filtered;
 	}
 
 	private static bool HasSummarizePolicy(string? functionName) {

@@ -145,7 +145,7 @@ public sealed class ConversationService(
 			: null;
 
 		ChatHistory chatHistory = contextWindowBuilder.Build(
-			systemPrompt, recentMessages, session, parentSession, lisOptions.Value);
+			systemPrompt, recentMessages, session, parentSession, lisOptions.Value, chat);
 
 		// Pre-send validation: count tokens when context is likely large
 		if (tokenCounter is not null && session.ContextTokens > agentModelSettings.ContextBudget * 0.7) {

@@ -177,11 +177,74 @@ public sealed class ContextWindowBuilderTests {
 		Assert.Equal("Recent output", frc2.Result?.ToString());
 	}
 
-	private static MessageEntity CreateMessage(string body, bool isFromMe, int timestamp) {
+	[Fact]
+	public void GroupWindowing_KeepsLastNBeforeBotResponse() {
+		// 10 stranger messages then 1 bot response
+		List<MessageEntity> messages = [];
+		for (int i = 1; i <= 10; i++)
+			messages.Add(CreateMessage($"noise-{i}", isFromMe: false, timestamp: i, senderId: $"stranger{i}"));
+		messages.Add(CreateMessage("bot reply", isFromMe: true, timestamp: 11));
+
+		IReadOnlyList<MessageEntity> result = ContextWindowBuilder.ApplyGroupWindowing(messages, keepCount: 3);
+
+		// Should keep last 3 noise messages + bot reply = 4
+		Assert.Equal(4, result.Count);
+		Assert.Equal("noise-8", result[0].Body);
+		Assert.Equal("noise-9", result[1].Body);
+		Assert.Equal("noise-10", result[2].Body);
+		Assert.Equal("bot reply", result[3].Body);
+	}
+
+	[Fact]
+	public void GroupWindowing_KeepsBotMessages() {
+		List<MessageEntity> messages = [
+			CreateMessage("user1", isFromMe: false, timestamp: 1, senderId: "u1"),
+			CreateMessage("bot1", isFromMe: true, timestamp: 2),
+			CreateMessage("user2", isFromMe: false, timestamp: 3, senderId: "u2"),
+			CreateMessage("bot2", isFromMe: true, timestamp: 4),
+		];
+
+		IReadOnlyList<MessageEntity> result = ContextWindowBuilder.ApplyGroupWindowing(messages, keepCount: 1);
+
+		Assert.Equal(4, result.Count); // all messages are relevant or directly before a bot message
+	}
+
+	[Fact]
+	public void GroupWindowing_KeepsTrailingMessages() {
+		List<MessageEntity> messages = [
+			CreateMessage("bot1", isFromMe: true, timestamp: 1),
+			CreateMessage("trailing1", isFromMe: false, timestamp: 2, senderId: "u1"),
+			CreateMessage("trailing2", isFromMe: false, timestamp: 3, senderId: "u2"),
+			CreateMessage("trailing3", isFromMe: false, timestamp: 4, senderId: "u3"),
+		];
+
+		IReadOnlyList<MessageEntity> result = ContextWindowBuilder.ApplyGroupWindowing(messages, keepCount: 2);
+
+		// bot + last 2 trailing = 3
+		Assert.Equal(3, result.Count);
+		Assert.Equal("bot1", result[0].Body);
+		Assert.Equal("trailing2", result[1].Body);
+		Assert.Equal("trailing3", result[2].Body);
+	}
+
+	[Fact]
+	public void GroupWindowing_NoOpForSmallConversations() {
+		List<MessageEntity> messages = [
+			CreateMessage("hello", isFromMe: false, timestamp: 1, senderId: "u1"),
+			CreateMessage("hi", isFromMe: true, timestamp: 2),
+		];
+
+		IReadOnlyList<MessageEntity> result = ContextWindowBuilder.ApplyGroupWindowing(messages, keepCount: 5);
+
+		Assert.Equal(2, result.Count); // nothing to trim
+	}
+
+	private static MessageEntity CreateMessage(string body, bool isFromMe, int timestamp, string? senderId = null) {
 		return new MessageEntity {
-			SenderId = isFromMe ? "me" : "user@example.com",
+			SenderId = isFromMe ? "me" : senderId ?? "user@example.com",
 			IsFromMe = isFromMe,
-			Body = body,
+			Role     = isFromMe ? "assistant" : null,
+			Body     = body,
 			Timestamp = DateTimeOffset.UtcNow.AddSeconds(timestamp),
 		};
 	}

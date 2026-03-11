@@ -135,6 +135,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		StringBuilder sb = new();
 		sb.AppendLine($"enabled: {chat.Enabled}");
 		sb.AppendLine($"require_mention: {chat.RequireMention}");
+		sb.AppendLine($"group_context_messages: {chat.GroupContextMessages?.ToString() ?? "(default)"}");
 		sb.AppendLine($"agent: {chat.Agent?.Name ?? "(none)"}");
 		string senders = chat.AllowedSenders.Count > 0
 			? string.Join(", ", chat.AllowedSenders.Select(s => s.SenderId))
@@ -145,10 +146,10 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	}
 
 	[KernelFunction("update_chat_config")]
-	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool).")]
+	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool), group_context_messages (int).")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	public async Task<string> UpdateChatConfigAsync(
-		[Description("Configuration key to update (enabled, require_mention)")] string key,
+		[Description("Configuration key to update (enabled, require_mention, group_context_messages)")] string key,
 		[Description("New value")] string value) {
 		await ToolContext.NotifyAsync($"✏️ Updating chat config\n{key} = {value}");
 		using IServiceScope scope = scopeFactory.CreateScope();
@@ -169,8 +170,12 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 				if (!bool.TryParse(value, out bool requireMention)) return "Invalid boolean value for require_mention.";
 				chat.RequireMention = requireMention;
 				break;
+			case "group_context_messages":
+				if (!int.TryParse(value, out int groupCtx)) return "Invalid integer value for group_context_messages.";
+				chat.GroupContextMessages = groupCtx;
+				break;
 			default:
-				return $"Unknown config key '{key}'. Valid keys: enabled, require_mention.";
+				return $"Unknown config key '{key}'. Valid keys: enabled, require_mention, group_context_messages.";
 		}
 
 		chat.UpdatedAt = DateTimeOffset.UtcNow;
