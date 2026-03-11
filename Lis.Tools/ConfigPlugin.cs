@@ -17,7 +17,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		"model", "max_tokens", "context_budget", "thinking_effort",
 		"tool_notifications", "compaction_threshold", "keep_recent_tokens",
 		"tool_prune_threshold", "tool_keep_threshold", "tool_summarization_policy",
-		"display_name"
+		"display_name", "group_context_prompt"
 	];
 
 	[KernelFunction("get_agent_config")]
@@ -45,6 +45,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		sb.AppendLine($"tool_prune_threshold: {agent.ToolPruneThreshold}");
 		sb.AppendLine($"tool_keep_threshold: {agent.ToolKeepThreshold}");
 		sb.AppendLine($"tool_summarization_policy: {agent.ToolSummarizationPolicy ?? "(none)"}");
+		sb.AppendLine($"group_context_prompt: {agent.GroupContextPrompt ?? "(default)"}");
 		sb.Append($"is_default: {agent.IsDefault}");
 
 		return sb.ToString();
@@ -107,6 +108,9 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 				break;
 			case "display_name":
 				agent.DisplayName = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "group_context_prompt":
+				agent.GroupContextPrompt = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 		}
 

@@ -75,6 +75,10 @@ public sealed class AgentEntity {
 	[JsonPropertyName("tool_summarization_policy")]
 	public string? ToolSummarizationPolicy { get; set; }
 
+	[Column("group_context_prompt")]
+	[JsonPropertyName("group_context_prompt")]
+	public string? GroupContextPrompt { get; set; }
+
 	[Column("is_default")]
 	[JsonPropertyName("is_default")]
 	public bool IsDefault { get; set; }

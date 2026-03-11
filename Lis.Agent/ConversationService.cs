@@ -144,7 +144,7 @@ public sealed class ConversationService(
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 
-		string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct);
+		string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct, chat.IsGroup, agent);
 
 		// Load parent session for continuity
 		SessionEntity? parentSession = session.ParentSessionId is not null
