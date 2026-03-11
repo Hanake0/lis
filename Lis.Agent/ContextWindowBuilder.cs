@@ -216,7 +216,16 @@ public sealed class ContextWindowBuilder {
 					resultCount++;
 
 				if (resultCount < callCount) {
-					List<FunctionCallContent> toRemove = msg.Items.OfType<FunctionCallContent>().ToList();
+					HashSet<string> matchedIds = new();
+					for (int j = i + 1; j < history.Count && history[j].Role == AuthorRole.Tool; j++) {
+						FunctionResultContent? frc = history[j].Items.OfType<FunctionResultContent>().FirstOrDefault();
+						if (frc?.CallId is not null)
+							matchedIds.Add(frc.CallId);
+					}
+
+					List<FunctionCallContent> toRemove = msg.Items.OfType<FunctionCallContent>()
+						.Where(fcc => fcc.Id is null || !matchedIds.Contains(fcc.Id))
+						.ToList();
 					foreach (FunctionCallContent item in toRemove) msg.Items.Remove(item);
 				}
 			}
