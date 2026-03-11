@@ -53,6 +53,10 @@ public sealed class ChatEntity {
 	[JsonPropertyName("require_mention")]
 	public bool RequireMention { get; set; }
 
+	[Column("open_group")]
+	[JsonPropertyName("open_group")]
+	public bool OpenGroup { get; set; }
+
 	[Column("group_context_messages")]
 	[JsonPropertyName("group_context_messages")]
 	public int? GroupContextMessages { get; set; }

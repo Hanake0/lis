@@ -37,17 +37,19 @@ public sealed class AgentService(
 	public bool ShouldRespond(ChatEntity chat, IncomingMessage message, string ownerJid) {
 		if (!chat.Enabled) return false;
 
-		// Owner is always authorized
+		// Owner always bypasses all gates
 		if (!string.IsNullOrEmpty(ownerJid) && message.SenderId == ownerJid) return true;
 
-		// Check per-chat allowed senders
-		if (chat.AllowedSenders.Any(s => s.SenderId == message.SenderId)) return true;
+		// Sender authorized? AllowedSenders OR OpenGroup (for groups)
+		bool authorized = chat.AllowedSenders.Any(s => s.SenderId == message.SenderId)
+		                  || (message.IsGroup && chat.OpenGroup);
 
-		// For groups with require_mention — only respond if mentioned (caller must check mention separately)
-		if (message.IsGroup && chat.RequireMention) return false;
+		if (!authorized) return false;
 
-		// If no owner and no allowed senders match, deny
-		return false;
+		// Mention gate: groups with RequireMention need the bot to be mentioned
+		if (message.IsGroup && chat.RequireMention && !message.IsBotMentioned) return false;
+
+		return true;
 	}
 
 	public static ModelSettings ToModelSettings(AgentEntity agent) => new() {

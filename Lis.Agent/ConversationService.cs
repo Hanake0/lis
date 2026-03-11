@@ -76,6 +76,13 @@ public sealed class ConversationService(
 		if (message.MediaType is not null)
 			await this.ProcessMediaAsync(db, message, ct);
 
+		// Detect implicit mention: reply to a bot message
+		if (message is { IsGroup: true, RepliedId: { Length: > 0 } repliedId } && !message.IsBotMentioned) {
+			bool repliedToBot = await db.Messages
+				.AnyAsync(m => m.ExternalId == repliedId && m.IsFromMe, ct);
+			if (repliedToBot) message.IsBotMentioned = true;
+		}
+
 		try {
 			await channelClient.MarkReadAsync(message.ExternalId, message.ChatId, ct);
 		} catch (Exception ex) {

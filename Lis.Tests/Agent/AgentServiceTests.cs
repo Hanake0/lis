@@ -56,13 +56,23 @@ public class AgentServiceTests {
 	}
 
 	[Fact]
-	public void ShouldRespond_GroupWithRequireMention_ReturnsFalse() {
-		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, RequireMention = true };
+	public void ShouldRespond_GroupWithRequireMention_DeniesUnmentioned() {
+		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, RequireMention = true, OpenGroup = true };
 		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "stranger", IsGroup = true };
 
 		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
 
 		Assert.False(result);
+	}
+
+	[Fact]
+	public void ShouldRespond_GroupWithRequireMention_AllowsMentioned() {
+		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, RequireMention = true, OpenGroup = true };
+		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "stranger", IsGroup = true, IsBotMentioned = true };
+
+		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
+
+		Assert.True(result);
 	}
 
 	[Fact]
@@ -73,6 +83,36 @@ public class AgentServiceTests {
 		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
 
 		Assert.True(result);
+	}
+
+	[Fact]
+	public void ShouldRespond_OpenGroup_AllowsAnySender() {
+		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, OpenGroup = true };
+		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "stranger", IsGroup = true };
+
+		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
+
+		Assert.True(result);
+	}
+
+	[Fact]
+	public void ShouldRespond_OpenGroupRequireMention_DeniesWithoutMention() {
+		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, OpenGroup = true, RequireMention = true };
+		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "stranger", IsGroup = true };
+
+		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
+
+		Assert.False(result);
+	}
+
+	[Fact]
+	public void ShouldRespond_ClosedGroupStranger_Denied() {
+		ChatEntity chat = new() { ExternalId = "g1", Enabled = true };
+		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "stranger", IsGroup = true };
+
+		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
+
+		Assert.False(result);
 	}
 
 	[Fact]
