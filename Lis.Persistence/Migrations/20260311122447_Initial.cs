@@ -34,6 +34,7 @@ namespace Lis.Persistence.Migrations
                     tool_prune_threshold = table.Column<int>(type: "integer", nullable: false),
                     tool_keep_threshold = table.Column<int>(type: "integer", nullable: false),
                     tool_summarization_policy = table.Column<string>(type: "varchar(16)", maxLength: 16, nullable: true),
+                    group_context_prompt = table.Column<string>(type: "text", nullable: true),
                     is_default = table.Column<bool>(type: "boolean", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
@@ -141,7 +142,10 @@ namespace Lis.Persistence.Migrations
                     current_session_id = table.Column<long>(type: "bigint", nullable: true),
                     agent_id = table.Column<long>(type: "bigint", nullable: true),
                     enabled = table.Column<bool>(type: "boolean", nullable: false),
-                    require_mention = table.Column<bool>(type: "boolean", nullable: false)
+                    require_mention = table.Column<bool>(type: "boolean", nullable: false),
+                    open_group = table.Column<bool>(type: "boolean", nullable: false),
+                    group_context_messages = table.Column<int>(type: "integer", nullable: true),
+                    debounce_ms = table.Column<int>(type: "integer", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -229,6 +233,7 @@ namespace Lis.Persistence.Migrations
                     media_data = table.Column<byte[]>(type: "bytea", nullable: true),
                     media_mime_type = table.Column<string>(type: "varchar(64)", maxLength: 64, nullable: true),
                     reply_to_id = table.Column<string>(type: "varchar(128)", maxLength: 128, nullable: true),
+                    reply_content = table.Column<string>(type: "text", nullable: true),
                     sk_content = table.Column<string>(type: "jsonb", nullable: true),
                     role = table.Column<string>(type: "varchar(16)", maxLength: 16, nullable: true),
                     input_tokens = table.Column<int>(type: "integer", nullable: true),

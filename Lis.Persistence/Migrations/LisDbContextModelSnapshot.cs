@@ -55,6 +55,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("display_name")
                         .HasJsonPropertyName("display_name");
 
+                    b.Property<string>("GroupContextPrompt")
+                        .HasColumnType("text")
+                        .HasColumnName("group_context_prompt")
+                        .HasJsonPropertyName("group_context_prompt");
+
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean")
                         .HasColumnName("is_default")
@@ -181,6 +186,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("current_session_id")
                         .HasJsonPropertyName("current_session_id");
 
+                    b.Property<int?>("DebounceMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("debounce_ms")
+                        .HasJsonPropertyName("debounce_ms");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean")
                         .HasColumnName("enabled")
@@ -193,6 +203,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("external_id")
                         .HasJsonPropertyName("external_id");
 
+                    b.Property<int?>("GroupContextMessages")
+                        .HasColumnType("integer")
+                        .HasColumnName("group_context_messages")
+                        .HasJsonPropertyName("group_context_messages");
+
                     b.Property<bool>("IsGroup")
                         .HasColumnType("boolean")
                         .HasColumnName("is_group")
@@ -203,6 +218,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnType("varchar(256)")
                         .HasColumnName("name")
                         .HasJsonPropertyName("name");
+
+                    b.Property<bool>("OpenGroup")
+                        .HasColumnType("boolean")
+                        .HasColumnName("open_group")
+                        .HasJsonPropertyName("open_group");
 
                     b.Property<bool>("RequireMention")
                         .HasColumnType("boolean")
@@ -424,6 +444,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("queued")
                         .HasJsonPropertyName("queued");
+
+                    b.Property<string>("ReplyContent")
+                        .HasColumnType("text")
+                        .HasColumnName("reply_content")
+                        .HasJsonPropertyName("reply_content");
 
                     b.Property<string>("ReplyToId")
                         .HasMaxLength(128)
