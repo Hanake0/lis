@@ -14,6 +14,7 @@ public sealed class ResponsePlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("react_to_message")]
 	[Description("React to a message with an emoji. Optionally target a specific message by its ID (the number in brackets before the message).")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> ReactToMessageAsync(
 		[Description("Emoji to react with (e.g. '👍', '❤️', '😂')")]
 		string emoji,

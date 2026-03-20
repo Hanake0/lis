@@ -20,6 +20,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("create_memory")]
 	[Description("Store a new memory. Optionally link to a person by name.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> CreateMemoryAsync(
 		[Description("The information to remember")] string content,
 		[Description("Person's name this memory is about (optional)")] string? contactName = null) {
@@ -47,6 +48,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("search_memories")]
 	[Description("Search stored memories by keyword or phrase. Optionally filter by person.")]
 	[ToolSummarization(SummarizationPolicy.Summarize)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> SearchMemoriesAsync(
 		[Description("Search keyword or phrase")] string query,
 		[Description("Person's name to filter by (optional)")] string? contactName = null) {
@@ -88,6 +90,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("update_memory")]
 	[Description("Update an existing memory's content.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> UpdateMemoryAsync(
 		[Description("Memory ID")] long id,
 		[Description("Updated content")] string content) {
@@ -109,6 +112,7 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("delete_memory")]
 	[Description("Delete a memory by ID.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> DeleteMemoryAsync(
 		[Description("Memory ID")] long id) {
 		await ToolContext.NotifyAsync($"🗑️ Deleting memory #{id}");

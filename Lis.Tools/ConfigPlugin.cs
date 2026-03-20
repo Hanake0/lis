@@ -23,6 +23,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("get_agent_config")]
 	[Description("Read the current agent's configuration fields.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> GetAgentConfigAsync() {
 		await ToolContext.NotifyAsync("⚙️ Reading agent config");
 		using IServiceScope scope = scopeFactory.CreateScope();
@@ -54,6 +55,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("update_agent_config")]
 	[Description("Update a configuration field on the current agent. Valid keys: model, max_tokens, context_budget, thinking_effort, tool_notifications, compaction_threshold, keep_recent_tokens, tool_prune_threshold, tool_keep_threshold, tool_summarization_policy, display_name.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> UpdateAgentConfigAsync(
 		[Description("Configuration key to update")] string key,
 		[Description("New value")] string value) {
@@ -123,6 +125,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("get_chat_config")]
 	[Description("Read the current chat's configuration fields.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> GetChatConfigAsync() {
 		await ToolContext.NotifyAsync("⚙️ Reading chat config");
 		using IServiceScope scope = scopeFactory.CreateScope();
@@ -154,6 +157,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("update_chat_config")]
 	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int).")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> UpdateChatConfigAsync(
 		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages, debounce_ms)")] string key,
 		[Description("New value")] string value) {
@@ -201,6 +205,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("add_allowed_sender")]
 	[Description("Add a sender ID to the current chat's allowed senders list.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> AddAllowedSenderAsync(
 		[Description("The sender ID to allow")] string senderId) {
 		await ToolContext.NotifyAsync($"➕ Adding allowed sender: {senderId}");
@@ -230,6 +235,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("remove_allowed_sender")]
 	[Description("Remove a sender ID from the current chat's allowed senders list.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> RemoveAllowedSenderAsync(
 		[Description("The sender ID to remove")] string senderId) {
 		await ToolContext.NotifyAsync($"➖ Removing allowed sender: {senderId}");
@@ -256,6 +262,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("list_allowed_senders")]
 	[Description("List all allowed senders for the current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> ListAllowedSendersAsync() {
 		await ToolContext.NotifyAsync("📋 Listing allowed senders");
 		using IServiceScope scope = scopeFactory.CreateScope();

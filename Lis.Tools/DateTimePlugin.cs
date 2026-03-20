@@ -14,6 +14,7 @@ public sealed class DateTimePlugin {
 	[KernelFunction("get_current_datetime")]
 	[Description("Gets the current date and time in Brasilia timezone (BRT)")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.Open)]
 	public static async Task<string> GetCurrentDateTimeAsync() {
 		await ToolContext.NotifyAsync("🕐 Getting current date/time");
 		return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Tz)
