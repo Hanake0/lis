@@ -56,6 +56,8 @@ public static class AgentSetup {
 		services.AddSingleton<IChatCommand, AgentsCommand>();
 		services.AddSingleton<IChatCommand, ModelCommand>();
 		services.AddSingleton<IChatCommand, ModelsCommand>();
+		services.AddSingleton<IChatCommand, ApproveCommand>();
+		services.AddSingleton<IChatCommand, DenyCommand>();
 		services.AddSingleton<CommandRouter>();
 
 		// Media
