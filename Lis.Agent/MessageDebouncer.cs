@@ -38,14 +38,24 @@ public sealed class MessageDebouncer(
 		ChatState state    = this.GetChatState(message.ChatId);
 		bool      isQueued = state.IsResponding;
 
-		// If AI is responding: react clock immediately, then ingest as queued
+		// AI is responding: ingest with full auth, queue only if authorized
 		if (isQueued) {
-			if (!await this.ShouldRespondAsync(message, ct)) {
-				await this.IngestAsync(message, queued: true, ct);
+			bool authorized;
+			using (IServiceScope scope = scopeFactory.CreateScope()) {
+				ConversationService svc = scope.ServiceProvider.GetRequiredService<ConversationService>();
+				(_, authorized) = await svc.IngestMessageAsync(message, queued: true, ct);
+			}
+
+			// Auth failed — un-queue so flush won't trigger a response for this message
+			if (!authorized) {
+				using IServiceScope scope = scopeFactory.CreateScope();
+				LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+				await db.Messages.Where(m => m.Id == message.DbId)
+					.ExecuteUpdateAsync(s => s.SetProperty(p => p.Queued, false), ct);
 				return;
 			}
 
-			// React clock before ingestion so user sees feedback instantly
+			// React clock — user sees feedback that message is queued for response
 			if (lisOptions.Value.ReactOnMessageQueued) {
 				try {
 					lock (state.Lock) { state.ReactedIds.Add(message.ExternalId); }
@@ -55,9 +65,7 @@ public sealed class MessageDebouncer(
 				} catch { /* best effort */ }
 			}
 
-			await this.IngestAsync(message, queued: true, ct);
-
-			// /abort additionally cancels the active AI response
+			// /abort cancels the active AI response
 			if (message.Body?.Trim() is "/abort" or "/stop" or "/cancel") {
 				if (state.ActiveCts is { } activeCts) await activeCts.CancelAsync();
 				CancelPendingDebounce(state);
@@ -163,27 +171,6 @@ public sealed class MessageDebouncer(
 
 		if (logger.IsEnabled(LogLevel.Information))
 			logger.LogInformation("Triggered pending responses for {Count} chats after crash recovery", chatIds.Count);
-	}
-
-	[Trace("MessageDebouncer > ShouldRespondAsync")]
-	private async Task<bool> ShouldRespondAsync(IncomingMessage message, CancellationToken ct) {
-		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
-
-		ChatEntity? chat = await db.Chats
-			.Include(c => c.AllowedSenders)
-			.Include(c => c.Agent)
-			.FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
-
-		if (chat is null) return false;
-
-		return agentService.ShouldRespond(chat, message, lisOptions.Value.OwnerJid);
-	}
-
-	private async Task IngestAsync(IncomingMessage message, bool queued, CancellationToken ct) {
-		using IServiceScope scope = scopeFactory.CreateScope();
-		ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
-		await svc.IngestMessageAsync(message, queued, ct);
 	}
 
 	private async Task ExecuteCommandAsync(IncomingMessage message) {
