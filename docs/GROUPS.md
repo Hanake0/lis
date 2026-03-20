@@ -31,11 +31,16 @@ When a message arrives in a group, `AgentService.ShouldRespond` evaluates:
 
 ### Mention Detection
 
-Since GOWA doesn't include `mentioned_jids` in webhook payloads, mentions are detected via:
+Since GOWA doesn't include `mentioned_jids` in webhook payloads, mentions are detected by
+`AgentService.DetectMentionAsync` — the single source of truth for all detection strategies:
 
 1. **Reply-to-bot** — if the user replies to a bot message, it's treated as an implicit mention
    (DB lookup: `WHERE external_id = repliedToId AND is_from_me = true`)
-2. **Text pattern** — can be extended to check if body contains the bot's display name
+2. **Text pattern** — if the message body contains the bot's display name (case-insensitive).
+   The display name comes from `AgentEntity.DisplayName` (e.g., "Lis").
+
+All callers use `AgentService.ShouldRespondAsync` which runs mention detection before the gate
+check, ensuring consistent behavior across normal and queued message paths.
 
 ## Context Windowing
 

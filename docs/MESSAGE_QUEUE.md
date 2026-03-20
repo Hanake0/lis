@@ -30,10 +30,13 @@ Multiple chats process in full parallel. Each `ChatState` has:
 ### Queued Mode (`IsResponding == true`)
 
 1. Message arrives at `HandleIncomingAsync`
-2. `IsResponding` is `true` — message ingested with `queued = true`
-3. Clock reaction added to message (visual indicator)
-4. `/abort`, `/stop`, `/cancel` additionally cancel `ActiveCts` and pending debounce
-5. After AI response finishes, the **flush loop** runs (still inside semaphore)
+2. `IsResponding` is `true` — message ingested via `IngestMessageAsync` with `queued = true`
+3. `IngestMessageAsync` runs the full auth flow (`AgentService.ShouldRespondAsync`):
+   mention detection (reply-to-bot, text pattern) + gate check (enabled, auth, mention)
+4. If auth **fails** — message is un-queued (`queued = false`), no response triggered
+5. If auth **passes** — clock reaction added, message stays queued for flush
+6. `/abort`, `/stop`, `/cancel` additionally cancel `ActiveCts` and pending debounce
+7. After AI response finishes, the **flush loop** runs (still inside semaphore)
 
 ## The `queued` Flag
 
