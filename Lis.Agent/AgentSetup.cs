@@ -30,6 +30,9 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<MemoryPlugin>(pluginName: "mem", serviceProvider: sp);
 			kernel.Plugins.AddFromType<ConfigPlugin>(pluginName: "cfg", serviceProvider: sp);
 			kernel.Plugins.AddFromType<ResponsePlugin>(pluginName: "resp", serviceProvider: sp);
+			kernel.Plugins.AddFromType<ExecPlugin>(pluginName: "exec", serviceProvider: sp);
+			kernel.Plugins.AddFromType<FileSystemPlugin>(pluginName: "fs", serviceProvider: sp);
+			kernel.Plugins.AddFromType<WebPlugin>(pluginName: "web", serviceProvider: sp);
 
 			// Build auth registry from plugin metadata
 			ToolAuthRegistry authRegistry = sp.GetRequiredService<ToolAuthRegistry>();
