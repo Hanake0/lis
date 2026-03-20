@@ -79,6 +79,34 @@ public sealed class AgentEntity {
 	[JsonPropertyName("group_context_prompt")]
 	public string? GroupContextPrompt { get; set; }
 
+	// Tool policy
+
+	[MaxLength(32)]
+	[Column("tool_profile", TypeName = "varchar(32)")]
+	[JsonPropertyName("tool_profile")]
+	public string? ToolProfile { get; set; }
+
+	[Column("tools_allow")]
+	[JsonPropertyName("tools_allow")]
+	public string? ToolsAllow { get; set; }
+
+	[Column("tools_deny")]
+	[JsonPropertyName("tools_deny")]
+	public string? ToolsDeny { get; set; }
+
+	[Column("workspace_path")]
+	[JsonPropertyName("workspace_path")]
+	public string? WorkspacePath { get; set; }
+
+	[MaxLength(16)]
+	[Column("exec_security", TypeName = "varchar(16)")]
+	[JsonPropertyName("exec_security")]
+	public string ExecSecurity { get; set; } = "deny";
+
+	[Column("exec_timeout_seconds")]
+	[JsonPropertyName("exec_timeout_seconds")]
+	public int ExecTimeoutSeconds { get; set; } = 120;
+
 	[Column("is_default")]
 	[JsonPropertyName("is_default")]
 	public bool IsDefault { get; set; }

@@ -17,7 +17,9 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		"model", "max_tokens", "context_budget", "thinking_effort",
 		"tool_notifications", "compaction_threshold", "keep_recent_tokens",
 		"tool_prune_threshold", "tool_keep_threshold", "tool_summarization_policy",
-		"display_name", "group_context_prompt"
+		"display_name", "group_context_prompt",
+		"tool_profile", "tools_allow", "tools_deny", "workspace_path",
+		"exec_security", "exec_timeout_seconds"
 	];
 
 	[KernelFunction("get_agent_config")]
@@ -47,6 +49,12 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		sb.AppendLine($"tool_keep_threshold: {agent.ToolKeepThreshold}");
 		sb.AppendLine($"tool_summarization_policy: {agent.ToolSummarizationPolicy ?? "(none)"}");
 		sb.AppendLine($"group_context_prompt: {agent.GroupContextPrompt ?? "(default)"}");
+		sb.AppendLine($"tool_profile: {agent.ToolProfile ?? "(standard)"}");
+		sb.AppendLine($"tools_allow: {agent.ToolsAllow ?? "(none)"}");
+		sb.AppendLine($"tools_deny: {agent.ToolsDeny ?? "(none)"}");
+		sb.AppendLine($"workspace_path: {agent.WorkspacePath ?? "(none)"}");
+		sb.AppendLine($"exec_security: {agent.ExecSecurity}");
+		sb.AppendLine($"exec_timeout_seconds: {agent.ExecTimeoutSeconds}");
 		sb.Append($"is_default: {agent.IsDefault}");
 
 		return sb.ToString();
@@ -113,6 +121,26 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 				break;
 			case "group_context_prompt":
 				agent.GroupContextPrompt = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "tool_profile":
+				agent.ToolProfile = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "tools_allow":
+				agent.ToolsAllow = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "tools_deny":
+				agent.ToolsDeny = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "workspace_path":
+				agent.WorkspacePath = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "exec_security":
+				if (value is not ("deny" or "allowlist" or "full")) return "Invalid value for exec_security. Valid: deny, allowlist, full.";
+				agent.ExecSecurity = value;
+				break;
+			case "exec_timeout_seconds":
+				if (!int.TryParse(value, out int execTimeout)) return "Invalid integer value for exec_timeout_seconds.";
+				agent.ExecTimeoutSeconds = execTimeout;
 				break;
 		}
 
