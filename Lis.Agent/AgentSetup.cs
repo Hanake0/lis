@@ -1,5 +1,6 @@
 using Lis.Agent.Commands;
 using Lis.Tools;
+using Lis.Tools.Browser;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,7 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<ExecPlugin>(pluginName: "exec", serviceProvider: sp);
 			kernel.Plugins.AddFromType<FileSystemPlugin>(pluginName: "fs", serviceProvider: sp);
 			kernel.Plugins.AddFromType<WebPlugin>(pluginName: "web", serviceProvider: sp);
+			kernel.Plugins.AddFromType<BrowserPlugin>(pluginName: "browser", serviceProvider: sp);
 
 			// Build auth registry from plugin metadata
 			ToolAuthRegistry authRegistry = sp.GetRequiredService<ToolAuthRegistry>();
@@ -45,6 +47,7 @@ public static class AgentSetup {
 		services.AddSingleton<ToolAuthRegistry>();
 		services.AddSingleton<ToolPolicyService>();
 		services.AddSingleton<IApprovalService, ApprovalService>();
+		services.AddSingleton<BrowserSessionManager>();
 
 		// Agent
 		services.AddSingleton<AgentService>();
