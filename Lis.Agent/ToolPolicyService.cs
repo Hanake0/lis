@@ -33,6 +33,22 @@ public sealed class ToolPolicyService {
 	/// <summary>
 	/// Returns the list of kernel functions available for the given agent.
 	/// </summary>
+	/// <summary>
+	/// Checks whether a single tool is allowed by the agent's policy.
+	/// Used by ToolRunner to block tools at execution time.
+	/// </summary>
+	public bool IsToolAllowed(string pluginName, string functionName, AgentEntity agent) {
+		string fullName    = $"{pluginName}_{functionName}";
+		string profileName = agent.ToolProfile ?? "standard";
+
+		if (!MatchesProfile(fullName, profileName)) return false;
+		if (agent.ToolsAllow is { Length: > 0 } allow && !MatchesAny(fullName, allow)) return false;
+		if (agent.ToolsDeny is { Length: > 0 } deny && MatchesAny(fullName, deny)) return false;
+		if (agent.ExecSecurity == "deny" && fullName.StartsWith("exec_", StringComparison.OrdinalIgnoreCase)) return false;
+
+		return true;
+	}
+
 	public IReadOnlyList<KernelFunction> ResolveAvailableTools(Kernel kernel, AgentEntity agent) {
 		string profileName = agent.ToolProfile ?? "standard";
 		List<KernelFunction> result = [];

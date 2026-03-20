@@ -29,7 +29,6 @@ public sealed class ConversationService(
 	AgentService                 agentService,
 	IMediaProcessor              mediaProcessor,
 	IApprovalService             approvalService,
-	ToolPolicyService            toolPolicyService,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
 	ITokenCounter?               tokenCounter = null) : IConversationService {
@@ -208,11 +207,12 @@ public sealed class ConversationService(
 				}
 			};
 
-		IReadOnlyList<KernelFunction> availableTools = toolPolicyService.ResolveAvailableTools(kernel, agent);
-
+		// Tool filtering happens at execution time in ToolRunner (auth checks).
+		// Passing functions: to FunctionChoiceBehavior causes Anthropic SDK serialization issues,
+		// so we advertise all tools and block unauthorized ones at invocation.
 		PromptExecutionSettings settings = new() {
 			ModelId                = agentModelSettings.Model,
-			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(functions: availableTools, autoInvoke: false),
+			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: false),
 			ExtensionData          = extensionData
 		};
 

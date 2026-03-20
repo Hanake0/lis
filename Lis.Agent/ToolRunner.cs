@@ -3,14 +3,17 @@ using System.Text;
 
 using Lis.Core.Channel;
 using Lis.Core.Util;
+using Lis.Persistence;
+using Lis.Persistence.Entities;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
-public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService approvalService, IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
+public sealed class ToolRunner(ToolAuthRegistry authRegistry, ToolPolicyService toolPolicyService, IServiceScopeFactory scopeFactory, IApprovalService approvalService, IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
 	internal const string UsageMetadataKey = "LisTokenUsage";
 
 	private static int MaxIterations =>
@@ -112,6 +115,16 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 	private async Task<FunctionResultContent> InvokeFunctionAsync(
 		Kernel kernel, FunctionCallContent call, CancellationToken ct) {
 		try {
+			// Tool policy gate — check if agent's profile allows this tool
+			if (ToolContext.AgentId is { } agentId) {
+				using IServiceScope scope = scopeFactory.CreateScope();
+				LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+				AgentEntity?        agent = await db.Agents.FindAsync([agentId], ct);
+
+				if (agent is not null && !toolPolicyService.IsToolAllowed(call.PluginName ?? "", call.FunctionName, agent))
+					return new FunctionResultContent(call, "This tool is not available for the current agent profile.");
+			}
+
 			// Authorization gate
 			ToolAuthLevel level = authRegistry.GetLevel(call.PluginName, call.FunctionName);
 
