@@ -34,7 +34,41 @@ public sealed class AgentService(
 		return defaultAgent;
 	}
 
-	public bool ShouldRespond(ChatEntity chat, IncomingMessage message, string ownerJid) {
+	/// <summary>
+	/// Runs all mention detection strategies, setting <see cref="IncomingMessage.IsBotMentioned"/>.
+	/// New detection strategies should be added here — this is the single source of truth.
+	/// </summary>
+	public async Task DetectMentionAsync(LisDbContext db, ChatEntity chat, IncomingMessage message, CancellationToken ct) {
+		if (!message.IsGroup) return;
+		if (message.IsBotMentioned) return;
+
+		// Strategy 1: reply-to-bot — user replied to a message the bot sent
+		if (message.RepliedId is { Length: > 0 } repliedId) {
+			bool repliedToBot = await db.Messages
+				.AnyAsync(m => m.ExternalId == repliedId && m.IsFromMe, ct);
+			if (repliedToBot) { message.IsBotMentioned = true; return; }
+		}
+
+		// Strategy 2: text mention — message body contains the bot's display name
+		if (message.Body is not { Length: > 0 } body) return;
+
+		AgentEntity agent = await this.ResolveForChatAsync(db, chat, ct);
+		if (agent.DisplayName is { Length: > 0 } botName
+		    && body.Contains(botName, StringComparison.OrdinalIgnoreCase))
+			message.IsBotMentioned = true;
+	}
+
+	/// <summary>
+	/// Full async auth flow: mention detection + gate check.
+	/// Single entry point for all callers — prevents forgetting mention detection.
+	/// </summary>
+	public async Task<bool> ShouldRespondAsync(
+		LisDbContext db, ChatEntity chat, IncomingMessage message, string ownerJid, CancellationToken ct) {
+		await this.DetectMentionAsync(db, chat, message, ct);
+		return this.ShouldRespond(chat, message, ownerJid);
+	}
+
+	internal bool ShouldRespond(ChatEntity chat, IncomingMessage message, string ownerJid) {
 		if (!chat.Enabled) return false;
 
 		// Owner always bypasses all gates
