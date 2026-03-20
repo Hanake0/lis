@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Lis.Persistence;
 
-public sealed class LisDbContext(DbContextOptions<LisDbContext> options) :DbContext(options) {
+public class LisDbContext(DbContextOptions<LisDbContext> options) :DbContext(options) {
 	public DbSet<ChatEntity>                Chats              { get; init; } = null!;
 	public DbSet<MessageEntity>             Messages           { get; init; } = null!;
 	public DbSet<ContactEntity>             Contacts           { get; init; } = null!;
