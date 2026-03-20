@@ -10,7 +10,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
-public sealed class ToolRunner(ToolAuthRegistry authRegistry, IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
+public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService approvalService, IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
 	internal const string UsageMetadataKey = "LisTokenUsage";
 
 	private static int MaxIterations =>
@@ -120,7 +120,28 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IUsageExtractor us
 				return new FunctionResultContent(call, "This tool requires owner authorization.");
 			}
 
-			// ApprovalRequired is wired in Phase 2 via IApprovalService
+			if (level == ToolAuthLevel.ApprovalRequired) {
+				// Extract command from call arguments for the approval request
+				string? command = call.Arguments?.TryGetValue("command", out object? cmdObj) == true
+					? cmdObj?.ToString()
+					: null;
+
+				if (command is not null) {
+					string? cwd = call.Arguments?.TryGetValue("cwd", out object? cwdObj) == true
+						? cwdObj?.ToString()
+						: null;
+
+					ApprovalRequest approvalRequest = new(command, cwd, 0, ToolContext.AgentId);
+					ApprovalResult  approvalResult  = await approvalService.RequestApprovalAsync(approvalRequest, ct);
+
+					if (approvalResult.Decision is ApprovalDecision.Deny or ApprovalDecision.Timeout) {
+						string reason = approvalResult.Decision == ApprovalDecision.Timeout
+							? "Approval timed out."
+							: "Command execution denied by owner.";
+						return new FunctionResultContent(call, reason);
+					}
+				}
+			}
 
 			return await call.InvokeAsync(kernel, ct);
 		} catch (Exception ex) {
