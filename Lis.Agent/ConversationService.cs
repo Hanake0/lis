@@ -29,6 +29,7 @@ public sealed class ConversationService(
 	AgentService                 agentService,
 	IMediaProcessor              mediaProcessor,
 	IApprovalService             approvalService,
+	ToolPolicyService            toolPolicyService,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
 	ITokenCounter?               tokenCounter = null) : IConversationService {
@@ -207,9 +208,15 @@ public sealed class ConversationService(
 				}
 			};
 
-		// Tool filtering happens at execution time in ToolRunner (auth checks).
-		// Passing functions: to FunctionChoiceBehavior causes Anthropic SDK serialization issues,
-		// so we advertise all tools and block unauthorized ones at invocation.
+		// Clone kernel and strip plugins not in the agent's tool policy.
+		// FunctionChoiceBehavior.Auto(functions:) breaks Anthropic SDK serialization,
+		// so we filter at the kernel level instead — SK auto-discovers from plugins.
+		Kernel agentKernel = kernel.Clone();
+		HashSet<string> allowedPlugins = toolPolicyService.GetAllowedPluginNames(agent);
+		foreach (KernelPlugin plugin in agentKernel.Plugins.ToList())
+			if (!allowedPlugins.Contains(plugin.Name))
+				agentKernel.Plugins.Remove(plugin);
+
 		PromptExecutionSettings settings = new() {
 			ModelId                = agentModelSettings.Model,
 			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: false),
@@ -218,7 +225,7 @@ public sealed class ConversationService(
 
 		TokenUsage? lastUsage = null;
 
-		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, kernel, settings, ct)) {
+		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, agentKernel, settings, ct)) {
 			string? externalId = null;
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content)) {
 				(string? content, bool shouldQuote) = ResponseDirectives.Parse(msg.Content);

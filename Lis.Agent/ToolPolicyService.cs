@@ -30,23 +30,76 @@ public sealed class ToolPolicyService {
 		["group:config"]  = ["cfg_"]
 	};
 
+	// Profile → allowed plugin names (registration names from AgentSetup)
+	private static readonly Dictionary<string, HashSet<string>> ProfilePlugins = new(StringComparer.OrdinalIgnoreCase) {
+		["minimal"]  = ["dt", "resp"],
+		["standard"] = ["dt", "resp", "mem", "prompt", "cfg", "web"],
+		["coding"]   = ["dt", "resp", "mem", "prompt", "cfg", "web", "exec", "fs"],
+		["full"]     = [] // empty = everything
+	};
+
 	/// <summary>
-	/// Returns the list of kernel functions available for the given agent.
+	/// Returns the set of plugin names allowed for the given agent.
+	/// Used with Kernel.Clone() to strip unwanted plugins before the API call.
 	/// </summary>
-	/// <summary>
-	/// Checks whether a single tool is allowed by the agent's policy.
-	/// Used by ToolRunner to block tools at execution time.
-	/// </summary>
-	public bool IsToolAllowed(string pluginName, string functionName, AgentEntity agent) {
-		string fullName    = $"{pluginName}_{functionName}";
+	public HashSet<string> GetAllowedPluginNames(AgentEntity agent) {
 		string profileName = agent.ToolProfile ?? "standard";
 
-		if (!MatchesProfile(fullName, profileName)) return false;
-		if (agent.ToolsAllow is { Length: > 0 } allow && !MatchesAny(fullName, allow)) return false;
-		if (agent.ToolsDeny is { Length: > 0 } deny && MatchesAny(fullName, deny)) return false;
-		if (agent.ExecSecurity == "deny" && fullName.StartsWith("exec_", StringComparison.OrdinalIgnoreCase)) return false;
+		if (!ProfilePlugins.TryGetValue(profileName, out HashSet<string>? baseSet) || baseSet.Count == 0) {
+			// "full" or unknown profile → all plugins allowed, start with everything
+			// Apply deny rules below if any
+			HashSet<string> all = ["dt", "resp", "mem", "prompt", "cfg", "web", "exec", "fs", "browser"];
 
-		return true;
+			if (agent.ExecSecurity == "deny") all.Remove("exec");
+			if (agent.ToolsDeny is { Length: > 0 } deny) ApplyDenyGlobs(all, deny);
+
+			return all;
+		}
+
+		HashSet<string> result = [..baseSet];
+
+		// exec_security overrides profile inclusion
+		if (agent.ExecSecurity == "deny") result.Remove("exec");
+
+		// Apply deny globs
+		if (agent.ToolsDeny is { Length: > 0 } denyPatterns) ApplyDenyGlobs(result, denyPatterns);
+
+		// Apply allow globs (if set, further restrict to only matching)
+		if (agent.ToolsAllow is { Length: > 0 } allowPatterns) ApplyAllowGlobs(result, allowPatterns);
+
+		return result;
+	}
+
+	private static void ApplyDenyGlobs(HashSet<string> plugins, string patterns) {
+		foreach (string raw in patterns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+			// Expand group shorthands
+			if (Groups.TryGetValue(raw, out string[]? prefixes)) {
+				foreach (string prefix in prefixes)
+					plugins.RemoveWhere(p => (p + "_").Equals(prefix, StringComparison.OrdinalIgnoreCase));
+				continue;
+			}
+
+			// Remove plugins whose prefix matches the glob
+			plugins.RemoveWhere(p => FileSystemName.MatchesSimpleExpression(raw, p + "_*", ignoreCase: true));
+		}
+	}
+
+	private static void ApplyAllowGlobs(HashSet<string> plugins, string patterns) {
+		HashSet<string> allowed = [];
+		foreach (string raw in patterns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+			if (Groups.TryGetValue(raw, out string[]? prefixes)) {
+				foreach (string prefix in prefixes)
+					foreach (string p in plugins)
+						if ((p + "_").Equals(prefix, StringComparison.OrdinalIgnoreCase))
+							allowed.Add(p);
+				continue;
+			}
+
+			foreach (string p in plugins)
+				if (FileSystemName.MatchesSimpleExpression(raw, p + "_*", ignoreCase: true))
+					allowed.Add(p);
+		}
+		plugins.IntersectWith(allowed);
 	}
 
 	public IReadOnlyList<KernelFunction> ResolveAvailableTools(Kernel kernel, AgentEntity agent) {
