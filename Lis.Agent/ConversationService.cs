@@ -172,6 +172,8 @@ public sealed class ConversationService(
 		ToolContext.MessageExternalId    = message.ExternalId;
 		ToolContext.NotificationsEnabled = agent.ToolNotifications;
 		ToolContext.AgentId              = agent.Id;
+		ToolContext.SenderJid            = message.SenderId;
+		ToolContext.IsOwner              = message.SenderId == lisOptions.Value.OwnerJid;
 
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 

@@ -10,7 +10,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
-public sealed class ToolRunner(IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
+public sealed class ToolRunner(ToolAuthRegistry authRegistry, IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
 	internal const string UsageMetadataKey = "LisTokenUsage";
 
 	private static int MaxIterations =>
@@ -112,6 +112,16 @@ public sealed class ToolRunner(IUsageExtractor usageExtractor, ILogger<ToolRunne
 	private async Task<FunctionResultContent> InvokeFunctionAsync(
 		Kernel kernel, FunctionCallContent call, CancellationToken ct) {
 		try {
+			// Authorization gate
+			ToolAuthLevel level = authRegistry.GetLevel(call.PluginName, call.FunctionName);
+
+			if (level == ToolAuthLevel.OwnerOnly && !ToolContext.IsOwner) {
+				logger.LogWarning("Non-owner tried to invoke owner-only tool '{Tool}'", call.FunctionName);
+				return new FunctionResultContent(call, "This tool requires owner authorization.");
+			}
+
+			// ApprovalRequired is wired in Phase 2 via IApprovalService
+
 			return await call.InvokeAsync(kernel, ct);
 		} catch (Exception ex) {
 			if (ex is KeyNotFoundException)

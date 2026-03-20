@@ -31,8 +31,15 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<ConfigPlugin>(pluginName: "cfg", serviceProvider: sp);
 			kernel.Plugins.AddFromType<ResponsePlugin>(pluginName: "resp", serviceProvider: sp);
 
+			// Build auth registry from plugin metadata
+			ToolAuthRegistry authRegistry = sp.GetRequiredService<ToolAuthRegistry>();
+			authRegistry.Build(kernel);
+
 			return kernel;
 		});
+
+		// Tool authorization
+		services.AddSingleton<ToolAuthRegistry>();
 
 		// Agent
 		services.AddSingleton<AgentService>();
