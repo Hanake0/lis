@@ -29,6 +29,7 @@ public sealed class ConversationService(
 	AgentService                 agentService,
 	IMediaProcessor              mediaProcessor,
 	IApprovalService             approvalService,
+	ToolPolicyService            toolPolicyService,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
 	ITokenCounter?               tokenCounter = null) : IConversationService {
@@ -207,9 +208,11 @@ public sealed class ConversationService(
 				}
 			};
 
+		IReadOnlyList<KernelFunction> availableTools = toolPolicyService.ResolveAvailableTools(kernel, agent);
+
 		PromptExecutionSettings settings = new() {
 			ModelId                = agentModelSettings.Model,
-			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: false),
+			FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(functions: availableTools, autoInvoke: false),
 			ExtensionData          = extensionData
 		};
 

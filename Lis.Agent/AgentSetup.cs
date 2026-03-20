@@ -38,8 +38,9 @@ public static class AgentSetup {
 			return kernel;
 		});
 
-		// Tool authorization and approvals
+		// Tool authorization, policy, and approvals
 		services.AddSingleton<ToolAuthRegistry>();
+		services.AddSingleton<ToolPolicyService>();
 		services.AddSingleton<IApprovalService, ApprovalService>();
 
 		// Agent
