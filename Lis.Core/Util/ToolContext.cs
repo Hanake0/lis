@@ -9,6 +9,8 @@ public static class ToolContext {
 	private static readonly AsyncLocal<string?>         MessageExternalIdLocal = new();
 	private static readonly AsyncLocal<int>             CacheBreakLocal      = new();
 	private static readonly AsyncLocal<long?>           AgentIdLocal         = new();
+	private static readonly AsyncLocal<string?>         SenderJidLocal       = new();
+	private static readonly AsyncLocal<bool>            IsOwnerLocal         = new();
 
 	public static string?         ChatId               { get => ChatIdLocal.Value;        set => ChatIdLocal.Value = value; }
 	public static IChannelClient? Channel              { get => ChannelLocal.Value;        set => ChannelLocal.Value = value; }
@@ -23,6 +25,8 @@ public static class ToolContext {
 	public static int             CacheBreakIndex      { get => CacheBreakLocal.Value;    set => CacheBreakLocal.Value = value; }
 
 	public static long?           AgentId              { get => AgentIdLocal.Value;       set => AgentIdLocal.Value = value; }
+	public static string?         SenderJid            { get => SenderJidLocal.Value;     set => SenderJidLocal.Value = value; }
+	public static bool            IsOwner              { get => IsOwnerLocal.Value;       set => IsOwnerLocal.Value = value; }
 
 	public static async Task NotifyAsync(string message, CancellationToken ct = default) {
 		if (!NotificationsEnabled || ChatId is null || Channel is null) return;
