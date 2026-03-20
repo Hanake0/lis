@@ -28,6 +28,7 @@ public sealed class ConversationService(
 	CommandRouter                commandRouter,
 	AgentService                 agentService,
 	IMediaProcessor              mediaProcessor,
+	IApprovalService             approvalService,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
 	ITokenCounter?               tokenCounter = null) : IConversationService {
@@ -58,6 +59,23 @@ public sealed class ConversationService(
 		msg.SenderName = echo.SenderName;
 		msg.Timestamp  = echo.Timestamp;
 		await db.SaveChangesAsync(ct);
+	}
+
+	[Trace("ConversationService > HandleReactionAsync")]
+	public async Task HandleReactionAsync(string messageId, string chatId, string emoji, string senderId, CancellationToken ct) {
+		// Only owner reactions resolve approvals
+		if (senderId != lisOptions.Value.OwnerJid) return;
+
+		ApprovalDecision? decision = emoji switch {
+			"👍" => ApprovalDecision.Once,
+			"✅" => ApprovalDecision.Always,
+			"❌" => ApprovalDecision.Deny,
+			_    => null
+		};
+
+		if (decision is null) return;
+
+		await approvalService.ResolveByMessageAsync(messageId, decision.Value, senderId);
 	}
 
 	[Trace("ConversationService > IngestMessageAsync")]

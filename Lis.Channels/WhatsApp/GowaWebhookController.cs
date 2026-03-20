@@ -45,6 +45,27 @@ public class GowaWebhookController(
 		if (payload is null || string.IsNullOrEmpty(payload.Id))
 			return this.Ok();
 
+		// Reaction events: GOWA sends a "reaction" extension field with {"emoji":"...", "message_id":"..."}
+		if (payload.Extensions?.TryGetValue("reaction", out JsonElement reactionEl) == true
+		    && reactionEl.ValueKind == JsonValueKind.Object) {
+
+			string? emoji     = reactionEl.TryGetProperty("emoji", out JsonElement emojiProp) ? emojiProp.GetString() : null;
+			string? reactedId = reactionEl.TryGetProperty("message_id", out JsonElement msgIdProp) ? msgIdProp.GetString() : null;
+
+			if (!string.IsNullOrEmpty(emoji) && !string.IsNullOrEmpty(reactedId) && !string.IsNullOrEmpty(payload.ChatId)) {
+				string senderId = payload.From ?? "";
+				_ = Task.Run(async () => {
+					try {
+						await conversationService.HandleReactionAsync(reactedId, payload.ChatId, emoji, senderId, CancellationToken.None);
+					} catch (Exception ex) {
+						logger.LogError(ex, "Error processing reaction on {MessageId}", reactedId);
+					}
+				});
+			}
+
+			return this.Ok();
+		}
+
 		// Group JIDs end with @g.us
 		bool isGroup = payload.ChatId?.EndsWith("@g.us") is true;
 

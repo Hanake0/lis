@@ -98,6 +98,13 @@ public sealed class MessageDebouncer(
 		await svc.HandleSentEchoAsync(echo, ct);
 	}
 
+	[Trace("MessageDebouncer > HandleReactionAsync")]
+	public async Task HandleReactionAsync(string messageId, string chatId, string emoji, string senderId, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
+		await svc.HandleReactionAsync(messageId, chatId, emoji, senderId, ct);
+	}
+
 	[Trace("MessageDebouncer > HandleTypingAsync")]
 	public Task HandleTypingAsync(string chatId, CancellationToken ct) {
 		int debounceMs = lisOptions.Value.MessageDebounceMs;
