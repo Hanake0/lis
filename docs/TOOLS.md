@@ -55,12 +55,14 @@ Supports pgvector cosine-distance search when an `IEmbeddingGenerator` is regist
 | Function | Description | Auth |
 |----------|-------------|------|
 | `get_agent_config` | Read all agent configuration fields | Open |
-| `update_agent_config` | Update a single agent config key | Open |
+| `update_agent_config` | Update a single agent config key | OwnerOnly |
 | `get_chat_config` | Read current chat configuration | Open |
-| `update_chat_config` | Update a single chat config key | Open |
-| `add_allowed_sender` | Add a sender to the chat's allowed list | Open |
-| `remove_allowed_sender` | Remove a sender from the allowed list | Open |
+| `update_chat_config` | Update a single chat config key | OwnerOnly |
+| `add_allowed_sender` | Add a sender to the chat's allowed list | OwnerOnly |
+| `remove_allowed_sender` | Remove a sender from the allowed list | OwnerOnly |
 | `list_allowed_senders` | List all allowed senders for the chat | Open |
+| `list_chats` | List all chats with their configuration | OwnerOnly |
+| `manage_chat` | Update config on any chat by external ID | OwnerOnly |
 
 Agent config keys: `model`, `max_tokens`, `context_budget`, `thinking_effort`, `tool_notifications`, `compaction_threshold`, `keep_recent_tokens`, `tool_prune_threshold`, `tool_keep_threshold`, `tool_summarization_policy`, `display_name`, `group_context_prompt`, `tool_profile`, `tools_allow`, `tools_deny`, `workspace_path`, `exec_security`, `exec_timeout_seconds`.
 

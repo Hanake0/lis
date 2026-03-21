@@ -20,9 +20,9 @@ When a message arrives in a group, `AgentService.ShouldRespond` evaluates:
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `enabled` | bool | true | Master switch — disables all responses |
+| `enabled` | bool | true (groups), false (non-owner DMs) | Master switch — disables all responses |
 | `open_group` | bool | false | Allow all group members (skip AllowedSenders check) |
-| `require_mention` | bool | false | Require bot mention to respond |
+| `require_mention` | bool | true (groups), false (DMs) | Require bot mention to respond |
 
 `OpenGroup` and `RequireMention` are independent axes:
 - `OpenGroup=true, RequireMention=false` → anyone can talk freely
@@ -100,8 +100,8 @@ Set via `update_chat_config debounce_ms <value>`. Useful for groups where a long
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | bool | true | Master switch |
-| `require_mention` | bool | false | Require mention to respond |
+| `enabled` | bool | true (groups) | Master switch |
+| `require_mention` | bool | true (groups) | Require mention to respond |
 | `open_group` | bool | false | Allow all group members |
 | `group_context_messages` | int | null | Context window size (null = global) |
 | `debounce_ms` | int | null | Debounce delay (null = global) |

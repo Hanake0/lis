@@ -107,11 +107,13 @@ File and command operations are restricted to the agent's workspace directory.
 |---------|---------|
 | `tool_profile` | `standard` (no exec, fs, or browser) |
 | `exec_security` | `deny` (exec tools hidden) |
-| `chat.Enabled` | true |
+| `chat.Enabled` | true (groups/owner DMs), false (non-owner DMs) |
 | `chat.OpenGroup` | false (explicit sender allowlist required) |
-| `chat.RequireMention` | false |
+| `chat.RequireMention` | true (groups), false (DMs) |
 
 A freshly created agent with default settings has no access to exec, filesystem, or browser tools. Enabling them requires explicit configuration.
+
+New non-owner DMs are disabled by default — the owner must enable them via `manage_chat` or natural language from their own chat.
 
 ## Threat Model
 
@@ -125,7 +127,7 @@ An attacker sends a message that tricks the AI into calling dangerous tools.
 
 A non-owner sends messages to a chat the AI monitors.
 
-**Mitigations**: ShouldRespond gate, AllowedSenders list, OwnerOnly tool auth (tool calls from non-owner conversations are rejected).
+**Mitigations**: ShouldRespond gate, AllowedSenders list, OwnerOnly tool auth (tool calls from non-owner conversations are rejected), non-owner DMs disabled by default, config write tools restricted to owner, slash commands for agent/model management restricted to owner.
 
 ### Workspace escape
 
@@ -147,3 +149,4 @@ A crafted command string exploits shell interpretation.
 4. **Use deny globs to restrict within a profile** — e.g. `tools_deny = cfg_update_agent_config` to prevent the AI from changing its own config
 5. **Review allowlist entries** — commands approved with "always" become permanent; audit the `exec_allowlist` table periodically
 6. **Keep groups locked down** — use `OpenGroup = false` and explicit `AllowedSenders` for group chats
+7. **Use `list_chats` and `manage_chat`** to remotely manage chat access from the owner's conversation
