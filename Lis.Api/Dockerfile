@@ -35,12 +35,11 @@ WORKDIR /app
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
     LC_ALL=pt_BR.UTF-8 \
     LANG=pt_BR.UTF-8
-RUN apk add --no-cache icu-data-full icu-libs tzdata bash gcompat
+RUN apk add --no-cache icu-data-full icu-libs tzdata bash \
+    gcompat chromium nss freetype harfbuzz ca-certificates ttf-freefont
 
-# Install Playwright Chromium with dependencies
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN dotnet tool install --global Microsoft.Playwright.CLI \
-    && /root/.dotnet/tools/playwright install chromium --with-deps
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY --from=build /app .
 ENTRYPOINT ["dotnet", "Lis.Api.dll"]

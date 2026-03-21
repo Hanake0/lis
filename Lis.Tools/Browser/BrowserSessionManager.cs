@@ -32,8 +32,10 @@ public sealed partial class BrowserSessionManager(ILogger<BrowserSessionManager>
 			}
 
 			LogLaunchingBrowser(logger, agentId, headless);
+			string? execPath = Environment.GetEnvironmentVariable("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
 			IBrowser browser = await this._playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions {
-				Headless = headless,
+				Headless       = headless,
+				ExecutablePath = execPath is { Length: > 0 } ? execPath : null,
 			});
 
 			IBrowserContext context = await browser.NewContextAsync();
