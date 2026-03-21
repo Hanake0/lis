@@ -10,7 +10,7 @@ public sealed class LisOptions {
 	public int    KeepRecentTokens        { get; init; } = 4000;
 	public int    ToolPruneThreshold      { get; init; } = 8000;
 	public int    ToolKeepThreshold       { get; init; } = 2000;
-	public int    CompactionThreshold     { get; init; }           // 0 → 80% of ContextBudget
+	public int    CompactionThreshold     { get; init; }           // percentage of ContextBudget (0 = 80%)
 	public bool   CompactionNotify        { get; init; } = true;
 	public string CompactionModel         { get; init; } = "";     // empty = use main model
 	public string ToolSummarizationPolicy { get; init; } = "auto"; // auto, keep_all, keep_none

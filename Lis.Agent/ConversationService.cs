@@ -294,9 +294,8 @@ public sealed class ConversationService(
 	private async Task CheckCompactionTriggersAsync(
 		LisDbContext db, SessionEntity session, AgentEntity agent, TokenUsage usage, string chatId, CancellationToken ct) {
 		int totalInput = usage.TotalInputTokens;
-		int compactionThreshold = agent.CompactionThreshold > 0
-			? agent.CompactionThreshold
-			: (int)(agent.ContextBudget * 0.8);
+		int thresholdPct = agent.CompactionThreshold > 0 ? agent.CompactionThreshold : 80;
+		int compactionThreshold = (int)(agent.ContextBudget * (thresholdPct / 100.0));
 
 		// Full compaction takes priority — calculate split point from recent messages
 		if (totalInput > compactionThreshold && !session.IsCompacting) {

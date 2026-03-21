@@ -99,6 +99,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 				break;
 			case "compaction_threshold":
 				if (!int.TryParse(value, out int compThreshold)) return "Invalid integer value for compaction_threshold.";
+				if (compThreshold < 0 || compThreshold > 100) return "Invalid value for compaction_threshold. Must be 0-100 (percentage of context_budget, 0 = 80%).";
 				agent.CompactionThreshold = compThreshold;
 				break;
 			case "keep_recent_tokens":
