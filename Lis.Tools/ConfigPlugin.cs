@@ -1,17 +1,19 @@
 using System.ComponentModel;
 using System.Text;
 
+using Lis.Core.Configuration;
 using Lis.Core.Util;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 
 namespace Lis.Tools;
 
-public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
+public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<LisOptions> lisOptions) {
 
 	private static readonly HashSet<string> KnownAgentFields = [
 		"model", "max_tokens", "context_budget", "thinking_effort",
@@ -168,19 +170,32 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 
 		if (chat is null) return "Chat not found.";
 
+		LisOptions opts = lisOptions.Value;
+
+		string agentName;
+		if (chat.Agent is not null) {
+			agentName = chat.Agent.Name;
+		} else {
+			AgentEntity? defaultAgent = await db.Agents.FirstOrDefaultAsync(a => a.IsDefault);
+			agentName = defaultAgent is not null ? $"{defaultAgent.Name} (default)" : "(none)";
+		}
+
 		StringBuilder sb = new();
 		sb.AppendLine($"enabled: {chat.Enabled}");
 		sb.AppendLine($"require_mention: {chat.RequireMention}");
 		sb.AppendLine($"open_group: {chat.OpenGroup}");
-		sb.AppendLine($"group_context_messages: {chat.GroupContextMessages?.ToString() ?? "(default)"}");
-		sb.AppendLine($"debounce_ms: {chat.DebounceMs?.ToString() ?? "(default)"}");
-		sb.AppendLine($"agent: {chat.Agent?.Name ?? "(none)"}");
+		sb.AppendLine($"group_context_messages: {Resolve(chat.GroupContextMessages, opts.GroupContextMessages)}");
+		sb.AppendLine($"debounce_ms: {Resolve(chat.DebounceMs, opts.MessageDebounceMs)}");
+		sb.AppendLine($"agent: {agentName}");
 		string senders = chat.AllowedSenders.Count > 0
 			? string.Join(", ", chat.AllowedSenders.Select(s => s.SenderId))
 			: "(none)";
 		sb.Append($"allowed_senders: {senders}");
 
 		return sb.ToString();
+
+		static string Resolve(int? chatValue, int globalDefault) =>
+			chatValue is not null ? $"{chatValue} (chat)" : $"{globalDefault} (default)";
 	}
 
 	[KernelFunction("update_chat_config")]

@@ -112,9 +112,19 @@ public class AgentServiceTests : IDisposable {
 	}
 
 	[Fact]
-	public void ShouldRespond_GroupOwnerBypassesMention() {
+	public void ShouldRespond_GroupOwnerRespectsMention() {
 		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, RequireMention = true };
 		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "owner@jid", IsGroup = true };
+
+		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
+
+		Assert.False(result);
+	}
+
+	[Fact]
+	public void ShouldRespond_GroupOwnerWithMention_ReturnsTrue() {
+		ChatEntity chat = new() { ExternalId = "g1", Enabled = true, RequireMention = true };
+		IncomingMessage msg = new() { ExternalId = "m1", ChatId = "g1", SenderId = "owner@jid", IsGroup = true, IsBotMentioned = true };
 
 		bool result = this._sut.ShouldRespond(chat, msg, "owner@jid");
 

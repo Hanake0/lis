@@ -71,19 +71,18 @@ public sealed class AgentService(
 	internal bool ShouldRespond(ChatEntity chat, IncomingMessage message, string ownerJid) {
 		if (!chat.Enabled) return false;
 
-		// Owner always bypasses all gates
-		if (!string.IsNullOrEmpty(ownerJid) && message.SenderId == ownerJid) return true;
+		bool isOwner = !string.IsNullOrEmpty(ownerJid) && message.SenderId == ownerJid;
+
+		// Mention gate applies to everyone (including owner)
+		if (message.IsGroup && chat.RequireMention && !message.IsBotMentioned) return false;
+
+		// Owner bypasses authorization
+		if (isOwner) return true;
 
 		// Sender authorized? AllowedSenders OR OpenGroup (for groups)
 		bool authorized = chat.AllowedSenders.Any(s => s.SenderId == message.SenderId)
 		                  || (message.IsGroup && chat.OpenGroup);
-
-		if (!authorized) return false;
-
-		// Mention gate: groups with RequireMention need the bot to be mentioned
-		if (message.IsGroup && chat.RequireMention && !message.IsBotMentioned) return false;
-
-		return true;
+		return authorized;
 	}
 
 	public static ModelSettings ToModelSettings(AgentEntity agent) => new() {
