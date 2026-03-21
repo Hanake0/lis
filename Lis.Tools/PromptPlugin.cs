@@ -85,7 +85,7 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 	}
 
 	[KernelFunction("update_prompt_section")]
-	[Description("Update the content of a prompt section. Changes take effect on the next message.")]
+	[Description("Create or update a prompt section. Creates the section if it doesn't exist. Changes take effect on the next message.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> UpdatePromptSectionAsync(
@@ -94,7 +94,9 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		[Description("New content for the section")]
 		string content,
 		[Description("Optional agent name. Omit to use current agent.")]
-		string? agent = null) {
+		string? agent = null,
+		[Description("Sort order (lower = earlier in prompt). Auto-appends if omitted on create.")]
+		int? sortOrder = null) {
 		string label = agent is { Length: > 0 } ? $" ({agent})" : "";
 		await ToolContext.NotifyAsync($"✏️ Updating prompt section{label}\nname: {name}\n```\n{content}\n```");
 		using IServiceScope scope = scopeFactory.CreateScope();
@@ -104,12 +106,28 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		PromptSectionEntity? section = await db.PromptSections
 											   .FirstOrDefaultAsync(s => s.AgentId == agentId && s.Name == name);
 
-		if (section is null) return $"Section '{name}' not found.";
+		if (section is not null) {
+			section.Content   = content;
+			if (sortOrder is not null) section.SortOrder = sortOrder.Value;
+			section.UpdatedAt = DateTimeOffset.UtcNow;
+		} else {
+			int order = sortOrder ?? (await db.PromptSections
+				.Where(s => s.AgentId == agentId)
+				.MaxAsync(s => (int?)s.SortOrder) ?? 0) + 10;
 
-		section.Content   = content;
-		section.UpdatedAt = DateTimeOffset.UtcNow;
+			db.PromptSections.Add(new PromptSectionEntity {
+				AgentId   = agentId,
+				Name      = name,
+				Content   = content,
+				SortOrder = order,
+				IsEnabled = true,
+				CreatedAt = DateTimeOffset.UtcNow,
+				UpdatedAt = DateTimeOffset.UtcNow
+			});
+		}
+
 		await db.SaveChangesAsync();
 
-		return $"Section '{name}' updated.";
+		return section is not null ? $"Section '{name}' updated." : $"Section '{name}' created.";
 	}
 }
