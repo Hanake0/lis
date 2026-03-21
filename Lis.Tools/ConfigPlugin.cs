@@ -29,6 +29,22 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 		       ?? throw new ArgumentException($"Chat '{externalId}' not found.");
 	}
 
+	private static async Task<AgentEntity> ResolveAgentAsync(LisDbContext db, string? agent) {
+		long agentId;
+		if (agent is { Length: > 0 }) {
+			if (!ToolContext.IsOwner)
+				throw new UnauthorizedAccessException("Only the owner can access other agents' config.");
+
+			AgentEntity? target = await db.Agents.FirstOrDefaultAsync(a => a.Name == agent);
+			if (target is null) throw new ArgumentException($"Agent '{agent}' not found.");
+			return target;
+		}
+
+		agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
+		return await db.Agents.FindAsync(agentId)
+		       ?? throw new ArgumentException("Agent not found.");
+	}
+
 	private static readonly HashSet<string> KnownAgentFields = [
 		"model", "max_tokens", "context_budget", "thinking_effort",
 		"tool_notifications", "compaction_threshold", "keep_recent_tokens",
@@ -39,129 +55,127 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	];
 
 	[KernelFunction("get_agent_config")]
-	[Description("Read the current agent's configuration fields.")]
+	[Description("Read an agent's configuration fields. Omit agent to use current agent.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.Open)]
-	public async Task<string> GetAgentConfigAsync() {
+	public async Task<string> GetAgentConfigAsync(
+		[Description("Optional agent name. Omit to use current agent.")] string? agent = null) {
 		await ToolContext.NotifyAsync("⚙️ Reading agent config");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
-		AgentEntity? agent = await db.Agents.FindAsync(agentId);
-		if (agent is null) return "Agent not found.";
+		AgentEntity agentEntity = await ResolveAgentAsync(db, agent);
 
 		StringBuilder sb = new();
-		sb.AppendLine($"name: {agent.Name}");
-		sb.AppendLine($"display_name: {agent.DisplayName ?? "(none)"}");
-		sb.AppendLine($"model: {agent.Model}");
-		sb.AppendLine($"max_tokens: {agent.MaxTokens}");
-		sb.AppendLine($"context_budget: {agent.ContextBudget}");
-		sb.AppendLine($"thinking_effort: {agent.ThinkingEffort ?? "(none)"}");
-		sb.AppendLine($"tool_notifications: {agent.ToolNotifications}");
-		sb.AppendLine($"compaction_threshold: {agent.CompactionThreshold}");
-		sb.AppendLine($"keep_recent_tokens: {agent.KeepRecentTokens}");
-		sb.AppendLine($"tool_prune_threshold: {agent.ToolPruneThreshold}");
-		sb.AppendLine($"tool_keep_threshold: {agent.ToolKeepThreshold}");
-		sb.AppendLine($"tool_summarization_policy: {agent.ToolSummarizationPolicy ?? "(none)"}");
-		sb.AppendLine($"group_context_prompt: {agent.GroupContextPrompt ?? "(default)"}");
-		sb.AppendLine($"tool_profile: {agent.ToolProfile ?? "(standard)"}");
-		sb.AppendLine($"tools_allow: {agent.ToolsAllow ?? "(none)"}");
-		sb.AppendLine($"tools_deny: {agent.ToolsDeny ?? "(none)"}");
-		sb.AppendLine($"workspace_path: {agent.WorkspacePath ?? "(none)"}");
-		sb.AppendLine($"exec_security: {agent.ExecSecurity}");
-		sb.AppendLine($"exec_timeout_seconds: {agent.ExecTimeoutSeconds}");
-		sb.Append($"is_default: {agent.IsDefault}");
+		sb.AppendLine($"name: {agentEntity.Name}");
+		sb.AppendLine($"display_name: {agentEntity.DisplayName ?? "(none)"}");
+		sb.AppendLine($"model: {agentEntity.Model}");
+		sb.AppendLine($"max_tokens: {agentEntity.MaxTokens}");
+		sb.AppendLine($"context_budget: {agentEntity.ContextBudget}");
+		sb.AppendLine($"thinking_effort: {agentEntity.ThinkingEffort ?? "(none)"}");
+		sb.AppendLine($"tool_notifications: {agentEntity.ToolNotifications}");
+		sb.AppendLine($"compaction_threshold: {agentEntity.CompactionThreshold}");
+		sb.AppendLine($"keep_recent_tokens: {agentEntity.KeepRecentTokens}");
+		sb.AppendLine($"tool_prune_threshold: {agentEntity.ToolPruneThreshold}");
+		sb.AppendLine($"tool_keep_threshold: {agentEntity.ToolKeepThreshold}");
+		sb.AppendLine($"tool_summarization_policy: {agentEntity.ToolSummarizationPolicy ?? "(none)"}");
+		sb.AppendLine($"group_context_prompt: {agentEntity.GroupContextPrompt ?? "(default)"}");
+		sb.AppendLine($"tool_profile: {agentEntity.ToolProfile ?? "(standard)"}");
+		sb.AppendLine($"tools_allow: {agentEntity.ToolsAllow ?? "(none)"}");
+		sb.AppendLine($"tools_deny: {agentEntity.ToolsDeny ?? "(none)"}");
+		sb.AppendLine($"workspace_path: {agentEntity.WorkspacePath ?? "(none)"}");
+		sb.AppendLine($"exec_security: {agentEntity.ExecSecurity}");
+		sb.AppendLine($"exec_timeout_seconds: {agentEntity.ExecTimeoutSeconds}");
+		sb.Append($"is_default: {agentEntity.IsDefault}");
 
 		return sb.ToString();
 	}
 
 	[KernelFunction("update_agent_config")]
-	[Description("Update a configuration field on the current agent. Valid keys: model, max_tokens, context_budget, thinking_effort, tool_notifications, compaction_threshold, keep_recent_tokens, tool_prune_threshold, tool_keep_threshold, tool_summarization_policy, display_name.")]
+	[Description("Update a configuration field on an agent. Valid keys: model, max_tokens, context_budget, thinking_effort, tool_notifications, compaction_threshold, keep_recent_tokens, tool_prune_threshold, tool_keep_threshold, tool_summarization_policy, display_name. Omit agent to use current agent.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> UpdateAgentConfigAsync(
 		[Description("Configuration key to update")] string key,
-		[Description("New value")] string value) {
+		[Description("New value")] string value,
+		[Description("Optional agent name. Omit to use current agent.")] string? agent = null) {
 		await ToolContext.NotifyAsync($"✏️ Updating agent config\n{key} = {value}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
-		AgentEntity? agent = await db.Agents.FindAsync(agentId);
-		if (agent is null) return "Agent not found.";
+		AgentEntity agentEntity = await ResolveAgentAsync(db, agent);
 
 		if (!KnownAgentFields.Contains(key))
 			return $"Unknown config key '{key}'. Valid keys: {string.Join(", ", KnownAgentFields)}.";
 
 		switch (key) {
 			case "model":
-				agent.Model = value;
+				agentEntity.Model = value;
 				break;
 			case "max_tokens":
 				if (!int.TryParse(value, out int maxTokens)) return "Invalid integer value for max_tokens.";
-				agent.MaxTokens = maxTokens;
+				agentEntity.MaxTokens = maxTokens;
 				break;
 			case "context_budget":
 				if (!int.TryParse(value, out int contextBudget)) return "Invalid integer value for context_budget.";
-				agent.ContextBudget = contextBudget;
+				agentEntity.ContextBudget = contextBudget;
 				break;
 			case "thinking_effort":
-				agent.ThinkingEffort = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.ThinkingEffort = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "tool_notifications":
 				if (!bool.TryParse(value, out bool toolNotif)) return "Invalid boolean value for tool_notifications.";
-				agent.ToolNotifications = toolNotif;
+				agentEntity.ToolNotifications = toolNotif;
 				break;
 			case "compaction_threshold":
 				if (!int.TryParse(value, out int compThreshold)) return "Invalid integer value for compaction_threshold.";
 				if (compThreshold < 0 || compThreshold > 100) return "Invalid value for compaction_threshold. Must be 0-100 (percentage of context_budget, 0 = 80%).";
-				agent.CompactionThreshold = compThreshold;
+				agentEntity.CompactionThreshold = compThreshold;
 				break;
 			case "keep_recent_tokens":
 				if (!int.TryParse(value, out int keepRecent)) return "Invalid integer value for keep_recent_tokens.";
-				agent.KeepRecentTokens = keepRecent;
+				agentEntity.KeepRecentTokens = keepRecent;
 				break;
 			case "tool_prune_threshold":
 				if (!int.TryParse(value, out int toolPrune)) return "Invalid integer value for tool_prune_threshold.";
-				agent.ToolPruneThreshold = toolPrune;
+				agentEntity.ToolPruneThreshold = toolPrune;
 				break;
 			case "tool_keep_threshold":
 				if (!int.TryParse(value, out int toolKeep)) return "Invalid integer value for tool_keep_threshold.";
-				agent.ToolKeepThreshold = toolKeep;
+				agentEntity.ToolKeepThreshold = toolKeep;
 				break;
 			case "tool_summarization_policy":
-				agent.ToolSummarizationPolicy = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.ToolSummarizationPolicy = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "display_name":
-				agent.DisplayName = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.DisplayName = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "group_context_prompt":
-				agent.GroupContextPrompt = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.GroupContextPrompt = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "tool_profile":
-				agent.ToolProfile = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.ToolProfile = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "tools_allow":
-				agent.ToolsAllow = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.ToolsAllow = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "tools_deny":
-				agent.ToolsDeny = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.ToolsDeny = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "workspace_path":
-				agent.WorkspacePath = string.IsNullOrWhiteSpace(value) ? null : value;
+				agentEntity.WorkspacePath = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "exec_security":
 				if (value is not ("deny" or "allowlist" or "full")) return "Invalid value for exec_security. Valid: deny, allowlist, full.";
-				agent.ExecSecurity = value;
+				agentEntity.ExecSecurity = value;
 				break;
 			case "exec_timeout_seconds":
 				if (!int.TryParse(value, out int execTimeout)) return "Invalid integer value for exec_timeout_seconds.";
-				agent.ExecTimeoutSeconds = execTimeout;
+				agentEntity.ExecTimeoutSeconds = execTimeout;
 				break;
 		}
 
-		agent.UpdatedAt = DateTimeOffset.UtcNow;
+		agentEntity.UpdatedAt = DateTimeOffset.UtcNow;
 		await db.SaveChangesAsync();
 
 		return $"Agent config '{key}' updated to '{value}'.";
