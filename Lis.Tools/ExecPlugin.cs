@@ -7,7 +7,6 @@ using Lis.Core.Util;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
 
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 
