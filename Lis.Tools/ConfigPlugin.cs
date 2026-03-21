@@ -63,7 +63,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("update_agent_config")]
 	[Description("Update a configuration field on the current agent. Valid keys: model, max_tokens, context_budget, thinking_effort, tool_notifications, compaction_threshold, keep_recent_tokens, tool_prune_threshold, tool_keep_threshold, tool_summarization_policy, display_name.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
-	[ToolAuthorization(ToolAuthLevel.Open)]
+	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> UpdateAgentConfigAsync(
 		[Description("Configuration key to update")] string key,
 		[Description("New value")] string value) {
@@ -185,7 +185,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("update_chat_config")]
 	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int).")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
-	[ToolAuthorization(ToolAuthLevel.Open)]
+	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> UpdateChatConfigAsync(
 		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages, debounce_ms)")] string key,
 		[Description("New value")] string value) {
@@ -233,7 +233,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("add_allowed_sender")]
 	[Description("Add a sender ID to the current chat's allowed senders list.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
-	[ToolAuthorization(ToolAuthLevel.Open)]
+	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> AddAllowedSenderAsync(
 		[Description("The sender ID to allow")] string senderId) {
 		await ToolContext.NotifyAsync($"➕ Adding allowed sender: {senderId}");
@@ -263,7 +263,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 	[KernelFunction("remove_allowed_sender")]
 	[Description("Remove a sender ID from the current chat's allowed senders list.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
-	[ToolAuthorization(ToolAuthLevel.Open)]
+	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> RemoveAllowedSenderAsync(
 		[Description("The sender ID to remove")] string senderId) {
 		await ToolContext.NotifyAsync($"➖ Removing allowed sender: {senderId}");
@@ -315,5 +315,85 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory) {
 		}
 
 		return sb.ToString().TrimEnd();
+	}
+
+	[KernelFunction("list_chats")]
+	[Description("List all chats with their configuration. Owner-only admin tool for managing chats remotely.")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
+	public async Task<string> ListChatsAsync() {
+		await ToolContext.NotifyAsync("📋 Listing all chats");
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		List<ChatEntity> chats = await db.Chats
+			.Include(c => c.Agent)
+			.OrderByDescending(c => c.UpdatedAt)
+			.ToListAsync();
+
+		if (chats.Count == 0) return "No chats found.";
+
+		StringBuilder sb = new();
+		foreach (ChatEntity chat in chats) {
+			sb.AppendLine($"- {chat.ExternalId} | {chat.Name ?? "(unnamed)"} | " +
+			              $"group={chat.IsGroup} | enabled={chat.Enabled} | " +
+			              $"mention={chat.RequireMention} | open={chat.OpenGroup} | " +
+			              $"agent={chat.Agent?.Name ?? "(default)"}");
+		}
+
+		return sb.ToString().TrimEnd();
+	}
+
+	private static readonly HashSet<string> KnownChatFields = [
+		"enabled", "require_mention", "open_group", "group_context_messages", "debounce_ms"
+	];
+
+	[KernelFunction("manage_chat")]
+	[Description("Update a configuration field on any chat by its external ID. Owner-only admin tool for managing chats remotely. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int).")]
+	[ToolSummarization(SummarizationPolicy.Prune)]
+	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
+	public async Task<string> ManageChatAsync(
+		[Description("External ID of the chat to manage")] string chatId,
+		[Description("Configuration key to update")] string key,
+		[Description("New value")] string value) {
+		await ToolContext.NotifyAsync($"✏️ Managing chat {chatId}\n{key} = {value}");
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		ChatEntity? chat = await db.Chats
+			.FirstOrDefaultAsync(c => c.ExternalId == chatId);
+
+		if (chat is null) return $"Chat '{chatId}' not found.";
+
+		if (!KnownChatFields.Contains(key))
+			return $"Unknown config key '{key}'. Valid keys: {string.Join(", ", KnownChatFields)}.";
+
+		switch (key) {
+			case "enabled":
+				if (!bool.TryParse(value, out bool enabled)) return "Invalid boolean value for enabled.";
+				chat.Enabled = enabled;
+				break;
+			case "require_mention":
+				if (!bool.TryParse(value, out bool requireMention)) return "Invalid boolean value for require_mention.";
+				chat.RequireMention = requireMention;
+				break;
+			case "open_group":
+				if (!bool.TryParse(value, out bool openGroup)) return "Invalid boolean value for open_group.";
+				chat.OpenGroup = openGroup;
+				break;
+			case "group_context_messages":
+				if (!int.TryParse(value, out int groupCtx)) return "Invalid integer value for group_context_messages.";
+				chat.GroupContextMessages = groupCtx;
+				break;
+			case "debounce_ms":
+				if (!int.TryParse(value, out int debounce)) return "Invalid integer value for debounce_ms.";
+				chat.DebounceMs = debounce;
+				break;
+		}
+
+		chat.UpdatedAt = DateTimeOffset.UtcNow;
+		await db.SaveChangesAsync();
+
+		return $"Chat '{chatId}' config '{key}' updated to '{value}'.";
 	}
 }
