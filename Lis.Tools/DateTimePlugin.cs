@@ -8,7 +8,7 @@ using Microsoft.SemanticKernel;
 namespace Lis.Tools;
 
 public sealed class DateTimePlugin {
-	private static readonly TimeZoneInfo Tz      = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time");
+	private static readonly TimeZoneInfo Tz      = TimeZoneHelper.Find("E. South America Standard Time");
 	private static readonly CultureInfo  Culture = new("pt-BR");
 
 	[KernelFunction("get_current_datetime")]

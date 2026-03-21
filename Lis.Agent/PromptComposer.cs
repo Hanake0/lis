@@ -1,6 +1,7 @@
 using System.Text;
 
 using Lis.Core.Configuration;
+using Lis.Core.Util;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
 
@@ -82,7 +83,7 @@ public sealed class PromptComposer(
 	}
 
 	private string Interpolate(string content, string groupContextText) {
-		TimeZoneInfo tz = TimeZoneInfo.FindSystemTimeZoneById(lisOptions.Value.Timezone);
+		TimeZoneInfo tz = TimeZoneHelper.Find(lisOptions.Value.Timezone);
 		DateTime local  = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
 
 		string timeOfDay = local.Hour switch {
