@@ -88,7 +88,7 @@ public sealed class ConversationService(
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		ChatEntity chat = await UpsertChatAsync(db, message, ct);
+		ChatEntity chat = await UpsertChatAsync(db, message, lisOptions.Value.OwnerJid, ct);
 		SessionEntity session = await this.EnsureSessionAsync(db, chat, ct);
 		await PersistMessageAsync(db, session, message, queued, ct);
 
@@ -131,6 +131,24 @@ public sealed class ConversationService(
 
 		// Handle commands before AI processing
 		if (commandRouter.Match(message.Body) is { } match) {
+			if (match.Command.OwnerOnly && message.SenderId != lisOptions.Value.OwnerJid) {
+				string denied = "⛔ This command requires owner authorization.";
+				await channelClient.SendMessageAsync(message.ChatId, denied, message.ExternalId, ct);
+
+				db.Messages.Add(new MessageEntity {
+					ChatId    = chat.Id,
+					SessionId = session.Id,
+					SenderId  = "me",
+					IsFromMe  = true,
+					Role      = "assistant",
+					Body      = denied,
+					Timestamp = DateTimeOffset.UtcNow,
+					CreatedAt = DateTimeOffset.UtcNow
+				});
+				await db.SaveChangesAsync(ct);
+				return;
+			}
+
 			CommandContext ctx = new(message, chat, session, db, agent, match.Args);
 			string response = await match.Command.ExecuteAsync(ctx, ct);
 			await channelClient.SendMessageAsync(message.ChatId, response, message.ExternalId, ct);
@@ -358,7 +376,7 @@ public sealed class ConversationService(
 	}
 
 	private static async Task<ChatEntity> UpsertChatAsync(
-		LisDbContext db, IncomingMessage message, CancellationToken ct) {
+		LisDbContext db, IncomingMessage message, string ownerJid, CancellationToken ct) {
 		ChatEntity? chat = await db.Chats
 								   .Include(c => c.CurrentSession)
 								   .Include(c => c.AllowedSenders)
@@ -367,11 +385,13 @@ public sealed class ConversationService(
 
 		if (chat is null) {
 			chat = new ChatEntity {
-				ExternalId = message.ChatId,
-				Name       = message.SenderName,
-				IsGroup    = message.IsGroup,
-				CreatedAt  = DateTimeOffset.UtcNow,
-				UpdatedAt  = DateTimeOffset.UtcNow
+				ExternalId     = message.ChatId,
+				Name           = message.SenderName,
+				IsGroup        = message.IsGroup,
+				RequireMention = message.IsGroup,
+				Enabled        = message.IsGroup || message.SenderId == ownerJid,
+				CreatedAt      = DateTimeOffset.UtcNow,
+				UpdatedAt      = DateTimeOffset.UtcNow
 			};
 			db.Chats.Add(chat);
 			await db.SaveChangesAsync(ct);

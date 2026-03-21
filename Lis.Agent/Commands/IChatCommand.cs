@@ -6,6 +6,7 @@ namespace Lis.Agent.Commands;
 
 public interface IChatCommand {
 	string[] Triggers { get; }
+	bool OwnerOnly => false;
 	Task<string> ExecuteAsync(CommandContext ctx, CancellationToken ct);
 }
 
