@@ -12,18 +12,31 @@ using Microsoft.SemanticKernel;
 namespace Lis.Tools;
 
 public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
+
+	private static async Task<long> ResolveAgentIdAsync(LisDbContext db, string? agent) {
+		if (agent is null or { Length: 0 })
+			return ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
+
+		AgentEntity? target = await db.Agents.FirstOrDefaultAsync(a => a.Name == agent);
+		if (target is null) throw new ArgumentException($"Agent '{agent}' not found.");
+		return target.Id;
+	}
+
 	[KernelFunction("list_prompt_sections")]
 	[Description("List prompt sections. Use type='names' for a summary or type='full' for complete content of all sections.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> ListPromptSectionsAsync(
 		[Description("Listing type: 'names' for summary, 'full' for complete content")]
-		string type = "names") {
-		await ToolContext.NotifyAsync($"📋 Listing prompt sections\ntype: {type}");
+		string type = "names",
+		[Description("Optional agent name. Omit to use current agent.")]
+		string? agent = null) {
+		string label = agent is { Length: > 0 } ? $" ({agent})" : "";
+		await ToolContext.NotifyAsync($"📋 Listing prompt sections{label}\ntype: {type}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
+		long agentId = await ResolveAgentIdAsync(db, agent);
 		List<PromptSectionEntity> sections = await db.PromptSections
 													 .Where(s => s.AgentId == agentId)
 													 .OrderBy(s => s.SortOrder)
@@ -54,12 +67,15 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 	[ToolAuthorization(ToolAuthLevel.Open)]
 	public async Task<string> GetPromptSectionAsync(
 		[Description("Section name (e.g. 'soul', 'user', 'instructions')")]
-		string name) {
-		await ToolContext.NotifyAsync($"📄 Reading prompt section\nname: {name}");
+		string name,
+		[Description("Optional agent name. Omit to use current agent.")]
+		string? agent = null) {
+		string label = agent is { Length: > 0 } ? $" ({agent})" : "";
+		await ToolContext.NotifyAsync($"📄 Reading prompt section{label}\nname: {name}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
+		long agentId = await ResolveAgentIdAsync(db, agent);
 		PromptSectionEntity? section = await db.PromptSections
 											   .FirstOrDefaultAsync(s => s.AgentId == agentId && s.Name == name);
 
@@ -76,12 +92,15 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		[Description("Section name (e.g. 'soul', 'user', 'instructions')")]
 		string name,
 		[Description("New content for the section")]
-		string content) {
-		await ToolContext.NotifyAsync($"✏️ Updating prompt section\nname: {name}\n```\n{content}\n```");
+		string content,
+		[Description("Optional agent name. Omit to use current agent.")]
+		string? agent = null) {
+		string label = agent is { Length: > 0 } ? $" ({agent})" : "";
+		await ToolContext.NotifyAsync($"✏️ Updating prompt section{label}\nname: {name}\n```\n{content}\n```");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
+		long agentId = await ResolveAgentIdAsync(db, agent);
 		PromptSectionEntity? section = await db.PromptSections
 											   .FirstOrDefaultAsync(s => s.AgentId == agentId && s.Name == name);
 
