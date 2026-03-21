@@ -84,8 +84,8 @@ public sealed class ContextWindowBuilderTests {
 
 		ChatHistory history = this.builder.Build("System", messages, session: session);
 
-		// system + assistant (with FunctionCallContent) + pruned tool
-		Assert.Equal(3, history.Count);
+		// system + assistant (with FunctionCallContent) + pruned tool + "continue" guard
+		Assert.Equal(4, history.Count);
 		ChatMessageContent pruned = history[2];
 		Assert.Equal(AuthorRole.Tool, pruned.Role);
 
@@ -163,8 +163,8 @@ public sealed class ContextWindowBuilderTests {
 
 		ChatHistory history = this.builder.Build("System", messages, session: session, options: options);
 
-		// system + assist1 + pruned tool1 + assist2 + kept tool2 = 5
-		Assert.Equal(5, history.Count);
+		// system + assist1 + pruned tool1 + assist2 + kept tool2 + "continue" guard = 6
+		Assert.Equal(6, history.Count);
 
 		// First tool (id=5) should be pruned
 		FunctionResultContent? frc1 = history[2].Items.OfType<FunctionResultContent>().FirstOrDefault();

@@ -112,6 +112,10 @@ public sealed class ContextWindowBuilder {
 
 		SanitizeToolPairs(history);
 
+		// Anthropic requires the conversation to end with a user message
+		if (history.Count > 1 && history[^1].Role != AuthorRole.User)
+			history.AddUserMessage("continue");
+
 		return history;
 	}
 
