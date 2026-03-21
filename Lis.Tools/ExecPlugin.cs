@@ -15,6 +15,7 @@ namespace Lis.Tools;
 public sealed class ExecPlugin(IServiceScopeFactory scopeFactory) {
 
 	private const int MaxOutputBytes = 50 * 1024;
+	private static readonly bool HostExec = Environment.GetEnvironmentVariable("LIS_EXEC_HOST") == "true";
 
 	[KernelFunction("run_command")]
 	[Description("Execute a shell command and return stdout, stderr, and exit code.")]
@@ -33,6 +34,7 @@ public sealed class ExecPlugin(IServiceScopeFactory scopeFactory) {
 		ProcessStartInfo psi = new() {
 			RedirectStandardOutput = true,
 			RedirectStandardError  = true,
+			RedirectStandardInput  = true,
 			UseShellExecute        = false,
 			CreateNoWindow         = true,
 			WorkingDirectory       = workingDirectory,
@@ -40,14 +42,19 @@ public sealed class ExecPlugin(IServiceScopeFactory scopeFactory) {
 
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
 			psi.FileName  = "cmd";
-			psi.Arguments = $"/c \"{command}\"";
+		} else if (HostExec) {
+			psi.FileName         = "nsenter";
+			psi.Arguments        = "-t 1 -m -u -i -n -- /bin/bash";
+			psi.WorkingDirectory = "/";
 		} else {
-			psi.FileName  = "/bin/bash";
-			psi.Arguments = $"-c \"{command}\"";
+			psi.FileName = "/bin/bash";
 		}
 
 		using Process process = new() { StartInfo = psi };
 		process.Start();
+
+		await process.StandardInput.WriteLineAsync(command);
+		process.StandardInput.Close();
 
 		using CancellationTokenSource cts = new(TimeSpan.FromSeconds(timeoutSeconds));
 
