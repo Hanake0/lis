@@ -384,8 +384,8 @@ public sealed class CompactionService(
 	/// <summary>
 	/// Walks messages (newest-first) accumulating token costs.
 	/// Returns the ID of the first message that exceeds the keep budget — everything
-	/// at or before this ID should be compacted. Messages without token counts
-	/// contribute 0 (no estimation).
+	/// at or before this ID should be compacted. Messages without API token counts
+	/// are estimated from content via local BPE tokenizer.
 	/// </summary>
 	public static long CalculateSplitPoint(IReadOnlyList<MessageEntity> messagesNewestFirst, int keepRecentTokens) {
 		if (messagesNewestFirst.Count == 0) return 0;
@@ -393,12 +393,21 @@ public sealed class CompactionService(
 		long splitId = messagesNewestFirst[^1].Id;
 		int accumulated = 0;
 		foreach (MessageEntity m in messagesNewestFirst) {
-			accumulated += m.OutputTokens ?? m.InputTokens ?? 0;
+			accumulated += m.OutputTokens ?? EstimateFromContent(m);
 			if (accumulated > keepRecentTokens) {
 				splitId = m.Id;
 				break;
 			}
 		}
 		return splitId;
+	}
+
+	/// <summary>
+	/// Estimates token count from message content for messages without API token counts
+	/// (tool results, user messages). Uses local BPE tokenizer for accuracy.
+	/// </summary>
+	internal static int EstimateFromContent(MessageEntity m) {
+		string? text = m.SkContent ?? m.Body;
+		return text is { Length: > 0 } ? TokenEstimator.Count(text) : 1;
 	}
 }

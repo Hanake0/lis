@@ -219,6 +219,8 @@ public sealed class ConversationService(
 		};
 
 		TokenUsage? lastUsage = null;
+		TokenUsage? prevUsage = null;
+		List<long>  pendingToolMsgIds = new();
 
 		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, agentKernel, settings, ct)) {
 			string? externalId = null;
@@ -231,8 +233,22 @@ public sealed class ConversationService(
 
 			// Usage is attached per-message by ToolRunner (only on assistant messages)
 			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
-			if (msgUsage is not null) lastUsage = msgUsage;
-			await PersistSkMessageAsync(db, chat, session, msg, msgUsage, externalId, ct);
+
+			// Back-fill tool result token counts from the API input delta
+			if (msgUsage is not null && prevUsage is not null && pendingToolMsgIds.Count > 0) {
+				int contentOutput = prevUsage.OutputTokens - prevUsage.ThinkingTokens;
+				int delta = msgUsage.TotalInputTokens - prevUsage.TotalInputTokens - contentOutput;
+				if (delta > 0)
+					await BackfillToolTokensAsync(db, pendingToolMsgIds, delta, ct);
+				pendingToolMsgIds.Clear();
+			}
+
+			if (msgUsage is not null) { prevUsage = msgUsage; lastUsage = msgUsage; }
+
+			long entityId = await PersistSkMessageAsync(db, chat, session, msg, msgUsage, externalId, ct);
+
+			if (msg.Role == AuthorRole.Tool)
+				pendingToolMsgIds.Add(entityId);
 		}
 
 		// Update session token stats from last response
@@ -393,10 +409,10 @@ public sealed class ConversationService(
 		message.DbId = entity.Id;
 	}
 
-	private static async Task PersistSkMessageAsync(
+	private static async Task<long> PersistSkMessageAsync(
 		LisDbContext db, ChatEntity chat, SessionEntity session,
 		ChatMessageContent msg, TokenUsage? usage, string? externalId, CancellationToken ct) {
-		db.Messages.Add(new MessageEntity {
+		MessageEntity entity = new() {
 			ExternalId          = externalId,
 			ChatId              = chat.Id,
 			SessionId           = session.Id,
@@ -412,7 +428,33 @@ public sealed class ConversationService(
 			ThinkingTokens      = usage?.ThinkingTokens,
 			Timestamp           = DateTimeOffset.UtcNow,
 			CreatedAt           = DateTimeOffset.UtcNow
-		});
+		};
+		db.Messages.Add(entity);
+		await db.SaveChangesAsync(ct);
+		return entity.Id;
+	}
+
+	/// <summary>
+	/// Distributes the API input token delta proportionally among tool result messages
+	/// using a local BPE tokenizer for relative weights.
+	/// </summary>
+	private static async Task BackfillToolTokensAsync(
+		LisDbContext db, List<long> toolMsgIds, int totalDelta, CancellationToken ct) {
+		List<MessageEntity> toolMsgs = await db.Messages
+			.Where(m => toolMsgIds.Contains(m.Id))
+			.ToListAsync(ct);
+
+		int[] rawCounts = toolMsgs
+			.Select(m => TokenEstimator.Count(m.SkContent ?? m.Body))
+			.ToArray();
+		int rawTotal = rawCounts.Sum();
+
+		for (int i = 0; i < toolMsgs.Count; i++) {
+			toolMsgs[i].OutputTokens = rawTotal > 0
+				? (int)((long)totalDelta * rawCounts[i] / rawTotal)
+				: toolMsgs.Count > 0 ? totalDelta / toolMsgs.Count : totalDelta;
+		}
+
 		await db.SaveChangesAsync(ct);
 	}
 
