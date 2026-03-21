@@ -239,14 +239,17 @@ public sealed class ConversationService(
 		TokenUsage? lastUsage = null;
 		TokenUsage? prevUsage = null;
 		List<long>  pendingToolMsgIds = new();
+		bool        sentAnyMessage    = false;
 
 		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, agentKernel, settings, ct)) {
 			string? externalId = null;
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content)) {
 				(string? content, bool shouldQuote) = ResponseDirectives.Parse(msg.Content);
-				if (content is not null)
+				if (content is not null) {
 					externalId = await channelClient.SendMessageAsync(
 						message.ChatId, content, shouldQuote ? message.ExternalId : null, ct);
+					sentAnyMessage = true;
+				}
 			}
 
 			// Usage is attached per-message by ToolRunner (only on assistant messages)
@@ -268,6 +271,10 @@ public sealed class ConversationService(
 			if (msg.Role == AuthorRole.Tool)
 				pendingToolMsgIds.Add(entityId);
 		}
+
+		// Clear typing indicator if no message was sent (NO_RESPONSE)
+		if (!sentAnyMessage)
+			await channelClient.StopTypingAsync(message.ChatId, ct);
 
 		// Update session token stats from last response
 		if (lastUsage is not null) {

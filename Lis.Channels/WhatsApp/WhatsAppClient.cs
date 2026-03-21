@@ -20,6 +20,11 @@ public sealed class WhatsAppClient(GowaClient gowa, IMessageFormatter formatter)
 		await gowa.SendChatPresenceAsync(StripJidSuffix(chatId), "start", ct);
 	}
 
+	[Trace("WhatsAppClient > StopTypingAsync")]
+	public async Task StopTypingAsync(string chatId, CancellationToken ct = default) {
+		await gowa.SendChatPresenceAsync(StripJidSuffix(chatId), "stop", ct);
+	}
+
 	[Trace("WhatsAppClient > MarkReadAsync")]
 	public async Task MarkReadAsync(string messageId, string chatId, CancellationToken ct = default) {
 		await gowa.MarkMessageReadAsync(messageId, StripJidSuffix(chatId), ct);
