@@ -15,6 +15,20 @@ namespace Lis.Tools;
 
 public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<LisOptions> lisOptions) {
 
+	private static async Task<ChatEntity> ResolveChatAsync(
+		LisDbContext db, string? chatId, bool includeRelated = false) {
+		string externalId = chatId is { Length: > 0 }
+			? chatId
+			: ToolContext.ChatId ?? throw new InvalidOperationException("No chat context");
+
+		IQueryable<ChatEntity> query = db.Chats.AsQueryable();
+		if (includeRelated)
+			query = query.Include(c => c.Agent).Include(c => c.AllowedSenders);
+
+		return await query.FirstOrDefaultAsync(c => c.ExternalId == externalId)
+		       ?? throw new ArgumentException($"Chat '{externalId}' not found.");
+	}
+
 	private static readonly HashSet<string> KnownAgentFields = [
 		"model", "max_tokens", "context_budget", "thinking_effort",
 		"tool_notifications", "compaction_threshold", "keep_recent_tokens",
@@ -154,21 +168,16 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("get_chat_config")]
-	[Description("Read the current chat's configuration fields.")]
+	[Description("Read a chat's configuration fields. Omit chatId to use the current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.Open)]
-	public async Task<string> GetChatConfigAsync() {
+	public async Task<string> GetChatConfigAsync(
+		[Description("Optional chat external ID. Omit to use current chat.")] string? chatId = null) {
 		await ToolContext.NotifyAsync("⚙️ Reading chat config");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		string chatExternalId = ToolContext.ChatId ?? throw new InvalidOperationException("No chat context");
-		ChatEntity? chat = await db.Chats
-			.Include(c => c.Agent)
-			.Include(c => c.AllowedSenders)
-			.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId);
-
-		if (chat is null) return "Chat not found.";
+		ChatEntity chat = await ResolveChatAsync(db, chatId, includeRelated: true);
 
 		LisOptions opts = lisOptions.Value;
 
@@ -199,21 +208,18 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("update_chat_config")]
-	[Description("Update a configuration field on the current chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int).")]
+	[Description("Update a configuration field on a chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int). Omit chatId to use current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> UpdateChatConfigAsync(
 		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages, debounce_ms)")] string key,
-		[Description("New value")] string value) {
+		[Description("New value")] string value,
+		[Description("Optional chat external ID. Omit to use current chat.")] string? chatId = null) {
 		await ToolContext.NotifyAsync($"✏️ Updating chat config\n{key} = {value}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		string chatExternalId = ToolContext.ChatId ?? throw new InvalidOperationException("No chat context");
-		ChatEntity? chat = await db.Chats
-			.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId);
-
-		if (chat is null) return "Chat not found.";
+		ChatEntity chat = await ResolveChatAsync(db, chatId);
 
 		switch (key) {
 			case "enabled":
@@ -247,20 +253,17 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("add_allowed_sender")]
-	[Description("Add a sender ID to the current chat's allowed senders list.")]
+	[Description("Add a sender ID to a chat's allowed senders list. Omit chatId to use current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> AddAllowedSenderAsync(
-		[Description("The sender ID to allow")] string senderId) {
+		[Description("The sender ID to allow")] string senderId,
+		[Description("Optional chat external ID. Omit to use current chat.")] string? chatId = null) {
 		await ToolContext.NotifyAsync($"➕ Adding allowed sender: {senderId}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		string chatExternalId = ToolContext.ChatId ?? throw new InvalidOperationException("No chat context");
-		ChatEntity? chat = await db.Chats
-			.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId);
-
-		if (chat is null) return "Chat not found.";
+		ChatEntity chat = await ResolveChatAsync(db, chatId);
 
 		bool exists = await db.ChatAllowedSenders
 			.AnyAsync(s => s.ChatId == chat.Id && s.SenderId == senderId);
@@ -277,20 +280,17 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("remove_allowed_sender")]
-	[Description("Remove a sender ID from the current chat's allowed senders list.")]
+	[Description("Remove a sender ID from a chat's allowed senders list. Omit chatId to use current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> RemoveAllowedSenderAsync(
-		[Description("The sender ID to remove")] string senderId) {
+		[Description("The sender ID to remove")] string senderId,
+		[Description("Optional chat external ID. Omit to use current chat.")] string? chatId = null) {
 		await ToolContext.NotifyAsync($"➖ Removing allowed sender: {senderId}");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		string chatExternalId = ToolContext.ChatId ?? throw new InvalidOperationException("No chat context");
-		ChatEntity? chat = await db.Chats
-			.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId);
-
-		if (chat is null) return "Chat not found.";
+		ChatEntity chat = await ResolveChatAsync(db, chatId);
 
 		ChatAllowedSenderEntity? sender = await db.ChatAllowedSenders
 			.FirstOrDefaultAsync(s => s.ChatId == chat.Id && s.SenderId == senderId);
@@ -304,19 +304,16 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("list_allowed_senders")]
-	[Description("List all allowed senders for the current chat.")]
+	[Description("List all allowed senders for a chat. Omit chatId to use current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.Open)]
-	public async Task<string> ListAllowedSendersAsync() {
+	public async Task<string> ListAllowedSendersAsync(
+		[Description("Optional chat external ID. Omit to use current chat.")] string? chatId = null) {
 		await ToolContext.NotifyAsync("📋 Listing allowed senders");
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		string chatExternalId = ToolContext.ChatId ?? throw new InvalidOperationException("No chat context");
-		ChatEntity? chat = await db.Chats
-			.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId);
-
-		if (chat is null) return "Chat not found.";
+		ChatEntity chat = await ResolveChatAsync(db, chatId);
 
 		List<ChatAllowedSenderEntity> senders = await db.ChatAllowedSenders
 			.Where(s => s.ChatId == chat.Id)
@@ -360,56 +357,4 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 		return sb.ToString().TrimEnd();
 	}
 
-	private static readonly HashSet<string> KnownChatFields = [
-		"enabled", "require_mention", "open_group", "group_context_messages", "debounce_ms"
-	];
-
-	[KernelFunction("manage_chat")]
-	[Description("Update a configuration field on any chat by its external ID. Owner-only admin tool for managing chats remotely. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int).")]
-	[ToolSummarization(SummarizationPolicy.Prune)]
-	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
-	public async Task<string> ManageChatAsync(
-		[Description("External ID of the chat to manage")] string chatId,
-		[Description("Configuration key to update")] string key,
-		[Description("New value")] string value) {
-		await ToolContext.NotifyAsync($"✏️ Managing chat {chatId}\n{key} = {value}");
-		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
-
-		ChatEntity? chat = await db.Chats
-			.FirstOrDefaultAsync(c => c.ExternalId == chatId);
-
-		if (chat is null) return $"Chat '{chatId}' not found.";
-
-		if (!KnownChatFields.Contains(key))
-			return $"Unknown config key '{key}'. Valid keys: {string.Join(", ", KnownChatFields)}.";
-
-		switch (key) {
-			case "enabled":
-				if (!bool.TryParse(value, out bool enabled)) return "Invalid boolean value for enabled.";
-				chat.Enabled = enabled;
-				break;
-			case "require_mention":
-				if (!bool.TryParse(value, out bool requireMention)) return "Invalid boolean value for require_mention.";
-				chat.RequireMention = requireMention;
-				break;
-			case "open_group":
-				if (!bool.TryParse(value, out bool openGroup)) return "Invalid boolean value for open_group.";
-				chat.OpenGroup = openGroup;
-				break;
-			case "group_context_messages":
-				if (!int.TryParse(value, out int groupCtx)) return "Invalid integer value for group_context_messages.";
-				chat.GroupContextMessages = groupCtx;
-				break;
-			case "debounce_ms":
-				if (!int.TryParse(value, out int debounce)) return "Invalid integer value for debounce_ms.";
-				chat.DebounceMs = debounce;
-				break;
-		}
-
-		chat.UpdatedAt = DateTimeOffset.UtcNow;
-		await db.SaveChangesAsync();
-
-		return $"Chat '{chatId}' config '{key}' updated to '{value}'.";
-	}
 }
