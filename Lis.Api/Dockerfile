@@ -35,7 +35,7 @@ WORKDIR /app
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
     LC_ALL=pt_BR.UTF-8 \
     LANG=pt_BR.UTF-8
-RUN apk add --no-cache icu-data-full icu-libs
+RUN apk add --no-cache icu-data-full icu-libs tzdata
 
 USER app
 COPY --from=build /app .
