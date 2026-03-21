@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 using Lis.Channels.WhatsApp.Schemas;
@@ -14,8 +15,12 @@ namespace Lis.Channels.WhatsApp;
 [Tags("WhatsApp")]
 public class GowaWebhookController(
 	WebhookValidator               validator,
+	GowaClient                     gowaClient,
 	IConversationService           conversationService,
 	ILogger<GowaWebhookController> logger) : ControllerBase {
+
+	private static readonly ConcurrentDictionary<string, (string Name, DateTimeOffset FetchedAt)> GroupNameCache = new();
+	private static readonly TimeSpan GroupNameCacheTtl = TimeSpan.FromHours(1);
 	[HttpPost]
 	[ProducesResponseType(StatusCodes.Status200OK)]
 	[ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -89,6 +94,10 @@ public class GowaWebhookController(
 			MediaPath      = payload.MediaPath
 		};
 
+		if (isGroup && payload.ChatId is { Length: > 0 } groupChatId) {
+			message.ChatName = await this.ResolveGroupNameAsync(groupChatId);
+		}
+
 		// Echoes of our own messages → backfill sender info on the persisted record
 		if (payload.IsFromMe) {
 			_ = Task.Run(async () => {
@@ -113,6 +122,24 @@ public class GowaWebhookController(
 		});
 
 		return this.Ok();
+	}
+
+	private async Task<string?> ResolveGroupNameAsync(string groupId) {
+		if (GroupNameCache.TryGetValue(groupId, out var cached)
+		    && DateTimeOffset.UtcNow - cached.FetchedAt < GroupNameCacheTtl)
+			return cached.Name;
+
+		try {
+			GroupInfo? info = await gowaClient.GetGroupInfoAsync(groupId);
+			if (info?.Name is not { Length: > 0 } name) return cached.Name;
+
+			GroupNameCache[groupId] = (name, DateTimeOffset.UtcNow);
+			return name;
+		} catch (Exception ex) {
+			if (logger.IsEnabled(LogLevel.Debug))
+				logger.LogDebug(ex, "Failed to fetch group name for {GroupId}", groupId);
+			return cached.Name;
+		}
 	}
 
 	private static async Task<byte[]> ReadBodyAsync(HttpRequest request) {

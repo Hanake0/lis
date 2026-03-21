@@ -383,9 +383,11 @@ public sealed class ConversationService(
 								   .FirstOrDefaultAsync(c => c.ExternalId == message.ChatId, ct);
 
 		if (chat is null) {
+			string? chatName = message.IsGroup ? message.ChatName : null;
+
 			chat = new ChatEntity {
 				ExternalId     = message.ChatId,
-				Name           = message.SenderName,
+				Name           = chatName ?? message.SenderName,
 				IsGroup        = message.IsGroup,
 				RequireMention = message.IsGroup,
 				Enabled        = message.IsGroup || message.SenderId == ownerJid,
@@ -396,7 +398,11 @@ public sealed class ConversationService(
 			await db.SaveChangesAsync(ct);
 		} else {
 			chat.UpdatedAt = DateTimeOffset.UtcNow;
-			if (message.SenderName is not null) chat.Name = message.SenderName;
+
+			if (message.IsGroup && message.ChatName is not null)
+				chat.Name = message.ChatName;
+			else if (message.SenderName is not null)
+				chat.Name = message.SenderName;
 
 			await db.SaveChangesAsync(ct);
 		}

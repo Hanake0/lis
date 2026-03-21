@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
 using Lis.Core.Util;
@@ -54,7 +56,7 @@ public sealed class AgentService(
 
 		AgentEntity agent = await this.ResolveForChatAsync(db, chat, ct);
 		if (agent.DisplayName is { Length: > 0 } botName
-		    && body.Contains(botName, StringComparison.OrdinalIgnoreCase))
+		    && Regex.IsMatch(body, $@"\b{Regex.Escape(botName)}\b", RegexOptions.IgnoreCase))
 			message.IsBotMentioned = true;
 	}
 

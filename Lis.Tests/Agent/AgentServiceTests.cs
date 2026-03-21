@@ -267,6 +267,21 @@ public class AgentServiceTests : IDisposable {
 	}
 
 	[Fact]
+	public async Task DetectMention_SubstringMatch_StaysFalse() {
+		AgentEntity agent = await this.SeedDefaultAgentAsync("Lis");
+		ChatEntity chat = new() { ExternalId = "g1", AgentId = agent.Id, Agent = agent };
+
+		IncomingMessage msg = new() {
+			ExternalId = "m1", ChatId = "g1", SenderId = "s1",
+			IsGroup = true, Body = "lista pra mim todas as tools"
+		};
+
+		await this._sut.DetectMentionAsync(this._db, chat, msg, CancellationToken.None);
+
+		Assert.False(msg.IsBotMentioned);
+	}
+
+	[Fact]
 	public async Task DetectMention_TextDoesNotContainBotName_StaysFalse() {
 		AgentEntity agent = await this.SeedDefaultAgentAsync("Lis");
 		ChatEntity chat = new() { ExternalId = "g1", AgentId = agent.Id, Agent = agent };

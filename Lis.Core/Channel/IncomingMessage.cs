@@ -12,6 +12,7 @@ public sealed class IncomingMessage {
 	public string? RepliedId { get; init; }
 	public string? RepliedContent { get; init; }
 	public bool IsBotMentioned { get; set; }
+	public string? ChatName { get; set; }
 	public string? MediaType { get; init; }
 	public string? MediaCaption { get; init; }
 	public string? MediaPath { get; init; }
