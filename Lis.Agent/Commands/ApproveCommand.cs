@@ -2,6 +2,7 @@ namespace Lis.Agent.Commands;
 
 public sealed class ApproveCommand(IApprovalService approvalService) : IChatCommand {
 	public string[] Triggers => ["/approve"];
+	public bool OwnerOnly => true;
 
 	public async Task<string> ExecuteAsync(CommandContext ctx, CancellationToken ct) {
 		if (ctx.Args is null or { Length: 0 })
@@ -33,6 +34,7 @@ public sealed class ApproveCommand(IApprovalService approvalService) : IChatComm
 
 public sealed class DenyCommand(IApprovalService approvalService) : IChatCommand {
 	public string[] Triggers => ["/deny"];
+	public bool OwnerOnly => true;
 
 	public async Task<string> ExecuteAsync(CommandContext ctx, CancellationToken ct) {
 		if (ctx.Args is null or { Length: 0 })

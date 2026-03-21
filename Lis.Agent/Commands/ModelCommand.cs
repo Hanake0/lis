@@ -9,6 +9,7 @@ public sealed class ModelCommand(IServiceScopeFactory scopeFactory) : IChatComma
 	private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
 
 	public string[] Triggers => ["/model"];
+	public bool OwnerOnly => true;
 
 	[Trace("ModelCommand > ExecuteAsync")]
 	public async Task<string> ExecuteAsync(CommandContext ctx, CancellationToken ct) {

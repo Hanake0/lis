@@ -23,6 +23,10 @@ public sealed class AgentCommand(
 		if (ctx.Args is null or { Length: 0 })
 			return this.ShowCurrentAgent(ctx);
 
+		// Write subcommands are owner-only
+		if (ctx.Message.SenderId != lisOptions.Value.OwnerJid)
+			return "⛔ This command requires owner authorization.";
+
 		string[] parts = ctx.Args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 		string subcommand = parts[0].ToLowerInvariant();
 
@@ -90,6 +94,8 @@ public sealed class AgentCommand(
 			ToolPruneThreshold      = ctx.Agent.ToolPruneThreshold,
 			ToolKeepThreshold       = ctx.Agent.ToolKeepThreshold,
 			ToolSummarizationPolicy = ctx.Agent.ToolSummarizationPolicy,
+			ExecSecurity            = "deny",
+			ToolProfile             = "standard",
 			IsDefault               = false,
 			CreatedAt               = DateTimeOffset.UtcNow,
 			UpdatedAt               = DateTimeOffset.UtcNow
