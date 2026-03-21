@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY --from=build /app .
 ENTRYPOINT ["dotnet", "Lis.Api.dll"]
