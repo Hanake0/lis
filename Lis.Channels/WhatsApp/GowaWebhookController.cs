@@ -21,6 +21,7 @@ public class GowaWebhookController(
 
 	private static readonly ConcurrentDictionary<string, (string Name, string? Topic, DateTimeOffset FetchedAt)> GroupInfoCache = new();
 	private static readonly TimeSpan GroupNameCacheTtl = TimeSpan.FromHours(1);
+	private static string? _botJid;
 	[HttpPost]
 	[ProducesResponseType(StatusCodes.Status200OK)]
 	[ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -100,6 +101,14 @@ public class GowaWebhookController(
 			message.ChatTopic = topic;
 		}
 
+		// Learn bot's own JID from echo messages
+		if (payload.IsFromMe && payload.From is { Length: > 0 })
+			_botJid ??= payload.From;
+
+		// @mention detection: check mentioned_jids from GOWA payload
+		if (isGroup && _botJid is not null && !message.IsBotMentioned)
+			message.IsBotMentioned = IsBotMentioned(payload);
+
 		// Echoes of our own messages → backfill sender info on the persisted record
 		if (payload.IsFromMe) {
 			_ = Task.Run(async () => {
@@ -124,6 +133,19 @@ public class GowaWebhookController(
 		});
 
 		return this.Ok();
+	}
+
+	private static bool IsBotMentioned(WebhookPayload payload) {
+		if (_botJid is null) return false;
+		if (payload.Extensions?.TryGetValue("mentioned_jids", out JsonElement jidsEl) != true) return false;
+		if (jidsEl.ValueKind != JsonValueKind.Array) return false;
+
+		foreach (JsonElement jid in jidsEl.EnumerateArray()) {
+			if (jid.ValueKind == JsonValueKind.String && jid.GetString() == _botJid)
+				return true;
+		}
+
+		return false;
 	}
 
 	private async Task<(string? Name, string? Topic)> ResolveGroupInfoAsync(string groupId) {
