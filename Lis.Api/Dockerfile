@@ -1,5 +1,5 @@
 # Build Image
-FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy csproj files and restore as distinct layers
@@ -27,19 +27,21 @@ COPY Lis.Api/ Lis.Api/
 RUN dotnet publish "Lis.Api/Lis.Api.csproj" -c Release --no-restore -o /app
 
 # Runtime Image
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 EXPOSE 3010
 WORKDIR /app
 
-# Add globalization and timezones
+# Globalization, timezones, and browser dependencies
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
     LC_ALL=pt_BR.UTF-8 \
     LANG=pt_BR.UTF-8
-RUN apk add --no-cache icu-data-full icu-libs tzdata bash \
-    gcompat chromium nss freetype harfbuzz ca-certificates ttf-freefont
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    locales tzdata bash chromium \
+    && sed -i '/pt_BR.UTF-8/s/^# //g' /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY --from=build /app .
 ENTRYPOINT ["dotnet", "Lis.Api.dll"]

@@ -16,37 +16,30 @@ This downloads the Chromium binary that Playwright needs. The `playwright.ps1` s
 
 ### Docker
 
-Add the Playwright install step to the Dockerfile runtime stage. The browser needs to run as a non-root user and requires system dependencies:
+The Dockerfile uses Debian-based images (not Alpine) because Playwright's .NET driver is a glibc binary. System Chromium is installed via `apt-get` and Playwright is pointed to it via `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`:
 
 ```dockerfile
 # Runtime Image
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 EXPOSE 3010
 WORKDIR /app
 
-# Globalization + timezones
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
     LC_ALL=pt_BR.UTF-8 \
     LANG=pt_BR.UTF-8
-RUN apk add --no-cache icu-data-full icu-libs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    locales tzdata bash chromium \
+    && sed -i '/pt_BR.UTF-8/s/^# //g' /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
 
-# Playwright Chromium dependencies
-RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY --from=build /app .
-
-# Install Playwright browsers (as root, before switching to app user)
-RUN dotnet Lis.Api.dll -- playwright install chromium 2>/dev/null || true
-
-USER app
 ENTRYPOINT ["dotnet", "Lis.Api.dll"]
 ```
+
+No `playwright install` is needed — the Playwright driver ships with the NuGet package and system Chromium is used directly.
 
 ## Session Management
 
