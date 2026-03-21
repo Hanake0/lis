@@ -32,6 +32,9 @@ public static class AnthropicProvider {
 
 		HttpMessageHandler innerHandler = new HttpClientHandler();
 
+		// Retry on 429 (rate limit) and 529 (overloaded) with exponential backoff
+		innerHandler = new RetryHandler { InnerHandler = innerHandler };
+
 		if (opts.CacheEnabled)
 			innerHandler = new CacheControlHandler(opts.CacheTtl) { InnerHandler = innerHandler };
 
@@ -66,6 +69,31 @@ public static class AnthropicProvider {
 	private static string Env(string key) => Environment.GetEnvironmentVariable(key) ?? "";
 
 	private static int EnvInt(string key, int fallback) => int.TryParse(Environment.GetEnvironmentVariable(key), out int v) ? v : fallback;
+
+	/// <summary>
+	/// Retries requests on 429 (rate limit) and 529 (overloaded) with exponential backoff + jitter.
+	/// Respects Retry-After header when present.
+	/// </summary>
+	private sealed class RetryHandler : DelegatingHandler {
+		private const int MaxRetries  = 3;
+		private const int BaseDelayMs = 2000;
+		private const int MaxJitterMs = 1000;
+
+		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+			for (int attempt = 0;; attempt++) {
+				HttpResponseMessage response = await base.SendAsync(request, ct);
+
+				if (attempt >= MaxRetries || ((int)response.StatusCode is not (429 or 529)))
+					return response;
+
+				TimeSpan delay = response.Headers.RetryAfter?.Delta
+				                 ?? TimeSpan.FromMilliseconds(BaseDelayMs * (1 << attempt) + Random.Shared.Next(MaxJitterMs));
+
+				response.Dispose();
+				await Task.Delay(delay, ct);
+			}
+		}
+	}
 
 	/// <summary>
 	/// OAuth Bearer auth handler. Sets required headers for Anthropic OAuth access.
