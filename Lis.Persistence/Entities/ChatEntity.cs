@@ -65,6 +65,11 @@ public sealed class ChatEntity {
 	[JsonPropertyName("debounce_ms")]
 	public int? DebounceMs { get; set; }
 
+	[MaxLength(512)]
+	[Column("group_topic", TypeName = "varchar(512)")]
+	[JsonPropertyName("group_topic")]
+	public string? GroupTopic { get; set; }
+
 	public SessionEntity? CurrentSession { get; set; }
 
 	public AgentEntity? Agent { get; set; }

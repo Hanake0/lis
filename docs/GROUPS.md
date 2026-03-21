@@ -8,12 +8,11 @@ and response behavior.
 When a message arrives in a group, `AgentService.ShouldRespond` evaluates:
 
 ```
-1. chat.Enabled == false  → deny
-2. sender == OwnerJid     → allow (owner always bypasses)
-3. sender in AllowedSenders OR chat.OpenGroup → authorized
-4. Not authorized         → deny
-5. chat.RequireMention && !IsBotMentioned → deny
-6. → allow
+1. chat.Enabled == false                          → deny
+2. IsGroup && RequireMention && !IsBotMentioned   → deny (applies to everyone, including owner)
+3. sender == OwnerJid                             → allow (owner bypasses authorization)
+4. sender in AllowedSenders OR chat.OpenGroup      → allow
+5. → deny
 ```
 
 ### Flags
@@ -74,19 +73,40 @@ AI context:
 - Audio quotes include transcription when available
 - Sender name resolved from loaded messages when available
 
-## Group-Aware System Prompt
+## Group Metadata
 
-The `{{group_context}}` interpolation variable in prompt sections expands to group-specific
-instructions when the chat is a group, and to empty string for 1-on-1 chats.
+Group name and topic are fetched from the GOWA API (`GetGroupInfoAsync`) on each incoming
+message and cached in-memory with a 1-hour TTL. These are stored on `ChatEntity` and
+injected into the system prompt via the `{{chat_context}}` interpolation variable.
+
+## Prompt Interpolation Variables
+
+| Variable | Group chat | 1-on-1 chat |
+|----------|-----------|-------------|
+| `{{group_context}}` | Group behavioral instructions (custom or default) | Empty string |
+| `{{chat_context}}` | `Group: <name>` + `Topic: <topic>` (if set) | Empty string |
+| `{{datetime}}` | Current date/time/period in agent timezone | Same |
+
+### `{{group_context}}` — behavioral instructions
 
 **Default expansion:**
 > You are in a group chat with multiple participants. Their names appear as prefixes on
 > messages. Be concise and natural. Address people by name when relevant. Not every
 > message requires a response — use NO_RESPONSE when a message isn't directed at you
-> or doesn't need your input.
+> or doesn't need your input. When quoting is appropriate, use [QUOTE] to reply to the
+> specific message.
 
 **Customization:** Set `group_context_prompt` on the agent via `update_agent_config`.
 When null, uses the hardcoded default.
+
+### `{{chat_context}}` — group metadata
+
+Expands to the group name and topic (from GOWA API). Example:
+```
+Group: Família
+Topic: Grupo da família — só coisas importantes
+```
+Empty for 1-on-1 chats or when no group name is available.
 
 ## Per-Chat Debounce
 

@@ -19,7 +19,7 @@ public class GowaWebhookController(
 	IConversationService           conversationService,
 	ILogger<GowaWebhookController> logger) : ControllerBase {
 
-	private static readonly ConcurrentDictionary<string, (string Name, DateTimeOffset FetchedAt)> GroupNameCache = new();
+	private static readonly ConcurrentDictionary<string, (string Name, string? Topic, DateTimeOffset FetchedAt)> GroupInfoCache = new();
 	private static readonly TimeSpan GroupNameCacheTtl = TimeSpan.FromHours(1);
 	[HttpPost]
 	[ProducesResponseType(StatusCodes.Status200OK)]
@@ -95,7 +95,9 @@ public class GowaWebhookController(
 		};
 
 		if (isGroup && payload.ChatId is { Length: > 0 } groupChatId) {
-			message.ChatName = await this.ResolveGroupNameAsync(groupChatId);
+			(string? name, string? topic) = await this.ResolveGroupInfoAsync(groupChatId);
+			message.ChatName  = name;
+			message.ChatTopic = topic;
 		}
 
 		// Echoes of our own messages → backfill sender info on the persisted record
@@ -124,21 +126,22 @@ public class GowaWebhookController(
 		return this.Ok();
 	}
 
-	private async Task<string?> ResolveGroupNameAsync(string groupId) {
-		if (GroupNameCache.TryGetValue(groupId, out var cached)
+	private async Task<(string? Name, string? Topic)> ResolveGroupInfoAsync(string groupId) {
+		if (GroupInfoCache.TryGetValue(groupId, out var cached)
 		    && DateTimeOffset.UtcNow - cached.FetchedAt < GroupNameCacheTtl)
-			return cached.Name;
+			return (cached.Name, cached.Topic);
 
 		try {
 			GroupInfo? info = await gowaClient.GetGroupInfoAsync(groupId);
-			if (info?.Name is not { Length: > 0 } name) return cached.Name;
+			if (info?.Name is not { Length: > 0 } name) return (cached.Name, cached.Topic);
 
-			GroupNameCache[groupId] = (name, DateTimeOffset.UtcNow);
-			return name;
+			string? topic = info.Topic is { Length: > 0 } ? info.Topic : null;
+			GroupInfoCache[groupId] = (name, topic, DateTimeOffset.UtcNow);
+			return (name, topic);
 		} catch (Exception ex) {
 			if (logger.IsEnabled(LogLevel.Debug))
-				logger.LogDebug(ex, "Failed to fetch group name for {GroupId}", groupId);
-			return cached.Name;
+				logger.LogDebug(ex, "Failed to fetch group info for {GroupId}", groupId);
+			return (cached.Name, cached.Topic);
 		}
 	}
 

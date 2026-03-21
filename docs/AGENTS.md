@@ -77,13 +77,12 @@ The AI can read and modify configs at runtime. Write operations are restricted t
 |------|-------------|------|
 | `cfg_get_agent_config` | Show current agent config | Open |
 | `cfg_update_agent_config(key, value)` | Modify agent config | OwnerOnly |
-| `cfg_get_chat_config` | Show current chat config | Open |
-| `cfg_update_chat_config(key, value)` | Modify chat config | OwnerOnly |
-| `cfg_add_allowed_sender(id)` | Allow sender in current chat | OwnerOnly |
-| `cfg_remove_allowed_sender(id)` | Remove sender from chat | OwnerOnly |
-| `cfg_list_allowed_senders` | List allowed senders | Open |
+| `cfg_get_chat_config(chatId?)` | Show chat config (any chat or current) | Open |
+| `cfg_update_chat_config(key, value, chatId?)` | Modify chat config (any chat or current) | OwnerOnly |
+| `cfg_add_allowed_sender(id, chatId?)` | Allow sender in chat | OwnerOnly |
+| `cfg_remove_allowed_sender(id, chatId?)` | Remove sender from chat | OwnerOnly |
+| `cfg_list_allowed_senders(chatId?)` | List allowed senders | Open |
 | `cfg_list_chats` | List all chats with config | OwnerOnly |
-| `cfg_manage_chat(chat_id, key, value)` | Manage any chat remotely | OwnerOnly |
 
 ## Environment Variables
 

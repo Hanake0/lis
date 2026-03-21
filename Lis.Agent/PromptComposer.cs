@@ -27,7 +27,8 @@ public sealed class PromptComposer(
 
 	public async Task<string> BuildAsync(
 		LisDbContext db, long agentId, CancellationToken ct,
-		bool isGroup = false, AgentEntity? agent = null) {
+		ChatEntity? chat = null, AgentEntity? agent = null) {
+		bool isGroup = chat?.IsGroup == true;
 		StringBuilder sb = new();
 
 		List<PromptSectionEntity> sections = await db.PromptSections
@@ -40,12 +41,15 @@ public sealed class PromptComposer(
 			? agent?.GroupContextPrompt ?? DefaultGroupContext
 			: "";
 
+		// Build chat context metadata
+		string chatContextText = BuildChatContext(chat);
+
 		foreach (PromptSectionEntity section in sections) {
 			string content = section.Content;
 
 			if (string.IsNullOrWhiteSpace(content)) continue;
 
-			content = this.Interpolate(content, groupContextText);
+			content = this.Interpolate(content, groupContextText, chatContextText);
 
 			if (content.Length > MAX_SECTION_CHARS) {
 				content = content[..MAX_SECTION_CHARS];
@@ -82,7 +86,19 @@ public sealed class PromptComposer(
 		return sb.ToString();
 	}
 
-	private string Interpolate(string content, string groupContextText) {
+	private static string BuildChatContext(ChatEntity? chat) {
+		if (chat is not { IsGroup: true }) return "";
+
+		StringBuilder sb = new();
+		if (chat.Name is { Length: > 0 })
+			sb.AppendLine($"Group: {chat.Name}");
+		if (chat.GroupTopic is { Length: > 0 })
+			sb.AppendLine($"Topic: {chat.GroupTopic}");
+
+		return sb.ToString().TrimEnd();
+	}
+
+	private string Interpolate(string content, string groupContextText, string chatContextText) {
 		TimeZoneInfo tz = TimeZoneHelper.Find(lisOptions.Value.Timezone);
 		DateTime local  = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
 
@@ -97,6 +113,7 @@ public sealed class PromptComposer(
 
 		content = content.Replace("{{datetime}}", datetime);
 		content = content.Replace("{{group_context}}", groupContextText);
+		content = content.Replace("{{chat_context}}", chatContextText);
 
 		return content;
 	}

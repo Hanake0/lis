@@ -176,7 +176,7 @@ public sealed class ConversationService(
 			.OrderBy(m => m.Timestamp)
 			.ToListAsync(ct);
 
-		string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct, chat.IsGroup, agent);
+		string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct, chat, agent);
 
 		// Load parent session for continuity
 		SessionEntity? parentSession = session.ParentSessionId is not null
@@ -390,6 +390,7 @@ public sealed class ConversationService(
 				Name           = chatName ?? message.SenderName,
 				IsGroup        = message.IsGroup,
 				RequireMention = message.IsGroup,
+				GroupTopic     = message.IsGroup ? message.ChatTopic : null,
 				Enabled        = message.IsGroup || message.SenderId == ownerJid,
 				CreatedAt      = DateTimeOffset.UtcNow,
 				UpdatedAt      = DateTimeOffset.UtcNow
@@ -403,6 +404,9 @@ public sealed class ConversationService(
 				chat.Name = message.ChatName;
 			else if (message.SenderName is not null)
 				chat.Name = message.SenderName;
+
+			if (message.IsGroup && message.ChatTopic is not null)
+				chat.GroupTopic = message.ChatTopic;
 
 			await db.SaveChangesAsync(ct);
 		}
