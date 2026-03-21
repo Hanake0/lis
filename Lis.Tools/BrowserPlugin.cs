@@ -29,6 +29,11 @@ public sealed class BrowserPlugin(BrowserSessionManager sessionManager) {
 			return string.IsNullOrWhiteSpace(url)
 				? "Browser started."
 				: $"Browser started at {url}";
+		} catch (PlaywrightException) {
+			return "Browser failed to start: Playwright browsers are not installed. "
+				+ "Fix this by running: pwsh playwright.ps1 install chromium "
+				+ "from the build output directory (e.g. Lis.Api/bin/Debug/net10.0/) "
+				+ "using exec_run_command, then retry browser_start.";
 		} catch (Exception ex) {
 			return $"Error starting browser: {ex.Message}";
 		}
