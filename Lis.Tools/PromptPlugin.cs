@@ -17,6 +17,9 @@ public sealed class PromptPlugin(IServiceScopeFactory scopeFactory) {
 		if (agent is null or { Length: 0 })
 			return ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
 
+		if (!ToolContext.IsOwner)
+			throw new UnauthorizedAccessException("Only the owner can access other agents' prompts.");
+
 		AgentEntity? target = await db.Agents.FirstOrDefaultAsync(a => a.Name == agent);
 		if (target is null) throw new ArgumentException($"Agent '{agent}' not found.");
 		return target.Id;
