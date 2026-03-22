@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 using Lis.Agent.Commands;
 using Lis.Core.Channel;
@@ -246,6 +247,7 @@ public sealed class ConversationService(
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content)) {
 				(string? content, bool shouldQuote) = ResponseDirectives.Parse(msg.Content);
 				if (content is not null) {
+					content = await this.DenormalizeMentionsAsync(content, message.ChatId, message.SenderId, ct);
 					externalId = await channelClient.SendMessageAsync(
 						message.ChatId, content, shouldQuote ? message.ExternalId : null, ct);
 					sentAnyMessage = true;
@@ -518,6 +520,21 @@ public sealed class ConversationService(
 
 	private static string Fmt(long tokens) =>
 		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
+
+	// ── Mention denormalization (outgoing) ──────────────────────────
+
+	private async Task<string> DenormalizeMentionsAsync(string body, string chatId, string senderId, CancellationToken ct) {
+		foreach (Match match in Regex.Matches(body, @"@(\w+)")) {
+			string name = match.Groups[1].Value;
+			if (Regex.IsMatch(name, @"^\d+$")) continue;
+
+			string? phone = await this.ResolveNameToPhoneAsync(chatId, name, senderId, ct);
+			if (phone is not null)
+				body = body.Replace(match.Value, $"@{phone}");
+		}
+
+		return body;
+	}
 
 	// ── Mention resolution ──────────────────────────────────────────
 
