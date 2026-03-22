@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 using Lis.Channels.WhatsApp.Schemas;
 using Lis.Core.Channel;
@@ -22,6 +23,7 @@ public class GowaWebhookController(
 	private static readonly ConcurrentDictionary<string, (string Name, string? Topic, DateTimeOffset FetchedAt)> GroupInfoCache = new();
 	private static readonly TimeSpan GroupNameCacheTtl = TimeSpan.FromHours(1);
 	private static string? _botJid;
+	private static string? _botDisplayName;
 	private static int _botJidFetched;
 
 	[HttpPost]
@@ -81,6 +83,11 @@ public class GowaWebhookController(
 			? ts
 			: DateTimeOffset.UtcNow;
 
+		// Normalize @phone mentions to @name before constructing the message (Body is init-only)
+		string? normalizedBody = payload.Body;
+		if (normalizedBody is { Length: > 0 } && payload.ChatId is { Length: > 0 })
+			normalizedBody = await this.NormalizeMentionsAsync(normalizedBody, payload.ChatId);
+
 		IncomingMessage message = new() {
 			ExternalId     = payload.Id,
 			ChatId         = payload.ChatId ?? "",
@@ -89,7 +96,7 @@ public class GowaWebhookController(
 			Timestamp      = timestamp,
 			IsFromMe       = payload.IsFromMe,
 			IsGroup        = isGroup,
-			Body           = payload.Body,
+			Body           = normalizedBody,
 			RepliedId      = payload.RepliedToId,
 			RepliedContent = payload.QuotedBody,
 			MediaType      = payload.MediaType,
@@ -103,9 +110,12 @@ public class GowaWebhookController(
 			message.ChatTopic = topic;
 		}
 
-		// Learn bot's own JID: from echo messages, or lazily from gowa API
-		if (payload.IsFromMe && payload.From is { Length: > 0 })
+		// Learn bot's own JID and display name from echo messages, or lazily from gowa API
+		if (payload.IsFromMe && payload.From is { Length: > 0 }) {
 			_botJid ??= payload.From;
+			if (payload.FromName is { Length: > 0 })
+				_botDisplayName ??= payload.FromName;
+		}
 
 		if (_botJid is null)
 			await this.FetchBotJidAsync();
@@ -164,6 +174,27 @@ public class GowaWebhookController(
 			Interlocked.Exchange(ref _botJidFetched, 0);
 			logger.LogWarning(ex, "Failed to fetch bot JID from gowa API");
 		}
+	}
+
+	private async Task<string> NormalizeMentionsAsync(string body, string chatId) {
+		string botPhone = _botJid is { Length: > 0 } ? _botJid.Split('@')[0] : "";
+
+		foreach (Match match in Regex.Matches(body, @"@(\d+)")) {
+			string phone = match.Groups[1].Value;
+
+			// Bot's own phone → display name
+			if (botPhone.Length > 0 && phone == botPhone && _botDisplayName is { Length: > 0 }) {
+				body = body.Replace(match.Value, $"@{_botDisplayName}");
+				continue;
+			}
+
+			// Query DB for the name
+			string? name = await conversationService.ResolvePhoneToNameAsync(chatId, phone, CancellationToken.None);
+			if (name is not null)
+				body = body.Replace(match.Value, $"@{name}");
+		}
+
+		return body;
 	}
 
 	private async Task<(string? Name, string? Topic)> ResolveGroupInfoAsync(string groupId) {
