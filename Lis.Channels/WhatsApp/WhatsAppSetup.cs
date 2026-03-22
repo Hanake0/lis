@@ -27,8 +27,9 @@ public static class WhatsAppSetup {
 			}
 		}).AddStandardResilienceHandler(options => {
 			// Sending WhatsApp messages is not idempotent — retries cause duplicates
-			options.Retry.MaxRetryAttempts = 0;
-			options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+			options.Retry.MaxRetryAttempts         = 1;
+			options.Retry.ShouldHandle             = _ => ValueTask.FromResult(false);
+			options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(120);
 			options.AttemptTimeout.Timeout          = TimeSpan.FromSeconds(60);
 			options.TotalRequestTimeout.Timeout     = TimeSpan.FromSeconds(120);
 		});
