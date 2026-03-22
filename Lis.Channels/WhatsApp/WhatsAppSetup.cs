@@ -25,7 +25,13 @@ public static class WhatsAppSetup {
 				string encoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(opts.BasicAuth));
 				client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", encoded);
 			}
-		}).AddStandardResilienceHandler();
+		}).AddStandardResilienceHandler(options => {
+			// Sending WhatsApp messages is not idempotent — retries cause duplicates
+			options.Retry.MaxRetryAttempts = 0;
+			options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+			options.AttemptTimeout.Timeout          = TimeSpan.FromSeconds(60);
+			options.TotalRequestTimeout.Timeout     = TimeSpan.FromSeconds(120);
+		});
 
 		services.AddSingleton<IMessageFormatter, WhatsAppFormatter>();
 		services.AddScoped<IChannelClient, WhatsAppClient>();
