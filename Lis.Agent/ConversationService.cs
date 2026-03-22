@@ -518,4 +518,56 @@ public sealed class ConversationService(
 
 	private static string Fmt(long tokens) =>
 		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
+
+	// ── Mention resolution ──────────────────────────────────────────
+
+	[Trace("ConversationService > ResolvePhoneToNameAsync")]
+	public async Task<string?> ResolvePhoneToNameAsync(string chatId, string phone, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		return await db.Messages
+			.Where(m => m.Session.Chat.ExternalId == chatId
+			         && m.SenderId.StartsWith(phone)
+			         && m.SenderName != null)
+			.OrderByDescending(m => m.Id)
+			.Select(m => m.SenderName)
+			.FirstOrDefaultAsync(ct);
+	}
+
+	[Trace("ConversationService > ResolveNameToPhoneAsync")]
+	public async Task<string?> ResolveNameToPhoneAsync(string chatId, string name, string? preferSenderId, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		// Prefer the specified sender if their name matches
+		if (preferSenderId is { Length: > 0 }) {
+			string? preferName = await db.Messages
+				.Where(m => m.Session.Chat.ExternalId == chatId
+				         && m.SenderId == preferSenderId
+				         && m.SenderName != null)
+				.OrderByDescending(m => m.Id)
+				.Select(m => m.SenderName)
+				.FirstOrDefaultAsync(ct);
+
+			if (preferName is not null && preferName.Equals(name, StringComparison.OrdinalIgnoreCase))
+				return ExtractPhone(preferSenderId);
+		}
+
+		// Fall back to most recent sender with this name in the chat
+		string? senderId = await db.Messages
+			.Where(m => m.Session.Chat.ExternalId == chatId
+			         && m.SenderName != null
+			         && EF.Functions.ILike(m.SenderName, name))
+			.OrderByDescending(m => m.Id)
+			.Select(m => m.SenderId)
+			.FirstOrDefaultAsync(ct);
+
+		return senderId is not null ? ExtractPhone(senderId) : null;
+	}
+
+	internal static string ExtractPhone(string jid) {
+		int at = jid.IndexOf('@');
+		return at > 0 ? jid[..at] : jid;
+	}
 }

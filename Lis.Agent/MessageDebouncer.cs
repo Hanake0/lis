@@ -113,6 +113,18 @@ public sealed class MessageDebouncer(
 		await svc.HandleReactionAsync(messageId, chatId, emoji, senderId, ct);
 	}
 
+	public async Task<string?> ResolvePhoneToNameAsync(string chatId, string phone, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
+		return await svc.ResolvePhoneToNameAsync(chatId, phone, ct);
+	}
+
+	public async Task<string?> ResolveNameToPhoneAsync(string chatId, string name, string? preferSenderId, CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
+		return await svc.ResolveNameToPhoneAsync(chatId, name, preferSenderId, ct);
+	}
+
 	[Trace("MessageDebouncer > HandleTypingAsync")]
 	public Task HandleTypingAsync(string chatId, CancellationToken ct) {
 		int debounceMs = lisOptions.Value.MessageDebounceMs;
