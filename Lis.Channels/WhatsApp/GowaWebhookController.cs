@@ -24,7 +24,6 @@ public class GowaWebhookController(
 	private static readonly TimeSpan GroupNameCacheTtl = TimeSpan.FromHours(1);
 	private static string? _botJid;
 	private static string? _botDisplayName;
-	private static int _botJidFetched;
 
 	[HttpPost]
 	[ProducesResponseType(StatusCodes.Status200OK)]
@@ -110,15 +109,13 @@ public class GowaWebhookController(
 			message.ChatTopic = topic;
 		}
 
-		// Learn bot's own JID and display name from echo messages, or lazily from gowa API
-		if (payload.IsFromMe && payload.From is { Length: > 0 }) {
-			_botJid ??= payload.From;
-			if (payload.FromName is { Length: > 0 })
-				_botDisplayName ??= payload.FromName;
-		}
+		// Learn bot's own JID from envelope device_id (sent on every webhook)
+		if (envelope?.DeviceId is { Length: > 0 })
+			_botJid ??= envelope.DeviceId;
 
-		if (_botJid is null)
-			await this.FetchBotJidAsync();
+		// Learn display name from echo messages
+		if (payload.IsFromMe && payload.FromName is { Length: > 0 })
+			_botDisplayName ??= payload.FromName;
 
 		// @mention detection: check mentioned_jids from GOWA payload, then check @phone in body
 		if (isGroup && _botJid is not null && !message.IsBotMentioned)
@@ -167,19 +164,6 @@ public class GowaWebhookController(
 		}
 
 		return false;
-	}
-
-	private async Task FetchBotJidAsync() {
-		if (Interlocked.CompareExchange(ref _botJidFetched, 1, 0) != 0) return;
-
-		try {
-			DeviceInfo[]? devices = await gowaClient.GetDevicesAsync();
-			string? jid = devices?.FirstOrDefault(d => d.Jid is { Length: > 0 })?.Jid;
-			if (jid is not null) _botJid = jid;
-		} catch (Exception ex) {
-			Interlocked.Exchange(ref _botJidFetched, 0);
-			logger.LogWarning(ex, "Failed to fetch bot JID from gowa API");
-		}
 	}
 
 	private async Task<string> NormalizeMentionsAsync(string body, string chatId) {
