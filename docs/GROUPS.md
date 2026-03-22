@@ -30,13 +30,18 @@ When a message arrives in a group, `AgentService.ShouldRespond` evaluates:
 
 ### Mention Detection
 
-Since GOWA doesn't include `mentioned_jids` in webhook payloads, mentions are detected by
-`AgentService.DetectMentionAsync` — the single source of truth for all detection strategies:
+Mentions are detected in two layers:
 
-1. **Reply-to-bot** — if the user replies to a bot message, it's treated as an implicit mention
-   (DB lookup: `WHERE external_id = repliedToId AND is_from_me = true`)
-2. **Text pattern** — if the message body contains the bot's display name (case-insensitive).
-   The display name comes from `AgentEntity.DisplayName` (e.g., "Lis").
+**Layer 1 — Webhook controller** (`GowaWebhookController`):
+- **Native @mention** — GOWA includes `mentioned_jids` in webhook extensions. The controller
+  checks if the bot's JID is in the list. The bot JID is learned from echo messages (`IsFromMe`)
+  or lazily fetched from the GOWA `/app/devices` API on the first webhook after startup.
+
+**Layer 2 — AgentService** (`DetectMentionAsync`):
+- **Reply-to-bot** — if the user replies to a bot message, it's treated as an implicit mention
+  (DB lookup: `WHERE external_id = repliedToId AND is_from_me = true`)
+- **Text pattern** — if the message body contains the bot's display name (case-insensitive).
+  The display name comes from `AgentEntity.DisplayName` (e.g., "Lis").
 
 All callers use `AgentService.ShouldRespondAsync` which runs mention detection before the gate
 check, ensuring consistent behavior across normal and queued message paths.

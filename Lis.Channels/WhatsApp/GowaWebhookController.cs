@@ -22,6 +22,8 @@ public class GowaWebhookController(
 	private static readonly ConcurrentDictionary<string, (string Name, string? Topic, DateTimeOffset FetchedAt)> GroupInfoCache = new();
 	private static readonly TimeSpan GroupNameCacheTtl = TimeSpan.FromHours(1);
 	private static string? _botJid;
+	private static int _botJidFetched;
+
 	[HttpPost]
 	[ProducesResponseType(StatusCodes.Status200OK)]
 	[ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -101,9 +103,12 @@ public class GowaWebhookController(
 			message.ChatTopic = topic;
 		}
 
-		// Learn bot's own JID from echo messages
+		// Learn bot's own JID: from echo messages, or lazily from gowa API
 		if (payload.IsFromMe && payload.From is { Length: > 0 })
 			_botJid ??= payload.From;
+
+		if (_botJid is null)
+			await this.FetchBotJidAsync();
 
 		// @mention detection: check mentioned_jids from GOWA payload
 		if (isGroup && _botJid is not null && !message.IsBotMentioned)
@@ -146,6 +151,19 @@ public class GowaWebhookController(
 		}
 
 		return false;
+	}
+
+	private async Task FetchBotJidAsync() {
+		if (Interlocked.CompareExchange(ref _botJidFetched, 1, 0) != 0) return;
+
+		try {
+			DeviceInfo[]? devices = await gowaClient.GetDevicesAsync();
+			string? jid = devices?.FirstOrDefault(d => d.Jid is { Length: > 0 })?.Jid;
+			if (jid is not null) _botJid = jid;
+		} catch (Exception ex) {
+			Interlocked.Exchange(ref _botJidFetched, 0);
+			logger.LogWarning(ex, "Failed to fetch bot JID from gowa API");
+		}
 	}
 
 	private async Task<(string? Name, string? Topic)> ResolveGroupInfoAsync(string groupId) {

@@ -35,4 +35,7 @@ public sealed class DeviceInfo {
 
 	[JsonPropertyName("status")]
 	public string? Status { get; init; }
+
+	[JsonPropertyName("jid")]
+	public string? Jid { get; init; }
 }
