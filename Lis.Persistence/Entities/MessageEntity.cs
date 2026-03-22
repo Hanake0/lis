@@ -131,6 +131,9 @@ public class MessageEntityConfiguration :IEntityTypeConfiguration<MessageEntity>
 
 		builder.HasIndex(e => new { e.SessionId, e.Timestamp });
 
+		builder.HasIndex(e => new { e.SenderId, e.Id });
+		builder.HasIndex(e => new { e.SenderName, e.Id });
+
 		builder.HasOne(e => e.Chat)
 			   .WithMany(c => c.Messages)
 			   .HasForeignKey(e => e.ChatId)
