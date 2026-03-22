@@ -226,11 +226,11 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("update_chat_config")]
-	[Description("Update a configuration field on a chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int). Omit chatId to use current chat.")]
+	[Description("Update a configuration field on a chat. Valid keys: enabled (bool), require_mention (bool), open_group (bool), group_context_messages (int), debounce_ms (int), agent (name or 'default'). Omit chatId to use current chat.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> UpdateChatConfigAsync(
-		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages, debounce_ms)")] string key,
+		[Description("Configuration key to update (enabled, require_mention, open_group, group_context_messages, debounce_ms, agent)")] string key,
 		[Description("New value")] string value,
 		[Description("Optional chat external ID. Omit to use current chat.")] string? chatId = null) {
 		await ToolContext.NotifyAsync($"✏️ Updating chat config\n{key} = {value}");
@@ -260,8 +260,17 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 				if (!int.TryParse(value, out int debounce)) return "Invalid integer value for debounce_ms.";
 				chat.DebounceMs = debounce;
 				break;
+			case "agent":
+				if (string.Equals(value, "default", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(value)) {
+					chat.AgentId = null;
+				} else {
+					AgentEntity? target = await db.Agents.FirstOrDefaultAsync(a => a.Name == value);
+					if (target is null) return $"Agent '{value}' not found.";
+					chat.AgentId = target.Id;
+				}
+				break;
 			default:
-				return $"Unknown config key '{key}'. Valid keys: enabled, require_mention, open_group, group_context_messages, debounce_ms.";
+				return $"Unknown config key '{key}'. Valid keys: enabled, require_mention, open_group, group_context_messages, debounce_ms, agent.";
 		}
 
 		chat.UpdatedAt = DateTimeOffset.UtcNow;
