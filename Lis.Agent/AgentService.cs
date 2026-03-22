@@ -51,13 +51,18 @@ public sealed class AgentService(
 			if (repliedToBot) { message.IsBotMentioned = true; return; }
 		}
 
-		// Strategy 2: text mention — message body contains the bot's display name
+		// Strategy 2: text mention — message body contains a mention trigger (or display name as fallback)
 		if (message.Body is not { Length: > 0 } body) return;
 
 		AgentEntity agent = await this.ResolveForChatAsync(db, chat, ct);
-		if (agent.DisplayName is { Length: > 0 } botName
-		    && Regex.IsMatch(body, $@"\b{Regex.Escape(botName)}\b", RegexOptions.IgnoreCase))
-			message.IsBotMentioned = true;
+		string triggers = agent.MentionTriggers ?? agent.DisplayName ?? "";
+
+		foreach (string trigger in triggers.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+			if (Regex.IsMatch(body, $@"\b{Regex.Escape(trigger)}\b", RegexOptions.IgnoreCase)) {
+				message.IsBotMentioned = true;
+				return;
+			}
+		}
 	}
 
 	/// <summary>
@@ -116,6 +121,7 @@ public sealed class AgentService(
 		AgentEntity agent = new() {
 			Name                    = "default",
 			DisplayName             = "Lis",
+			MentionTriggers         = "lis",
 			Model                   = envDefaults.Model,
 			MaxTokens               = envDefaults.MaxTokens,
 			ContextBudget           = envDefaults.ContextBudget,

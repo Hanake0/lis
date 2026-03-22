@@ -25,6 +25,11 @@ public sealed class AgentEntity {
 	[JsonPropertyName("display_name")]
 	public string? DisplayName { get; set; }
 
+	[MaxLength(256)]
+	[Column("mention_triggers", TypeName = "varchar(256)")]
+	[JsonPropertyName("mention_triggers")]
+	public string? MentionTriggers { get; set; }
+
 	// Model config
 
 	[Required]

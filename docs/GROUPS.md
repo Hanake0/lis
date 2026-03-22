@@ -40,8 +40,9 @@ Mentions are detected in two layers:
 **Layer 2 — AgentService** (`DetectMentionAsync`):
 - **Reply-to-bot** — if the user replies to a bot message, it's treated as an implicit mention
   (DB lookup: `WHERE external_id = repliedToId AND is_from_me = true`)
-- **Text pattern** — if the message body contains the bot's display name (case-insensitive).
-  The display name comes from `AgentEntity.DisplayName` (e.g., "Lis").
+- **Text pattern** — if the message body contains a mention trigger (case-insensitive word
+  boundary match). Triggers come from `AgentEntity.MentionTriggers` (comma-separated, e.g.,
+  `"lis,liszinha"`). Falls back to `DisplayName` if `MentionTriggers` is null.
 
 All callers use `AgentService.ShouldRespondAsync` which runs mention detection before the gate
 check, ensuring consistent behavior across normal and queued message paths.
@@ -135,4 +136,5 @@ Set via `update_chat_config debounce_ms <value>`. Useful for groups where a long
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `mention_triggers` | text | null | Comma-separated mention triggers (e.g., `"lis,liszinha"`). Falls back to `display_name` |
 | `group_context_prompt` | text | null | Custom `{{group_context}}` expansion |

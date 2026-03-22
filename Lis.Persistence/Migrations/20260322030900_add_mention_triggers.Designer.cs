@@ -3,6 +3,7 @@ using System;
 using Lis.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace Lis.Persistence.Migrations
 {
     [DbContext(typeof(LisDbContext))]
-    partial class LisDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260322030900_add_mention_triggers")]
+    partial class add_mention_triggers
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -49,7 +49,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 		"model", "max_tokens", "context_budget", "thinking_effort",
 		"tool_notifications", "compaction_threshold", "keep_recent_tokens",
 		"tool_prune_threshold", "tool_keep_threshold", "tool_summarization_policy",
-		"display_name", "group_context_prompt",
+		"display_name", "mention_triggers", "group_context_prompt",
 		"tool_profile", "tools_allow", "tools_deny", "workspace_path",
 		"exec_security", "exec_timeout_seconds"
 	];
@@ -69,6 +69,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 		StringBuilder sb = new();
 		sb.AppendLine($"name: {agentEntity.Name}");
 		sb.AppendLine($"display_name: {agentEntity.DisplayName ?? "(none)"}");
+		sb.AppendLine($"mention_triggers: {agentEntity.MentionTriggers ?? "(none)"}");
 		sb.AppendLine($"model: {agentEntity.Model}");
 		sb.AppendLine($"max_tokens: {agentEntity.MaxTokens}");
 		sb.AppendLine($"context_budget: {agentEntity.ContextBudget}");
@@ -92,7 +93,7 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 	}
 
 	[KernelFunction("update_agent_config")]
-	[Description("Update a configuration field on an agent. Valid keys: model, max_tokens, context_budget, thinking_effort, tool_notifications, compaction_threshold, keep_recent_tokens, tool_prune_threshold, tool_keep_threshold, tool_summarization_policy, display_name. Omit agent to use current agent.")]
+	[Description("Update a configuration field on an agent. Valid keys: model, max_tokens, context_budget, thinking_effort, tool_notifications, compaction_threshold, keep_recent_tokens, tool_prune_threshold, tool_keep_threshold, tool_summarization_policy, display_name, mention_triggers. Omit agent to use current agent.")]
 	[ToolSummarization(SummarizationPolicy.Prune)]
 	[ToolAuthorization(ToolAuthLevel.OwnerOnly)]
 	public async Task<string> UpdateAgentConfigAsync(
@@ -149,6 +150,9 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 				break;
 			case "display_name":
 				agentEntity.DisplayName = string.IsNullOrWhiteSpace(value) ? null : value;
+				break;
+			case "mention_triggers":
+				agentEntity.MentionTriggers = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "group_context_prompt":
 				agentEntity.GroupContextPrompt = string.IsNullOrWhiteSpace(value) ? null : value;
