@@ -47,6 +47,29 @@ Mentions are detected in two layers:
 All callers use `AgentService.ShouldRespondAsync` which runs mention detection before the gate
 check, ensuring consistent behavior across normal and queued message paths.
 
+### Mention Resolution (phone ↔ name)
+
+WhatsApp sends `@phone_number` in message bodies instead of display names. Lis resolves
+mentions bidirectionally:
+
+**Incoming** (`GowaWebhookController`):
+- `@552731911808` → `@Alice` — regex-finds `@<digits>` patterns in the body and queries the
+  messages table for the latest `sender_name` matching that phone. Bot's own phone is resolved
+  from `_botDisplayName` (learned from echo messages). Unresolvable phones are left as-is.
+
+**Outgoing** (`ConversationService.RespondAsync`):
+- `@Alice` → `@552731911808` — regex-finds `@<word>` patterns in the AI response and queries
+  the messages table for the latest `sender_id` matching that name (case-insensitive). Gowa's
+  `getMentionFromText` then picks up `@phone` and creates a native WhatsApp @mention.
+
+**Duplicate name handling**: `ResolveNameToPhoneAsync` accepts a `preferSenderId` parameter.
+If the name matches the current message sender, their phone is returned first. Otherwise falls
+back to the most recent sender with that name in the chat.
+
+**Fallback**: If a phone or name can't be resolved (e.g., member never sent a message in the
+chat), the mention is left as-is — the message still works, just without name resolution or
+native @mention.
+
 ## Context Windowing
 
 In group chats, non-relevant messages (noise from senders the bot didn't respond to) are
