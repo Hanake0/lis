@@ -120,9 +120,15 @@ public class GowaWebhookController(
 		if (_botJid is null)
 			await this.FetchBotJidAsync();
 
-		// @mention detection: check mentioned_jids from GOWA payload
+		// @mention detection: check mentioned_jids from GOWA payload, then check @phone in body
 		if (isGroup && _botJid is not null && !message.IsBotMentioned)
 			message.IsBotMentioned = IsBotMentioned(payload);
+
+		if (isGroup && !message.IsBotMentioned && _botJid is { Length: > 0 }) {
+			string botPhone = _botJid.Split('@')[0];
+			if (payload.Body?.Contains($"@{botPhone}") == true)
+				message.IsBotMentioned = true;
+		}
 
 		// Echoes of our own messages → backfill sender info on the persisted record
 		if (payload.IsFromMe) {
