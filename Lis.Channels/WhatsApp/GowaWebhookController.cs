@@ -125,7 +125,7 @@ public class GowaWebhookController(
 			message.IsBotMentioned = IsBotMentioned(payload);
 
 		if (isGroup && !message.IsBotMentioned && _botJid is { Length: > 0 }) {
-			string botPhone = _botJid.Split('@')[0];
+			string botPhone = ExtractPhone(_botJid);
 			if (payload.Body?.Contains($"@{botPhone}") == true)
 				message.IsBotMentioned = true;
 		}
@@ -183,7 +183,7 @@ public class GowaWebhookController(
 	}
 
 	private async Task<string> NormalizeMentionsAsync(string body, string chatId) {
-		string botPhone = _botJid is { Length: > 0 } ? _botJid.Split('@')[0] : "";
+		string botPhone = _botJid is { Length: > 0 } ? ExtractPhone(_botJid) : "";
 
 		foreach (Match match in Regex.Matches(body, @"@(\d+)")) {
 			string phone = match.Groups[1].Value;
@@ -220,6 +220,13 @@ public class GowaWebhookController(
 				logger.LogDebug(ex, "Failed to fetch group info for {GroupId}", groupId);
 			return (cached.Name, cached.Topic);
 		}
+	}
+
+	private static string ExtractPhone(string jid) {
+		int at = jid.IndexOf('@');
+		string user = at > 0 ? jid[..at] : jid;
+		int colon = user.IndexOf(':');
+		return colon > 0 ? user[..colon] : user;
 	}
 
 	private static async Task<byte[]> ReadBodyAsync(HttpRequest request) {

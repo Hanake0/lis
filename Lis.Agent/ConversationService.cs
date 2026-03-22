@@ -585,6 +585,8 @@ public sealed class ConversationService(
 
 	internal static string ExtractPhone(string jid) {
 		int at = jid.IndexOf('@');
-		return at > 0 ? jid[..at] : jid;
+		string user = at > 0 ? jid[..at] : jid;
+		int colon = user.IndexOf(':');
+		return colon > 0 ? user[..colon] : user;
 	}
 }
