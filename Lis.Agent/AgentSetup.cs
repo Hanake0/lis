@@ -35,6 +35,7 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<FileSystemPlugin>(pluginName: "fs", serviceProvider: sp);
 			kernel.Plugins.AddFromType<WebPlugin>(pluginName: "web", serviceProvider: sp);
 			kernel.Plugins.AddFromType<BrowserPlugin>(pluginName: "browser", serviceProvider: sp);
+			kernel.Plugins.AddFromType<CronPlugin>(pluginName: "cron", serviceProvider: sp);
 
 			// Build auth registry from plugin metadata
 			ToolAuthRegistry authRegistry = sp.GetRequiredService<ToolAuthRegistry>();
@@ -65,6 +66,7 @@ public static class AgentSetup {
 		services.AddSingleton<IChatCommand, ModelsCommand>();
 		services.AddSingleton<IChatCommand, ApproveCommand>();
 		services.AddSingleton<IChatCommand, DenyCommand>();
+		services.AddSingleton<IChatCommand, CronCommand>();
 		services.AddSingleton<CommandRouter>();
 
 		// Media

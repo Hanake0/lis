@@ -16,6 +16,7 @@ public class LisDbContext(DbContextOptions<LisDbContext> options) :DbContext(opt
 	public DbSet<ChatAllowedSenderEntity>   ChatAllowedSenders { get; init; } = null!;
 	public DbSet<ExecApprovalEntity>        ExecApprovals      { get; init; } = null!;
 	public DbSet<ExecAllowlistEntity>       ExecAllowlist      { get; init; } = null!;
+	public DbSet<CronJobEntity>             CronJobs           { get; init; } = null!;
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
 		modelBuilder.HasPostgresExtension("vector");

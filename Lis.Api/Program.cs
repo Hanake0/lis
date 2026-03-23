@@ -119,6 +119,9 @@ if (Env("ANTHROPIC_ENABLED") == "true" && Env("GOWA_ENABLED") == "true") {
 	builder.Services.AddLisAgent();
 }
 
+// Cron scheduler
+builder.Services.AddHostedService<CronService>();
+
 WebApplication app = builder.Build();
 
 // Apply migrations on startup + seed default agent

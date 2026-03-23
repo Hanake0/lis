@@ -361,6 +361,81 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("contact_identifier");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.CronJobEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("chat_id")
+                        .HasJsonPropertyName("chat_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasJsonPropertyName("created_at");
+
+                    b.Property<string>("CronExpression")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("cron_expression")
+                        .HasJsonPropertyName("cron_expression");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled")
+                        .HasJsonPropertyName("enabled");
+
+                    b.Property<string>("Handler")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("handler")
+                        .HasJsonPropertyName("handler");
+
+                    b.Property<bool>("IsDeterministic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deterministic")
+                        .HasJsonPropertyName("is_deterministic");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_run_at")
+                        .HasJsonPropertyName("last_run_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("name")
+                        .HasJsonPropertyName("name");
+
+                    b.Property<DateTimeOffset>("NextRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_run_at")
+                        .HasJsonPropertyName("next_run_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatId");
+
+                    b.HasIndex("Enabled", "NextRunAt");
+
+                    b.ToTable("cron_job");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.ExecAllowlistEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -883,6 +958,17 @@ namespace Lis.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Contact");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.CronJobEntity", b =>
+                {
+                    b.HasOne("Lis.Persistence.Entities.ChatEntity", "Chat")
+                        .WithMany()
+                        .HasForeignKey("ChatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Chat");
                 });
 
             modelBuilder.Entity("Lis.Persistence.Entities.ExecAllowlistEntity", b =>
