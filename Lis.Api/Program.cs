@@ -101,6 +101,10 @@ if (Env("LIS_COMPACTION_PROVIDER") is { Length: > 0 } compProvider
 		(sp, _) => sp.GetRequiredService<IChatClient>());
 }
 
+// Extraction client (keyed IChatClient for memory extraction — reuses compaction client)
+builder.Services.AddKeyedSingleton<IChatClient>("extraction",
+	(sp, _) => sp.GetRequiredKeyedService<IChatClient>("compaction"));
+
 // Embedding (optional — enables vector search for memories)
 if (Env("MEMORIES_EMBEDDING_ENABLED") == "true") builder.Services.AddEmbedding();
 

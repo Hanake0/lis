@@ -73,6 +73,9 @@ public static class AgentSetup {
 		// Compaction
 		services.AddSingleton<CompactionService>();
 
+		// Memory extraction
+		services.AddSingleton<IMemoryExtractionService, MemoryExtractionService>();
+
 		return services;
 	}
 }

@@ -31,6 +31,7 @@ public sealed class ConversationService(
 	IMediaProcessor              mediaProcessor,
 	IApprovalService             approvalService,
 	ToolPolicyService            toolPolicyService,
+	IMemoryExtractionService     memoryExtraction,
 	IOptions<LisOptions>         lisOptions,
 	ILogger<ConversationService> logger,
 	ITokenCounter?               tokenCounter = null) : IConversationService {
@@ -297,6 +298,18 @@ public sealed class ConversationService(
 			await db.SaveChangesAsync(ct);
 
 			await this.CheckCompactionTriggersAsync(db, session, agent, lastUsage, message.ChatId, ct);
+
+			// Fire-and-forget memory extraction from conversation
+			List<string> conversationForExtraction = recentMessages
+				.Select(m => $"{(m.IsFromMe ? "Assistant" : "User")}: {m.Body ?? "[media]"}")
+				.ToList();
+			_ = Task.Run(async () => {
+				try {
+					await memoryExtraction.ExtractAsync(conversationForExtraction, CancellationToken.None);
+				} catch (Exception ex) {
+					logger.LogWarning(ex, "Memory extraction failed");
+				}
+			}, CancellationToken.None);
 		}
 	}
 

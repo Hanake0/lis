@@ -32,11 +32,12 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 		Vector? embedding = await GenerateEmbeddingAsync(scope.ServiceProvider, content);
 
 		MemoryEntity memory = new() {
-			Content   = content.Trim(),
-			ContactId = contactId,
-			Embedding = embedding,
-			CreatedAt = DateTimeOffset.UtcNow,
-			UpdatedAt = DateTimeOffset.UtcNow,
+			Content        = content.Trim(),
+			ContactId      = contactId,
+			Embedding      = embedding,
+			RelevanceScore = 1.0f,
+			CreatedAt      = DateTimeOffset.UtcNow,
+			UpdatedAt      = DateTimeOffset.UtcNow,
 		};
 
 		db.Memories.Add(memory);
@@ -77,6 +78,13 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 		}
 
 		if (results.Count == 0) return "No memories found.";
+
+		// Update last_accessed_at for returned results
+		DateTimeOffset now = DateTimeOffset.UtcNow;
+		foreach (MemoryEntity mem in results) {
+			mem.LastAccessedAt = now;
+		}
+		await db.SaveChangesAsync();
 
 		StringBuilder sb = new();
 		foreach (MemoryEntity mem in results) {
@@ -174,8 +182,10 @@ public sealed class MemoryPlugin(IServiceScopeFactory scopeFactory) {
 		if (contactId is not null)
 			q = q.Where(m => m.ContactId == contactId);
 
+		// Apply relevance decay as sort boost: cosine_distance * (2 - relevance_score)
+		// Higher relevance_score → lower multiplier → ranked higher
 		return await q
-			.OrderBy(m => m.Embedding!.CosineDistance(queryVector))
+			.OrderBy(m => m.Embedding!.CosineDistance(queryVector) * (2.0 - m.RelevanceScore))
 			.Take(10)
 			.ToListAsync();
 	}

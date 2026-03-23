@@ -38,9 +38,17 @@ public sealed class MemoryEntity {
 	[Column("updated_at")]
 	[JsonPropertyName("updated_at")]
 	public DateTimeOffset UpdatedAt { get; set; }
+
+	[Column("last_accessed_at")]
+	[JsonPropertyName("last_accessed_at")]
+	public DateTimeOffset? LastAccessedAt { get; set; }
+
+	[Column("relevance_score")]
+	[JsonPropertyName("relevance_score")]
+	public float RelevanceScore { get; set; } = 1.0f;
 }
 
-public class MemoryEntityConfiguration :IEntityTypeConfiguration<MemoryEntity> {
+public class MemoryEntityConfiguration : IEntityTypeConfiguration<MemoryEntity> {
 	public void Configure(EntityTypeBuilder<MemoryEntity> builder) {
 		builder.HasIndex(e => e.ContactId);
 
@@ -52,5 +60,8 @@ public class MemoryEntityConfiguration :IEntityTypeConfiguration<MemoryEntity> {
 		builder.HasIndex(e => e.Embedding)
 			   .HasMethod("hnsw")
 			   .HasOperators("vector_cosine_ops");
+
+		builder.Property(e => e.RelevanceScore)
+			   .HasDefaultValue(1f);
 	}
 }

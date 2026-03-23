@@ -530,6 +530,18 @@ namespace Lis.Persistence.Migrations
                         .HasColumnType("vector(1536)")
                         .HasColumnName("embedding");
 
+                    b.Property<DateTimeOffset?>("LastAccessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_accessed_at")
+                        .HasJsonPropertyName("last_accessed_at");
+
+                    b.Property<float>("RelevanceScore")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("real")
+                        .HasDefaultValue(1f)
+                        .HasColumnName("relevance_score")
+                        .HasJsonPropertyName("relevance_score");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at")
