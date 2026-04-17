@@ -20,7 +20,7 @@ services:
 
   postgres:
     container_name: backend-postgres
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     restart: always
     environment:
       POSTGRES_DB: lis
@@ -31,7 +31,7 @@ services:
 
   gowa:
     container_name: gowa
-    image: aldinokemal/go-whatsapp-web-multidevice:latest
+    image: aldinokemal2104/go-whatsapp-web-multidevice:v8.3.3
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -40,6 +40,24 @@ services:
       WHATSAPP_WEBHOOK: "http://backend:3010/webhook/whatsapp"
       WHATSAPP_WEBHOOK_SECRET: "${GOWA_WEBHOOK_SECRET}"
       WHATSAPP_WEBHOOK_EVENTS: "message"
+    volumes:
+      - gowa-data:/app/storages
+
+  # Optional web UI for browsing/editing the Postgres DB during development.
+  # Enable with: docker compose --profile db-ui up -d
+  # Then open http://localhost:8081
+  pgweb:
+    container_name: pgweb
+    image: sosedoff/pgweb:latest
+    restart: unless-stopped
+    profiles: ["db-ui"]
+    ports:
+      - "8081:8081"
+    environment:
+      PGWEB_DATABASE_URL: "postgres://lis:${POSTGRES_PASSWORD}@postgres:5432/lis?sslmode=disable"
+    depends_on:
+      - postgres
 
 volumes:
   pgdata:
+  gowa-data:

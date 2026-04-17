@@ -163,7 +163,9 @@ Lis.Tests         — xUnit test suite
 
 ### Prerequisites
 - Docker & Docker Compose
-- Anthropic API key ([console.anthropic.com](https://console.anthropic.com))
+- Anthropic credentials — either:
+  - An API key from [console.anthropic.com](https://console.anthropic.com) (`sk-ant-api03-...`), or
+  - A long-lived OAuth token from `claude setup-token` (`sk-ant-oat01-...`) — requires Claude Code installed locally
 
 ### Setup
 
@@ -171,9 +173,10 @@ Lis.Tests         — xUnit test suite
 git clone <repo-url> && cd lis
 cp .env.example .env
 # Edit .env — set at minimum:
-#   ANTHROPIC_API_KEY=sk-ant-...
+#   ANTHROPIC_API_KEY=sk-ant-...           # or sk-ant-oat01-... from `claude setup-token`
 #   LIS_OWNER_JID=<your-phone>@s.whatsapp.net
 #   GOWA_WEBHOOK_SECRET=<random-string>
+#   POSTGRES_PASSWORD=<matches DATABASE_URL password>
 
 docker compose up -d
 # Scan QR code at http://localhost:3000
@@ -277,6 +280,7 @@ OPENAI_API_KEY=sk-...                    # enables Whisper transcription
 
 | Doc | Topic |
 |-----|-------|
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment (Caddy + managed Postgres, two-stack compose) |
 | [AGENTS.md](docs/AGENTS.md) | Multi-agent system, per-chat config, agent switching |
 | [CONTEXT_COMPACTION.md](docs/CONTEXT_COMPACTION.md) | Rolling compaction, sessions, token tracking, prompt caching |
 | [SECURITY_MODEL.md](docs/SECURITY_MODEL.md) | 5-layer defense, tool auth, workspace sandbox |
