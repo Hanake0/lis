@@ -1,6 +1,8 @@
 // WebSocket wrapper for the Lis web channel.
 // Web-extension compatible: uses the global WebSocket, no Node APIs.
 
+import type { Logger } from './logger';
+
 export type ServerFrame =
 	| { type: 'connected' }
 	| { type: 'message';        chat_id: string; id: string; text: string; role: 'user' | 'assistant'; timestamp: string }
@@ -36,7 +38,7 @@ export class LisClient {
 	private reconnectTimer:  ReturnType<typeof setTimeout> | null = null;
 	private explicitClose = false;
 
-	constructor(private url: string, private token: string) {}
+	constructor(private url: string, private token: string, private readonly logger?: Logger) {}
 
 	// ── Public API ──────────────────────────────────────────────────
 
@@ -61,10 +63,11 @@ export class LisClient {
 
 	send(frame: ClientFrame): void {
 		if (this.socket?.readyState !== WebSocket.OPEN) {
-			console.warn('[Lis] dropping frame, socket not open:', frame);
+			this.logger?.warn(`dropping frame, socket not open: ${frame.type}`);
 			return;
 		}
 		this.socket.send(JSON.stringify(frame));
+		this.logger?.frame('send', frame);
 	}
 
 	updateConfig(url: string, token: string): void {
@@ -86,10 +89,12 @@ export class LisClient {
 			? `${this.url}?token=${encodeURIComponent(this.token)}`
 			: this.url;
 
+		this.logger?.info(`connecting to ${this.url}${this.token ? ' (token set)' : ' (no token!)'}`);
+
 		try {
 			this.socket = new WebSocket(url);
 		} catch (e) {
-			console.error('[Lis] failed to open socket:', e);
+			this.logger?.error('failed to open socket', e);
 			this.scheduleReconnect();
 			return;
 		}
@@ -97,6 +102,7 @@ export class LisClient {
 		this.socket.onopen = () => {
 			this.reconnectAttempt = 0;
 			this.setState('connected');
+			this.logger?.info('connected');
 		};
 
 		this.socket.onmessage = ev => {
@@ -104,19 +110,22 @@ export class LisClient {
 			try {
 				frame = JSON.parse(typeof ev.data === 'string' ? ev.data : '');
 			} catch (e) {
-				console.warn('[Lis] malformed frame:', ev.data, e);
+				this.logger?.warn(`malformed frame: ${typeof ev.data === 'string' ? ev.data : '<binary>'}`, e);
 				return;
 			}
+			this.logger?.frame('recv', frame);
 			for (const fn of this.frameListeners) fn(frame);
 		};
 
-		this.socket.onerror = e => {
-			console.warn('[Lis] socket error:', e);
+		this.socket.onerror = () => {
+			// Browser WebSocket onerror events carry no useful detail; the close event has the why.
+			this.logger?.warn('socket error');
 		};
 
-		this.socket.onclose = () => {
+		this.socket.onclose = ev => {
 			this.socket = null;
 			this.setState('disconnected');
+			this.logger?.info(`disconnected (code=${ev.code}${ev.reason ? `, reason="${ev.reason}"` : ''})`);
 			if (!this.explicitClose) this.scheduleReconnect();
 		};
 	}
@@ -124,6 +133,7 @@ export class LisClient {
 	private scheduleReconnect(): void {
 		const delay = Math.min(30_000, 1000 * 2 ** Math.min(this.reconnectAttempt, 5));
 		this.reconnectAttempt++;
+		this.logger?.info(`reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`);
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = null;
 			this.openSocket();
