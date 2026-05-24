@@ -2,6 +2,7 @@ using Grafana.OpenTelemetry;
 
 using Lis.Agent;
 using Lis.Api.Filters;
+using Lis.Api.Services;
 using Lis.Channels.Web;
 using Lis.Channels.WhatsApp;
 using Lis.Core.Channel;
@@ -132,8 +133,15 @@ builder.Services.AddSingleton<ContextBreakdownService>();
 builder.Services.AddScoped<IProjectService,       ProjectService>();
 builder.Services.AddScoped<ISessionFolderService, SessionFolderService>();
 builder.Services.AddScoped<IChatPinService,       ChatPinService>();
+builder.Services.AddScoped<IScheduledTaskService, ScheduledTaskService>();
 // Git is stateless (every call opens its own Repository), so a singleton is fine.
 builder.Services.AddSingleton<IGitService, GitService>();
+// Scheduler: coordinator is a singleton bridge between controllers and the hosted runner.
+builder.Services.AddSingleton<ScheduledTaskCoordinator>();
+// Default no-op executor; a real executor (e.g. one that calls IConversationService) can
+// override this via a later AddScoped<IScheduledTaskExecutor, MyExecutor>() registration.
+builder.Services.AddScoped<IScheduledTaskExecutor, NoOpScheduledTaskExecutor>();
+builder.Services.AddHostedService<ScheduledTaskRunner>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
