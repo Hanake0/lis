@@ -1,9 +1,13 @@
+using System.Text.Json.Serialization;
+
 namespace Lis.Core.Channel;
 
-public sealed record QuestionOption(string Label, string? Description = null);
+public sealed record QuestionOption(
+	[property: JsonPropertyName("label")] string Label,
+	[property: JsonPropertyName("description")] string? Description = null);
 
 public sealed record QuestionItem(
-	string Question,
-	string? Header = null,
-	IReadOnlyList<QuestionOption>? Options = null,
-	bool Multiple = false);
+	[property: JsonPropertyName("question")] string Question,
+	[property: JsonPropertyName("header")] string? Header = null,
+	[property: JsonPropertyName("options")] IReadOnlyList<QuestionOption>? Options = null,
+	[property: JsonPropertyName("multiple")] bool Multiple = false);
