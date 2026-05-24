@@ -103,6 +103,22 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 			cacheCreationTokens: usage.CacheCreationTokens,
 			thinkingTokens:      usage.ThinkingTokens), ct);
 
+	public async Task<bool> SendQuestionAsync(string chatId, string questionId,
+		IReadOnlyList<QuestionItem> questions, CancellationToken ct = default) {
+		List<QuestionFrameItem> items = questions.Select(q => new QuestionFrameItem {
+			Question = q.Question,
+			Header   = q.Header,
+			Multiple = q.Multiple,
+			Options  = (q.Options ?? []).Select(o => new QuestionFrameOption {
+				Label       = o.Label,
+				Description = o.Description,
+			}).ToList(),
+		}).ToList();
+
+		await this.PublishAsync(ServerFrame.Question(chatId, questionId, items), ct);
+		return true;
+	}
+
 	public async Task<bool> SendPermissionRequestAsync(string chatId, string approvalId, string toolName,
 		string? command = null, string? cwd = null, string? description = null,
 		CancellationToken ct = default) {

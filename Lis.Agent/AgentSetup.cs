@@ -1,4 +1,5 @@
 using Lis.Agent.Commands;
+using Lis.Core.Channel;
 using Lis.Tools;
 using Lis.Tools.Browser;
 
@@ -35,6 +36,7 @@ public static class AgentSetup {
 			kernel.Plugins.AddFromType<FileSystemPlugin>(pluginName: "fs", serviceProvider: sp);
 			kernel.Plugins.AddFromType<WebPlugin>(pluginName: "web", serviceProvider: sp);
 			kernel.Plugins.AddFromType<BrowserPlugin>(pluginName: "browser", serviceProvider: sp);
+			kernel.Plugins.AddFromType<QuestionPlugin>(pluginName: "ask", serviceProvider: sp);
 
 			// Build auth registry from plugin metadata
 			ToolAuthRegistry authRegistry = sp.GetRequiredService<ToolAuthRegistry>();
@@ -47,6 +49,7 @@ public static class AgentSetup {
 		services.AddSingleton<ToolAuthRegistry>();
 		services.AddSingleton<ToolPolicyService>();
 		services.AddSingleton<IApprovalService, ApprovalService>();
+		services.AddSingleton<IQuestionService, QuestionService>();
 		services.AddSingleton<BrowserSessionManager>();
 
 		// Agent

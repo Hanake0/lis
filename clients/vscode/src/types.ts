@@ -65,7 +65,8 @@ export type ServerFrame =
 	| { type: 'chat_archived';   chat_id: string; archived_at: string }
 	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] }
 	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[]; model: string; effort?: string }
-	| { type: 'permission_request'; chat_id: string; approval_id: string; permission: string; patterns: string[]; metadata: Record<string, unknown>; always: string[] };
+	| { type: 'permission_request'; chat_id: string; approval_id: string; permission: string; patterns: string[]; metadata: Record<string, unknown>; always: string[] }
+	| { type: 'question';           chat_id: string; question_id: string; questions: Array<{ question: string; header?: string; options: Array<{ label: string; description?: string }>; multiple?: boolean }> };
 
 // ── Client → Server frames ─────────────────────────────────────────
 
@@ -89,4 +90,5 @@ export type ClientFrame =
 	| { type: 'save_overrides'; chat_id: string; model?: string; effort?: string; tool_profile?: string }
 	| { type: 'get_context';    chat_id: string; force_refresh?: boolean }
 	| { type: 'abort';          chat_id: string }
-	| { type: 'permission_response'; approval_id: string; decision: 'once' | 'always' | 'deny' };
+	| { type: 'permission_response'; approval_id: string; decision: 'once' | 'always' | 'deny' }
+	| { type: 'question_response';  question_id: string; answers?: string[][]; rejected?: boolean };

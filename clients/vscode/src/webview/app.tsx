@@ -340,5 +340,22 @@ function handleFrame(frame: { type: string; [k: string]: unknown }): void {
 			});
 			break;
 		}
+
+		case 'question': {
+			const chatId = frame.chat_id as string;
+			if (chatId !== store.chatId) break;
+			const rawQuestions = frame.questions as Array<{ question: string; header?: string; options: Array<{ label: string; description?: string }>; multiple?: boolean }>;
+			store.addQuestion({
+				id:        frame.question_id as string,
+				sessionID: chatId,
+				questions: (rawQuestions ?? []).map(q => ({
+					question: q.question,
+					header:   q.header,
+					options:  (q.options ?? []).map(o => ({ label: o.label, description: o.description })),
+					multiple: q.multiple,
+				})),
+			});
+			break;
+		}
 	}
 }

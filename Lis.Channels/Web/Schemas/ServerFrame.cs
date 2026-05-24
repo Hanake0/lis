@@ -114,6 +114,13 @@ public sealed class ServerFrame {
 	[JsonPropertyName("always")]
 	public IReadOnlyList<string>? Always { get; init; }
 
+	// Question fields
+	[JsonPropertyName("question_id")]
+	public string? QuestionId { get; init; }
+
+	[JsonPropertyName("questions")]
+	public IReadOnlyList<QuestionFrameItem>? Questions { get; init; }
+
 	[JsonPropertyName("name")]
 	public string? Name { get; init; }
 
@@ -223,4 +230,29 @@ public sealed class ServerFrame {
 
 	public static ServerFrame ChatArchived(string chatId, DateTimeOffset archivedAt) =>
 		new() { Type = "chat_archived", ChatId = chatId, ArchivedAt = archivedAt };
+
+	public static ServerFrame Question(string chatId, string questionId, IReadOnlyList<QuestionFrameItem> questions) =>
+		new() { Type = "question", ChatId = chatId, QuestionId = questionId, Questions = questions };
+}
+
+public sealed class QuestionFrameOption {
+	[JsonPropertyName("label")]
+	public required string Label { get; init; }
+
+	[JsonPropertyName("description")]
+	public string? Description { get; init; }
+}
+
+public sealed class QuestionFrameItem {
+	[JsonPropertyName("question")]
+	public required string Question { get; init; }
+
+	[JsonPropertyName("header")]
+	public string? Header { get; init; }
+
+	[JsonPropertyName("options")]
+	public required IReadOnlyList<QuestionFrameOption> Options { get; init; }
+
+	[JsonPropertyName("multiple")]
+	public bool Multiple { get; init; }
 }

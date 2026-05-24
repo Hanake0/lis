@@ -46,10 +46,18 @@ export async function respondToPermission(_sessionId: string, approvalId: string
 	useChatStore.getState().removePermission(approvalId);
 }
 
-export async function respondToQuestion(_sessionId: string, questionId: string, _answers: string[][]): Promise<void> {
+export async function respondToQuestion(_sessionId: string, questionId: string, answers: string[][]): Promise<void> {
+	vscode.postMessage({
+		type:  'send_frame',
+		frame: { type: 'question_response', question_id: questionId, answers },
+	});
 	useChatStore.getState().removeQuestion(questionId);
 }
 
 export async function rejectQuestion(_sessionId: string, questionId: string): Promise<void> {
+	vscode.postMessage({
+		type:  'send_frame',
+		frame: { type: 'question_response', question_id: questionId, rejected: true },
+	});
 	useChatStore.getState().removeQuestion(questionId);
 }

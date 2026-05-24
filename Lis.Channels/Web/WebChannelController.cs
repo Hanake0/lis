@@ -26,6 +26,7 @@ public sealed class WebChannelController(
 	IConversationService            conversationService,
 	ContextBreakdownService         contextBreakdown,
 	IApprovalService                approvalService,
+	IQuestionService                questionService,
 	IOptions<WebChannelOptions>     options,
 	IServiceScopeFactory            scopeFactory,
 	IHostApplicationLifetime        lifetime,
@@ -125,6 +126,7 @@ public sealed class WebChannelController(
 			case "get_context":         await this.HandleGetContextAsync(frame, ct);           break;
 			case "abort":               await this.HandleAbortAsync(frame);                    break;
 			case "permission_response": await this.HandlePermissionResponseAsync(frame, ct);   break;
+			case "question_response":  await this.HandleQuestionResponseAsync(frame, ct);    break;
 			default:
 				await client.PublishAsync(ServerFrame.Error($"unknown frame type: {frame.Type}"), ct);
 				break;
@@ -514,6 +516,28 @@ public sealed class WebChannelController(
 
 		if (!resolved)
 			await client.PublishAsync(ServerFrame.Error($"No pending approval with ID '{frame.ApprovalId}'", frame.ChatId), ct);
+	}
+
+	// ── Question response ──────────────────────────────────────────
+
+	private async Task HandleQuestionResponseAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.QuestionId)) {
+			await client.PublishAsync(ServerFrame.Error("question_response requires question_id", frame.ChatId), ct);
+			return;
+		}
+
+		bool resolved;
+		if (frame.Rejected == true) {
+			resolved = await questionService.RejectAsync(frame.QuestionId);
+		} else {
+			List<IReadOnlyList<string>> answers = frame.Answers?
+				.Select(a => (IReadOnlyList<string>)a.AsReadOnly())
+				.ToList() ?? [];
+			resolved = await questionService.ResolveAsync(frame.QuestionId, answers);
+		}
+
+		if (!resolved)
+			await client.PublishAsync(ServerFrame.Error($"No pending question with ID '{frame.QuestionId}'", frame.ChatId), ct);
 	}
 
 	// ── Context breakdown ───────────────────────────────────────────

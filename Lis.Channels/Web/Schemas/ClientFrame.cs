@@ -60,4 +60,16 @@ public sealed class ClientFrame {
 	/// <summary>One of: "once", "always", "deny".</summary>
 	[JsonPropertyName("decision")]
 	public string? Decision { get; init; }
+
+	// Question response
+	[JsonPropertyName("question_id")]
+	public string? QuestionId { get; init; }
+
+	/// <summary>Array of arrays — one answer set per question in the original request.</summary>
+	[JsonPropertyName("answers")]
+	public List<List<string>>? Answers { get; init; }
+
+	/// <summary>True when the user dismissed without answering.</summary>
+	[JsonPropertyName("rejected")]
+	public bool? Rejected { get; init; }
 }

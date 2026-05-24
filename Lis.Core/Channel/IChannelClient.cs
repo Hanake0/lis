@@ -52,4 +52,13 @@ public interface IChannelClient {
 		string? command = null, string? cwd = null, string? description = null,
 		CancellationToken ct = default)
 		=> Task.FromResult(false);
+
+	/// <summary>
+	/// Sends an interactive question to the user with structured options.
+	/// Returns true if the question was surfaced interactively (web UI).
+	/// Default returns false for channels without interactive question support.
+	/// </summary>
+	Task<bool> SendQuestionAsync(string chatId, string questionId,
+		IReadOnlyList<QuestionItem> questions, CancellationToken ct = default)
+		=> Task.FromResult(false);
 }
