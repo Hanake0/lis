@@ -4,28 +4,48 @@ import type { AttachedFile } from '@/stores/types/sessionTypes';
 
 export type { AttachedFile };
 
-interface NewSessionDraft {
-	open: boolean;
-}
+const noop: any = () => {};
+const asyncNoop: any = async () => {};
 
-interface SessionUIStore {
-	currentSessionId: string | null;
-	newSessionDraft: NewSessionDraft | null;
-	error: string | null;
-	setCurrentSession: (id: string, directory?: string | null) => void;
-	openNewSessionDraft: () => void;
-	closeNewSessionDraft: () => void;
-	clearError: () => void;
-}
+export const useSessionUIStore = create<any>((set: any) => ({
+	currentSessionId: null as string | null,
+	newSessionDraft: null as { open: boolean } | null,
+	error: null as string | null,
+	isLoading: false,
+	abortPromptSessionId: null,
+	availableWorktrees: [],
+	availableWorktreesByProject: {},
+	worktreeMetadata: null,
+	isSessionPlanAvailable: false,
 
-export const useSessionUIStore = create<SessionUIStore>((set) => ({
-	currentSessionId: null,
-	newSessionDraft: null,
-	error: null,
-	setCurrentSession: (id) => set({ currentSessionId: id, newSessionDraft: null }),
+	setCurrentSession: (id: string) => set({ currentSessionId: id, newSessionDraft: null }),
 	openNewSessionDraft: () => set({ currentSessionId: null, newSessionDraft: { open: true } }),
 	closeNewSessionDraft: () => set({ newSessionDraft: null }),
 	clearError: () => set({ error: null }),
+
+	createSession: asyncNoop,
+	deleteSession: asyncNoop,
+	deleteSessions: asyncNoop,
+	archiveSession: asyncNoop,
+	archiveSessions: asyncNoop,
+	updateSessionTitle: asyncNoop,
+	shareSession: asyncNoop,
+	unshareSession: asyncNoop,
+	sendMessage: asyncNoop,
+	forkFromMessage: asyncNoop,
+	revertToMessage: asyncNoop,
+	createSessionFromAssistantMessage: asyncNoop,
+	handleSlashRedo: asyncNoop,
+	initializeNewOpenChamberSession: asyncNoop,
+
+	acknowledgeSessionAbort: noop,
+	clearAbortPrompt: noop,
+	setDraftBootstrapPendingDirectory: noop,
+	setNewSessionDraftTarget: noop,
+	getContextUsage: () => null,
+	getDirectoryForSession: () => null,
+	getSessionsByDirectory: () => [],
+	getWorktreeMetadata: () => null,
 }));
 
 useChatStore.subscribe((state, prev) => {

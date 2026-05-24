@@ -13,75 +13,20 @@ export type WeekStartPreference = 'auto' | 'sunday' | 'monday';
 export type MainTabGuard = (nextTab: MainTab) => boolean;
 export type EventStreamStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'paused' | 'offline' | 'error';
 
-interface UIStore {
-	activeMainTab: MainTab;
-	isExpandedInput: boolean;
-	stickyUserHeader: boolean;
-	wideChatLayoutEnabled: boolean;
+const noop: any = () => {};
 
-	isSidebarOpen: boolean;
-	sidebarWidth: number;
-	isRightSidebarOpen: boolean;
-	rightSidebarWidth: number;
-	rightSidebarTab: RightSidebarTab;
-	isBottomTerminalOpen: boolean;
-	isBottomTerminalExpanded: boolean;
-	bottomTerminalHeight: number;
-
-	isAboutDialogOpen: boolean;
-	isCommandPaletteOpen: boolean;
-	isHelpDialogOpen: boolean;
-	isImagePreviewOpen: boolean;
-	isMultiRunLauncherOpen: boolean;
-	isSessionSwitcherOpen: boolean;
-	isSettingsDialogOpen: boolean;
-	isTimelineDialogOpen: boolean;
-
-	mermaidRenderingMode: MermaidRenderingMode;
-	userMessageRenderingMode: UserMessageRenderingMode;
-	chatRenderMode: ChatRenderMode;
-	activityRenderMode: ActivityRenderMode;
-
-	hasManuallyResizedLeftSidebar: boolean;
-	hasManuallyResizedRightSidebar: boolean;
-
-	setActiveMainTab: (tab: MainTab) => void;
-	setExpandedInput: (v: boolean) => void;
-	setTimelineDialogOpen: (v: boolean) => void;
-	setStickyUserHeader: (v: boolean) => void;
-	setWideChatLayoutEnabled: (v: boolean) => void;
-
-	toggleSidebar: () => void;
-	setSidebarOpen: (open: boolean) => void;
-	setSidebarWidth: (width: number) => void;
-	toggleRightSidebar: () => void;
-	setRightSidebarOpen: (open: boolean) => void;
-	setRightSidebarWidth: (width: number) => void;
-	setRightSidebarTab: (tab: RightSidebarTab) => void;
-	setBottomTerminalOpen: (open: boolean) => void;
-	setBottomTerminalExpanded: (expanded: boolean) => void;
-	setBottomTerminalHeight: (height: number) => void;
-
-	setAboutDialogOpen: (v: boolean) => void;
-	setCommandPaletteOpen: (v: boolean) => void;
-	setHelpDialogOpen: (v: boolean) => void;
-	setImagePreviewOpen: (v: boolean) => void;
-	setSessionSwitcherOpen: (v: boolean) => void;
-	setSettingsDialogOpen: (v: boolean) => void;
-	setMultiRunLauncherOpen: (v: boolean) => void;
-}
-
-export const useUIStore = create<UIStore>((set) => ({
-	activeMainTab: 'chat',
+export const useUIStore = create<any>((set: any) => ({
+	activeMainTab: 'chat' as MainTab,
 	isExpandedInput: false,
 	stickyUserHeader: false,
 	wideChatLayoutEnabled: false,
+	isMobile: false,
 
 	isSidebarOpen: true,
 	sidebarWidth: 280,
 	isRightSidebarOpen: false,
 	rightSidebarWidth: 360,
-	rightSidebarTab: 'git',
+	rightSidebarTab: 'git' as RightSidebarTab,
 	isBottomTerminalOpen: false,
 	isBottomTerminalExpanded: false,
 	bottomTerminalHeight: 300,
@@ -94,37 +39,138 @@ export const useUIStore = create<UIStore>((set) => ({
 	isSessionSwitcherOpen: false,
 	isSettingsDialogOpen: false,
 	isTimelineDialogOpen: false,
+	isModelSelectorOpen: false,
+	isOpenCodeStatusDialogOpen: false,
+	isScheduledTasksDialogOpen: false,
+	isSessionDropdownOpen: false,
+	isMobileSessionStatusBarCollapsed: false,
+	isFavoriteModel: noop,
 
 	mermaidRenderingMode: 'svg',
 	userMessageRenderingMode: 'markdown',
 	chatRenderMode: 'sorted',
 	activityRenderMode: 'collapsed',
-
+	diffViewMode: 'unified',
+	diffFileLayout: 'list',
+	diffWrapLines: false,
+	diffLayoutPreference: 'auto',
+	gitChangesViewMode: 'tree',
+	timeFormatPreference: 'auto',
+	weekStartPreference: 'auto',
+	sessionRetentionAction: 'archive',
+	autoDeleteEnabled: false,
+	autoDeleteAfterDays: 30,
+	collapsibleThinkingBlocks: true,
+	groupReasoningBlocks: false,
+	inputSpellcheckEnabled: false,
+	showSplitAssistantMessageActions: false,
+	showToolFileIcons: true,
+	showTerminalQuickKeysOnDesktop: false,
+	showMobileSessionStatusBar: true,
+	showOpenCodeUpdateNotifications: true,
+	notifyOnSubtasks: false,
+	showDeletionDialog: false,
+	persistChatDraft: false,
+	padding: 1,
+	inputBarOffset: 0,
+	notesPanelHeight: 200,
+	todoPanelHeight: 200,
+	multiRunLauncherPrefillPrompt: null as string | null,
+	pendingDiffFile: null,
+	pendingDiffStaged: false,
+	pendingFileFocusPath: null,
+	pendingFileNavigation: null,
+	settingsPage: null,
+	settingsProjectsSelectedId: null,
+	settingsRemoteInstancesSelectedId: null,
+	openCodeStatusText: '',
+	hiddenModels: [] as string[],
+	shortcutOverrides: {} as Record<string, any>,
+	contextPanelByDirectory: {} as Record<string, any>,
 	hasManuallyResizedLeftSidebar: false,
 	hasManuallyResizedRightSidebar: false,
 
-	setActiveMainTab: (tab) => set({ activeMainTab: tab }),
-	setExpandedInput: (v) => set({ isExpandedInput: v }),
-	setTimelineDialogOpen: (v) => set({ isTimelineDialogOpen: v }),
-	setStickyUserHeader: (v) => set({ stickyUserHeader: v }),
-	setWideChatLayoutEnabled: (v) => set({ wideChatLayoutEnabled: v }),
+	setActiveMainTab: (tab: MainTab) => set({ activeMainTab: tab }),
+	setExpandedInput: (v: boolean) => set({ isExpandedInput: v }),
+	setTimelineDialogOpen: (v: boolean) => set({ isTimelineDialogOpen: v }),
+	setStickyUserHeader: (v: boolean) => set({ stickyUserHeader: v }),
+	setWideChatLayoutEnabled: (v: boolean) => set({ wideChatLayoutEnabled: v }),
+	setIsMobile: (v: boolean) => set({ isMobile: v }),
 
-	toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen })),
-	setSidebarOpen: (open) => set({ isSidebarOpen: open }),
-	setSidebarWidth: (width) => set({ sidebarWidth: width, hasManuallyResizedLeftSidebar: true }),
-	toggleRightSidebar: () => set((s) => ({ isRightSidebarOpen: !s.isRightSidebarOpen })),
-	setRightSidebarOpen: (open) => set({ isRightSidebarOpen: open }),
-	setRightSidebarWidth: (width) => set({ rightSidebarWidth: width, hasManuallyResizedRightSidebar: true }),
-	setRightSidebarTab: (tab) => set({ rightSidebarTab: tab }),
-	setBottomTerminalOpen: (open) => set({ isBottomTerminalOpen: open }),
-	setBottomTerminalExpanded: (expanded) => set({ isBottomTerminalExpanded: expanded }),
-	setBottomTerminalHeight: (height) => set({ bottomTerminalHeight: height }),
+	toggleSidebar: () => set((s: any) => ({ isSidebarOpen: !s.isSidebarOpen })),
+	setSidebarOpen: (open: boolean) => set({ isSidebarOpen: open }),
+	setSidebarWidth: (width: number) => set({ sidebarWidth: width }),
+	toggleRightSidebar: () => set((s: any) => ({ isRightSidebarOpen: !s.isRightSidebarOpen })),
+	setRightSidebarOpen: (open: boolean) => set({ isRightSidebarOpen: open }),
+	setRightSidebarWidth: (width: number) => set({ rightSidebarWidth: width }),
+	setRightSidebarTab: (tab: RightSidebarTab) => set({ rightSidebarTab: tab }),
+	setBottomTerminalOpen: (open: boolean) => set({ isBottomTerminalOpen: open }),
+	setBottomTerminalExpanded: (expanded: boolean) => set({ isBottomTerminalExpanded: expanded }),
+	setBottomTerminalHeight: (height: number) => set({ bottomTerminalHeight: height }),
+	toggleBottomTerminal: () => set((s: any) => ({ isBottomTerminalOpen: !s.isBottomTerminalOpen })),
 
-	setAboutDialogOpen: (v) => set({ isAboutDialogOpen: v }),
-	setCommandPaletteOpen: (v) => set({ isCommandPaletteOpen: v }),
-	setHelpDialogOpen: (v) => set({ isHelpDialogOpen: v }),
-	setImagePreviewOpen: (v) => set({ isImagePreviewOpen: v }),
-	setSessionSwitcherOpen: (v) => set({ isSessionSwitcherOpen: v }),
-	setSettingsDialogOpen: (v) => set({ isSettingsDialogOpen: v }),
-	setMultiRunLauncherOpen: (v) => set({ isMultiRunLauncherOpen: v }),
+	setAboutDialogOpen: (v: boolean) => set({ isAboutDialogOpen: v }),
+	setCommandPaletteOpen: (v: boolean) => set({ isCommandPaletteOpen: v }),
+	setHelpDialogOpen: (v: boolean) => set({ isHelpDialogOpen: v }),
+	setImagePreviewOpen: (v: boolean) => set({ isImagePreviewOpen: v }),
+	setSessionSwitcherOpen: (v: boolean) => set({ isSessionSwitcherOpen: v }),
+	setSettingsDialogOpen: (v: boolean) => set({ isSettingsDialogOpen: v }),
+	setMultiRunLauncherOpen: (v: boolean) => set({ isMultiRunLauncherOpen: v }),
+	setModelSelectorOpen: (v: boolean) => set({ isModelSelectorOpen: v }),
+	setOpenCodeStatusDialogOpen: (v: boolean) => set({ isOpenCodeStatusDialogOpen: v }),
+	setScheduledTasksDialogOpen: (v: boolean) => set({ isScheduledTasksDialogOpen: v }),
+	setSessionDropdownOpen: (v: boolean) => set({ isSessionDropdownOpen: v }),
+	setIsMobileSessionStatusBarCollapsed: (v: boolean) => set({ isMobileSessionStatusBarCollapsed: v }),
+	setShowDeletionDialog: (v: boolean) => set({ showDeletionDialog: v }),
+	setShowOpenCodeUpdateNotifications: (v: boolean) => set({ showOpenCodeUpdateNotifications: v }),
+
+	setDiffViewMode: noop,
+	setDiffFileLayout: noop,
+	setDiffWrapLines: noop,
+	setGitChangesViewMode: noop,
+	setSessionRetentionAction: noop,
+	setAutoDeleteEnabled: noop,
+	setAutoDeleteAfterDays: noop,
+	setNotesPanelHeight: noop,
+	setTodoPanelHeight: noop,
+	setSettingsPage: noop,
+	setSettingsProjectsSelectedId: noop,
+	setSettingsRemoteInstancesSelectedId: noop,
+	setPendingDiffFile: noop,
+	setPendingFileFocusPath: noop,
+	setPendingFileNavigation: noop,
+	setMainTabGuard: noop,
+	setShortcutOverride: noop,
+	clearShortcutOverride: noop,
+	resetAllShortcutOverrides: noop,
+	setActiveContextPanelTab: noop,
+	setContextPanelTabTargetPath: noop,
+	setContextPanelWidth: noop,
+
+	toggleHelpDialog: noop,
+	toggleSidebar2: noop,
+	toggleFavoriteModel: noop,
+	toggleHiddenModel: noop,
+	toggleContextPanelExpanded: noop,
+
+	openContextFile: noop,
+	openContextFileAtLine: noop,
+	openContextDiff: noop,
+	openContextPlan: noop,
+	openContextPreview: noop,
+	openContextBrowser: noop,
+	openContextOverview: noop,
+	openContextPanelTab: noop,
+	openMultiRunLauncher: noop,
+	openMultiRunLauncherWithPrompt: noop,
+	closeContextPanel: noop,
+	closeContextPanelTab: noop,
+	reorderContextPanelTabs: noop,
+	navigateToDiff: noop,
+	addRecentModel: noop,
+	addRecentAgent: noop,
+	addRecentEffort: noop,
+	reorderFavoriteModel: noop,
+	showAllModels: noop,
+	hideAllModels: noop,
 }));
