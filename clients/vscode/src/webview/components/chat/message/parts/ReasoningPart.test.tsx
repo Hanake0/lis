@@ -39,8 +39,12 @@ describe('ReasoningTimelineBlock', () => {
     // Summary preview (beginning of text) is visible in the header
     expect(markup).toContain('First thought');
 
-    // Expanded body (MarkdownRenderer) is NOT rendered while collapsed
-    expect(markup).not.toContain('data-message-text-export-source');
+    // Expanded body stays mounted (so collapse can animate smoothly) but is
+    // properly hidden from screen readers and visually clipped to zero height.
+    expect(markup).toContain('aria-hidden="true"');
+    expect(markup).toContain('height:0px');
+    expect(markup).toContain('opacity:0');
+    expect(markup).toContain('overflow:hidden');
   });
 
   test('renders "Justification" label for justification variant when pre-expanded and not streaming', () => {
