@@ -35,8 +35,30 @@ public sealed class MessageDebouncer(
 		Activity.Current?.SetTag("message.id", message.ExternalId);
 		Activity.Current?.SetTag("chat.id",    message.ChatId);
 
-		ChatState state    = this.GetChatState(message.ChatId);
-		bool      isQueued = state.IsResponding;
+		ChatState state = this.GetChatState(message.ChatId);
+
+		// Explicit dispatch modes (channels opt-in) bypass debounce/queue defaults.
+		switch (message.Dispatch) {
+			case MessageDispatchMode.QueueOnly: {
+				using IServiceScope scope = scopeFactory.CreateScope();
+				ConversationService svc   = scope.ServiceProvider.GetRequiredService<ConversationService>();
+				await svc.IngestMessageAsync(message, queued: true, ct);
+				return;
+			}
+
+			case MessageDispatchMode.Interrupt: {
+				if (state.ActiveCts is { } activeCts) await activeCts.CancelAsync();
+				CancelPendingDebounce(state);
+				await this.IngestAndRespondImmediateAsync(message, ct);
+				return;
+			}
+
+			case MessageDispatchMode.Immediate:
+				await this.IngestAndRespondImmediateAsync(message, ct);
+				return;
+		}
+
+		bool isQueued = state.IsResponding;
 
 		// AI is responding: ingest with full auth, queue only if authorized
 		if (isQueued) {
@@ -183,6 +205,23 @@ public sealed class MessageDebouncer(
 
 		if (logger.IsEnabled(LogLevel.Information))
 			logger.LogInformation("Triggered pending responses for {Count} chats after crash recovery", chatIds.Count);
+	}
+
+	private async Task IngestAndRespondImmediateAsync(IncomingMessage message, CancellationToken ct) {
+		bool shouldRespond;
+		using (IServiceScope scope = scopeFactory.CreateScope()) {
+			ConversationService svc = scope.ServiceProvider.GetRequiredService<ConversationService>();
+			(_, shouldRespond) = await svc.IngestMessageAsync(message, queued: false, ct);
+		}
+
+		if (!shouldRespond) return;
+
+		if (commandRouter.Match(message.Body) is not null) {
+			await this.ExecuteCommandAsync(message);
+			return;
+		}
+
+		await this.RespondInScopeAsync(message);
 	}
 
 	private async Task ExecuteCommandAsync(IncomingMessage message) {
