@@ -1,26 +1,51 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import type { EventSourceLike } from '@/lib/lis/event-channel';
 import { LisRpcClient, type MessageSource } from '@/lib/lis/rpc-client';
 import { installProjectsSync, useProjectsStore, type ProjectEntry } from './useProjectsStore';
 
-interface PostedMessage {
-	type:       string;
-	request_id: string;
-	method:     string;
-	path:       string;
-	body?:      unknown;
-	query?:     unknown;
-}
-
-class FakeVscode {
-	posted: PostedMessage[] = [];
-	postMessage(msg: unknown): void { this.posted.push(msg as PostedMessage); }
-}
-
 class FakeMessageSource implements MessageSource {
 	private handlers: ((e: { data: unknown }) => void)[] = [];
-	addEventListener(_type: 'message', handler: (e: { data: unknown }) => void): void { this.handlers.push(handler); }
+	addEventListener(_type: 'message', handler: (e: { data: unknown }) => void): void {
+		this.handlers.push(handler);
+	}
 	fire(data: unknown): void { for (const h of this.handlers) h({ data }); }
+}
+
+class FakeEventSource implements EventSourceLike {
+	static last: FakeEventSource | null = null;
+	url: string;
+	onopen:  ((ev: Event) => void) | null = null;
+	onerror: ((ev: Event) => void) | null = null;
+	private handlers = new Map<string, ((ev: MessageEvent) => void)[]>();
+
+	constructor(url: string) { this.url = url; FakeEventSource.last = this; }
+	close(): void { /* noop */ }
+	addEventListener(type: string, handler: (ev: MessageEvent) => void): void {
+		if (!this.handlers.has(type)) this.handlers.set(type, []);
+		this.handlers.get(type)!.push(handler);
+	}
+	fire(type: string, data: string): void {
+		for (const h of this.handlers.get(type) ?? []) {
+			h({ data, lastEventId: '' } as unknown as MessageEvent);
+		}
+	}
+}
+
+interface RecordedCall { url: string; init?: RequestInit }
+
+class FakeFetch {
+	calls: RecordedCall[] = [];
+	respond: (req: { url: string; init?: RequestInit }) => Response = () =>
+		new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+
+	asFetch(): typeof globalThis.fetch {
+		return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+			const url = typeof input === 'string' ? input : input.toString();
+			this.calls.push({ url, init });
+			return this.respond({ url, init });
+		};
+	}
 }
 
 function makeProject(over: Partial<ProjectEntry> = {}): ProjectEntry {
@@ -38,76 +63,71 @@ function makeProject(over: Partial<ProjectEntry> = {}): ProjectEntry {
 	};
 }
 
-function reply(source: FakeMessageSource, requestId: string, status: number, body: unknown): void {
-	source.fire({ type: 'http_response', request_id: requestId, status, body });
+function jsonResponse(body: unknown, status = 200): Response {
+	return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
 describe('useProjectsStore', () => {
-	let vscode: FakeVscode;
+	const originalFetch = globalThis.fetch;
 	let source: FakeMessageSource;
+	let fake:   FakeFetch;
 
 	beforeEach(() => {
 		(LisRpcClient as unknown as { singleton: LisRpcClient | null }).singleton = null;
-		vscode = new FakeVscode();
 		source = new FakeMessageSource();
-		LisRpcClient.install(vscode, source);
-		// Reset store state.
+		fake = new FakeFetch();
+		globalThis.fetch = fake.asFetch();
+		FakeEventSource.last = null;
+		LisRpcClient.install(source, { eventSourceFactory: (url) => new FakeEventSource(url) });
+		source.fire({ type: 'lis.init', baseOrigin: 'http://localhost:3010', token: 'tok' });
 		useProjectsStore.setState({ projects: [], activeProjectId: null, loading: false, lastError: null });
 	});
 
-	test('loadAll populates projects sorted by sort_index then created_at', async () => {
-		const promise = useProjectsStore.getState().loadAll();
-		const env = vscode.posted[0];
-		expect(env.method).toBe('GET');
-		expect(env.path).toBe('/projects');
+	afterEach(() => { globalThis.fetch = originalFetch; });
 
-		reply(source, env.request_id, 200, [
+	test('loadAll populates projects sorted by sort_index then created_at', async () => {
+		fake.respond = () => jsonResponse([
 			makeProject({ id: 'a', sort_index: 2 }),
 			makeProject({ id: 'b', sort_index: 0 }),
 			makeProject({ id: 'c', sort_index: 1 }),
 		]);
-		await promise;
+		await useProjectsStore.getState().loadAll();
 
-		const ids = useProjectsStore.getState().projects.map(p => p.id);
-		expect(ids).toEqual(['b', 'c', 'a']);
+		expect(fake.calls[0].url).toBe('http://localhost:3010/api/projects');
+		expect(useProjectsStore.getState().projects.map(p => p.id)).toEqual(['b', 'c', 'a']);
 	});
 
-	test('addProject posts the right body and applies the created project optimistically', async () => {
-		const promise = useProjectsStore.getState().addProject('/repo', { label: 'Repo', color: 'purple' });
-		const env = vscode.posted[0];
-		expect(env.method).toBe('POST');
-		expect(env.body).toEqual({ path: '/repo', label: 'Repo', color: 'purple' });
+	test('addProject POSTs and stores the created project', async () => {
+		fake.respond = () => jsonResponse(makeProject({ id: 'p1' }), 201);
+		const result = await useProjectsStore.getState().addProject('/repo', { label: 'Repo', color: 'purple' });
 
-		reply(source, env.request_id, 201, makeProject({ id: 'p1', color: 'purple' }));
-		const result = await promise;
-
+		const init = fake.calls[0].init!;
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body as string)).toEqual({ path: '/repo', label: 'Repo', color: 'purple' });
 		expect(result?.id).toBe('p1');
 		expect(useProjectsStore.getState().projects[0].id).toBe('p1');
 	});
 
 	test('updateProjectMeta maps camelCase keys to snake_case wire keys', async () => {
-		const promise = useProjectsStore.getState().updateProjectMeta('p1', {
+		fake.respond = () => jsonResponse(makeProject({ id: 'p1', label: 'New' }));
+		await useProjectsStore.getState().updateProjectMeta('p1', {
 			label:            'New',
 			iconBackground:   '#fff',
 			sidebarCollapsed: true,
 		});
-		const env = vscode.posted[0];
-		expect(env.method).toBe('PATCH');
-		expect(env.body).toEqual({ label: 'New', icon_background: '#fff', sidebar_collapsed: true });
 
-		reply(source, env.request_id, 200, makeProject({ id: 'p1', label: 'New' }));
-		await promise;
+		const init = fake.calls[0].init!;
+		expect(init.method).toBe('PATCH');
+		expect(JSON.parse(init.body as string)).toEqual({ label: 'New', icon_background: '#fff', sidebar_collapsed: true });
 	});
 
 	test('removeProject delegates to DELETE and removes locally', async () => {
 		useProjectsStore.getState()._setFromServer([makeProject({ id: 'p1' }), makeProject({ id: 'p2' })]);
+		fake.respond = () => new Response(null, { status: 204 });
 
-		const promise = useProjectsStore.getState().removeProject('p1');
-		const env = vscode.posted[0];
-		expect(env.method).toBe('DELETE');
-		reply(source, env.request_id, 204, null);
-		await promise;
+		await useProjectsStore.getState().removeProject('p1');
 
+		expect(fake.calls[0].init?.method).toBe('DELETE');
 		expect(useProjectsStore.getState().projects.map(p => p.id)).toEqual(['p2']);
 	});
 
@@ -117,31 +137,32 @@ describe('useProjectsStore', () => {
 			makeProject({ id: 'b', sort_index: 1 }),
 			makeProject({ id: 'c', sort_index: 2 }),
 		]);
+		fake.respond = () => new Response(null, { status: 204 });
 
 		const promise = useProjectsStore.getState().reorderProjects(0, 2);
-		// Optimistic update happened before the await.
 		expect(useProjectsStore.getState().projects.map(p => p.id)).toEqual(['b', 'c', 'a']);
 
-		const env = vscode.posted[0];
-		expect(env.method).toBe('POST');
-		expect(env.path).toBe('/projects/reorder');
-		expect(env.body).toEqual({ ordered_external_ids: ['b', 'c', 'a'] });
-		reply(source, env.request_id, 204, null);
 		await promise;
+		const init = fake.calls[0].init!;
+		expect(init.method).toBe('POST');
+		expect(fake.calls[0].url).toBe('http://localhost:3010/api/projects/reorder');
+		expect(JSON.parse(init.body as string)).toEqual({ ordered_external_ids: ['b', 'c', 'a'] });
 	});
 
 	test('reorderProjects with invalid indices is a no-op', async () => {
 		useProjectsStore.getState()._setFromServer([makeProject({ id: 'a' })]);
 		await useProjectsStore.getState().reorderProjects(-1, 0);
-		expect(vscode.posted.length).toBe(0);
+		expect(fake.calls.length).toBe(0);
 	});
 
 	test('setActiveProject fires a touch call', async () => {
+		fake.respond = () => jsonResponse(makeProject({ id: 'p1' }));
 		useProjectsStore.getState().setActiveProject('p1');
 		expect(useProjectsStore.getState().activeProjectId).toBe('p1');
-		const env = vscode.posted[0];
-		expect(env.path).toBe('/projects/p1/touch');
-		expect(env.method).toBe('POST');
+		// Wait for the fire-and-forget touch to land.
+		while (fake.calls.length === 0) await new Promise(r => setTimeout(r, 5));
+		expect(fake.calls[0].url).toBe('http://localhost:3010/api/projects/p1/touch');
+		expect(fake.calls[0].init?.method).toBe('POST');
 	});
 
 	test('getActiveProject returns the matching project or null', () => {
@@ -154,49 +175,47 @@ describe('useProjectsStore', () => {
 	});
 
 	test('SSE project_created appends to local state via installProjectsSync', async () => {
+		fake.respond = () => jsonResponse([]);
 		const unsubscribe = installProjectsSync();
-		// Resolve the initial loadAll request with empty so the bootstrap call settles cleanly.
-		reply(source, vscode.posted[0].request_id, 200, []);
-		await Promise.resolve();
+		// Let loadAll settle.
+		await new Promise(r => setTimeout(r, 5));
 
-		source.fire({ type: 'sse_event', source: 'events', event: 'project_created', data: { project: makeProject({ id: 'sse-1' }) } });
+		FakeEventSource.last!.fire('project_created', JSON.stringify({ project: makeProject({ id: 'sse-1' }) }));
 
 		expect(useProjectsStore.getState().projects.map(p => p.id)).toContain('sse-1');
 		unsubscribe();
 	});
 
-	test('SSE project_deleted removes from local state', () => {
+	test('SSE project_deleted removes from local state', async () => {
 		useProjectsStore.getState()._setFromServer([makeProject({ id: 'p1' }), makeProject({ id: 'p2' })]);
+		fake.respond = () => jsonResponse([makeProject({ id: 'p1' }), makeProject({ id: 'p2' })]);
 		const unsubscribe = installProjectsSync();
-		reply(source, vscode.posted[0].request_id, 200, [makeProject({ id: 'p1' }), makeProject({ id: 'p2' })]);
+		await new Promise(r => setTimeout(r, 5));
 
-		source.fire({ type: 'sse_event', source: 'events', event: 'project_deleted', data: { project_id: 'p1' } });
+		FakeEventSource.last!.fire('project_deleted', JSON.stringify({ project_id: 'p1' }));
 
 		expect(useProjectsStore.getState().projects.map(p => p.id)).toEqual(['p2']);
 		unsubscribe();
 	});
 
 	test('uploadProjectIcon encodes file as base64 and POSTs', async () => {
+		fake.respond = () => jsonResponse(makeProject({ id: 'p1', icon_image_mime: 'image/png' }));
 		const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'icon.png', { type: 'image/png' });
-		const promise = useProjectsStore.getState().uploadProjectIcon('p1', file);
-		// file.arrayBuffer() is async — give it a tick before the request fires.
-		while (vscode.posted.length === 0) await new Promise(r => setTimeout(r, 5));
-		const env = vscode.posted[0];
-		expect(env.method).toBe('POST');
-		expect(env.path).toBe('/projects/p1/icon');
-		expect((env.body as { mime: string; source: string }).mime).toBe('image/png');
-		expect((env.body as { source: string }).source).toBe('custom');
-		expect(typeof (env.body as { blob_base64: string }).blob_base64).toBe('string');
+		const result = await useProjectsStore.getState().uploadProjectIcon('p1', file);
 
-		reply(source, env.request_id, 200, makeProject({ id: 'p1', icon_image_mime: 'image/png' }));
-		const result = await promise;
+		const init = fake.calls[0].init!;
+		expect(init.method).toBe('POST');
+		expect(fake.calls[0].url).toBe('http://localhost:3010/api/projects/p1/icon');
+		const body = JSON.parse(init.body as string);
+		expect(body.mime).toBe('image/png');
+		expect(body.source).toBe('custom');
+		expect(typeof body.blob_base64).toBe('string');
 		expect(result.ok).toBe(true);
 	});
 
 	test('lastError is set on a failing add', async () => {
-		const promise = useProjectsStore.getState().addProject('');
-		reply(source, vscode.posted[0].request_id, 400, { error: 'path required' });
-		const result = await promise;
+		fake.respond = () => jsonResponse({ error: 'path required' }, 400);
+		const result = await useProjectsStore.getState().addProject('');
 		expect(result).toBeNull();
 		expect(useProjectsStore.getState().lastError).toContain('path required');
 	});
