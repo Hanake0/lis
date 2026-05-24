@@ -142,6 +142,10 @@ builder.Services.AddSingleton<ScheduledTaskCoordinator>();
 // override this via a later AddScoped<IScheduledTaskExecutor, MyExecutor>() registration.
 builder.Services.AddScoped<IScheduledTaskExecutor, NoOpScheduledTaskExecutor>();
 builder.Services.AddHostedService<ScheduledTaskRunner>();
+// Multi-run: coordinator is a singleton, dispatcher is scoped (so it can compose other
+// scoped services like IConversationService once a real dispatcher is wired).
+builder.Services.AddSingleton<IMultiRunCoordinator, MultiRunCoordinator>();
+builder.Services.AddScoped<IMultiRunDispatcher, NoOpMultiRunDispatcher>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
