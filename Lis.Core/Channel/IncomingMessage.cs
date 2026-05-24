@@ -18,6 +18,9 @@ public sealed class IncomingMessage {
 	public string? MediaCaption { get; init; }
 	public string? MediaPath { get; init; }
 
+	/// <summary>How the channel wants this message dispatched. Defaults to debounce (WhatsApp behavior).</summary>
+	public MessageDispatchMode Dispatch { get; init; } = MessageDispatchMode.Default;
+
 	/// <summary>Set after ingestion — the DB-generated primary key.</summary>
 	public long DbId { get; set; }
 }
