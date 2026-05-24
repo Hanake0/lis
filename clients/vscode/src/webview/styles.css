@@ -68,6 +68,16 @@
   --tools-title:        var(--vscode-foreground);
   --tools-description:  var(--vscode-descriptionForeground);
 
+  /* Sidebar */
+  --sidebar:                 var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --sidebar-foreground:      var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  --sidebar-primary:         var(--vscode-button-background);
+  --sidebar-primary-foreground: var(--vscode-button-foreground);
+  --sidebar-accent:          var(--vscode-list-hoverBackground, rgba(128,128,128,0.08));
+  --sidebar-accent-foreground: var(--vscode-foreground);
+  --sidebar-border:          var(--vscode-sideBar-border, var(--vscode-panel-border, rgba(128,128,128,0.22)));
+  --sidebar-ring:            var(--vscode-focusBorder, #007fd4);
+
   /* Primary base for selection / accents */
   --primary-base: var(--vscode-focusBorder, #007fd4);
 }

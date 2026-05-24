@@ -9,40 +9,38 @@ import { I18nProvider } from './lib/i18n';
 import { vscode } from './vscodeApi';
 import { useSessionUIStore } from './sync/session-ui-store';
 
+export function installSidebarFrameHandler(): void {
+	document.documentElement.classList.add('dark');
+
+	window.addEventListener('message', (ev: MessageEvent<{ type: string; [k: string]: unknown }>) => {
+		const msg = ev.data;
+		if (!msg || typeof msg !== 'object') return;
+		switch (msg.type) {
+			case 'state':
+				useChatStore.getState().setConnection(msg.state as ConnectionState);
+				break;
+			case 'frame':
+				handleSidebarFrame(msg.frame as { type: string; [k: string]: unknown });
+				break;
+		}
+	});
+
+	// Intercept session selection to open in editor tab
+	const orig = useSessionUIStore.getState().setCurrentSession;
+	useSessionUIStore.setState({
+		setCurrentSession: (id: string) => {
+			vscode.postMessage({ type: 'open_session', chat_id: id });
+			orig(id);
+		},
+	});
+}
+
 export function SidebarOCApp() {
-	useEffect(() => {
-		document.documentElement.classList.add('dark');
-	}, []);
-
-	useEffect(() => {
-		const { setConnection } = useChatStore.getState();
-		const handler = (ev: MessageEvent<{ type: string; [k: string]: unknown }>) => {
-			const msg = ev.data;
-			switch (msg.type) {
-				case 'state': setConnection(msg.state as ConnectionState); break;
-				case 'frame': handleSidebarFrame(msg.frame as { type: string; [k: string]: unknown }); break;
-			}
-		};
-		window.addEventListener('message', handler);
-		return () => window.removeEventListener('message', handler);
-	}, []);
-
-	// Intercept session selection to open in editor tab instead of navigating locally
-	useEffect(() => {
-		const orig = useSessionUIStore.getState().setCurrentSession;
-		useSessionUIStore.setState({
-			setCurrentSession: (id: string) => {
-				vscode.postMessage({ type: 'open_session', chat_id: id });
-				orig(id);
-			},
-		});
-	}, []);
-
 	return (
 		<I18nProvider>
 			<ErrorBoundary>
 				<TooltipProvider delayDuration={300} skipDelayDuration={150}>
-					<div className="h-full w-full text-foreground bg-sidebar dark overflow-hidden">
+					<div className="h-full w-full text-foreground bg-background dark overflow-hidden">
 						<SessionSidebar />
 						<SessionDialogs />
 					</div>
