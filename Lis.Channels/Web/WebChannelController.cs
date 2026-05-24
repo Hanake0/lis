@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -24,6 +25,7 @@ public sealed class WebChannelController(
 	IConversationService            conversationService,
 	IOptions<WebChannelOptions>     options,
 	IServiceScopeFactory            scopeFactory,
+	IHostApplicationLifetime        lifetime,
 	ILogger<WebChannelController>   logger) : ControllerBase {
 
 	[HttpGet("ws")]
@@ -40,13 +42,17 @@ public sealed class WebChannelController(
 
 		using WebSocket socket = await this.HttpContext.WebSockets.AcceptWebSocketAsync();
 		Guid connId = client.Register(socket);
-		CancellationToken ct = this.HttpContext.RequestAborted;
+		// Link client-disconnect + app-shutdown so a CTRL+C doesn't get stuck waiting
+		// for the next inbound frame from an idle browser session.
+		using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+			this.HttpContext.RequestAborted, lifetime.ApplicationStopping);
+		CancellationToken ct = linkedCts.Token;
 
 		try {
 			await client.SendDirectAsync(connId, ServerFrame.Connected(), ct);
 			await this.ReadLoopAsync(socket, ct);
 		} catch (OperationCanceledException) {
-			// Client disconnected — normal exit
+			// Client disconnected or host stopping — normal exit
 		} catch (WebSocketException ex) {
 			if (logger.IsEnabled(LogLevel.Debug))
 				logger.LogDebug(ex, "Web socket closed unexpectedly");
@@ -56,7 +62,8 @@ public sealed class WebChannelController(
 			client.Unregister(connId);
 			if (socket.State == WebSocketState.Open) {
 				try {
-					await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server closing", CancellationToken.None);
+					using CancellationTokenSource closeCts = new(TimeSpan.FromSeconds(2));
+					await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server closing", closeCts.Token);
 				} catch { /* best effort */ }
 			}
 		}

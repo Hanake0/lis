@@ -26,6 +26,10 @@ AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiag
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// Cap shutdown wait so a stuck handler (e.g. an idle WebSocket) can't block CTRL+C.
+// The WebSocket controller links ApplicationStopping into its CT, so this is a safety net.
+builder.Services.Configure<HostOptions>(opt => opt.ShutdownTimeout = TimeSpan.FromSeconds(5));
+
 // Controllers + JSON serialization
 builder.Services.AddControllers()
 	   .AddApplicationPart(typeof(GowaWebhookController).Assembly)
