@@ -8,6 +8,7 @@ using Lis.Core.Channel;
 using Lis.Core.Configuration;
 using Lis.Core.Events;
 using Lis.Core.Util;
+using Lis.Git.Services;
 using Lis.Persistence;
 using Lis.Persistence.Services;
 using Lis.Providers.Anthropic;
@@ -131,6 +132,8 @@ builder.Services.AddSingleton<ContextBreakdownService>();
 builder.Services.AddScoped<IProjectService,       ProjectService>();
 builder.Services.AddScoped<ISessionFolderService, SessionFolderService>();
 builder.Services.AddScoped<IChatPinService,       ChatPinService>();
+// Git is stateless (every call opens its own Repository), so a singleton is fine.
+builder.Services.AddSingleton<IGitService, GitService>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
