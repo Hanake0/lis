@@ -128,7 +128,9 @@ builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
 builder.Services.AddSingleton<ToolRunner>();
 builder.Services.AddSingleton<ContextBreakdownService>();
-builder.Services.AddScoped<IProjectService, ProjectService>();
+builder.Services.AddScoped<IProjectService,       ProjectService>();
+builder.Services.AddScoped<ISessionFolderService, SessionFolderService>();
+builder.Services.AddScoped<IChatPinService,       ChatPinService>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
