@@ -23,3 +23,12 @@ public sealed record ChatUpdatedPayload(
 public sealed record ChatDeletedPayload(
 	[property: JsonPropertyName("chat_id")] string ChatId
 );
+
+/// <summary>
+/// Emitted when a chat is archived (chat row keeps its data; <c>archived_at</c>
+/// gets set so the sidebar moves it into its archived bucket). The full DTO is
+/// included so consumers don't need a follow-up GET.
+/// </summary>
+public sealed record ChatArchivedPayload(
+	[property: JsonPropertyName("chat")] object Chat
+);

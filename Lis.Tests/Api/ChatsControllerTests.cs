@@ -214,6 +214,103 @@ public class ChatsControllerTests :IDisposable {
 		Assert.Null(dtos.Single(d => d.ChatId == "orphan").ProjectExternalId);
 	}
 
+	// ── Rename (PATCH) ────────────────────────────────────────────
+
+	[Fact]
+	public async Task Update_Renames_The_Chat_And_Returns_The_Patched_Dto() {
+		await this.SeedChatAsync("rn", updatedHoursAgo: 1);
+		this.bus.Captured.Clear();
+
+		ActionResult<ChatDto> result = await this.sut.Update("rn", new UpdateChatRequest(Name: "  fresh name  "), default);
+
+		ChatDto dto = Assert.IsType<ChatDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("fresh name", dto.Name);
+		Assert.Equal(this.time.GetUtcNow(), dto.UpdatedAt);
+
+		ServerEvent ev = Assert.Single(this.bus.Captured);
+		Assert.Equal(ChatEventNames.Updated, ev.Name);
+		Assert.IsType<ChatUpdatedPayload>(ev.Data);
+	}
+
+	[Fact]
+	public async Task Update_Rejects_Empty_Name_With_ArgumentException() {
+		await this.SeedChatAsync("rn", updatedHoursAgo: 1);
+		await Assert.ThrowsAsync<ArgumentException>(() => this.sut.Update("rn", new UpdateChatRequest(Name: "   "), default));
+	}
+
+	[Fact]
+	public async Task Update_With_Null_Name_Is_A_Noop_For_Name_But_Still_Bumps_UpdatedAt() {
+		await this.SeedChatAsync("rn", updatedHoursAgo: 1);
+		ActionResult<ChatDto> result = await this.sut.Update("rn", new UpdateChatRequest(Name: null), default);
+		ChatDto dto = Assert.IsType<ChatDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("rn", dto.Name);
+		Assert.Equal(this.time.GetUtcNow(), dto.UpdatedAt);
+	}
+
+	[Fact]
+	public async Task Update_Missing_Throws_KeyNotFoundException() {
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.Update("missing", new UpdateChatRequest(Name: "x"), default));
+	}
+
+	// ── Archive ───────────────────────────────────────────────────
+
+	[Fact]
+	public async Task Archive_Sets_ArchivedAt_And_Emits_Event() {
+		await this.SeedChatAsync("ar", updatedHoursAgo: 1);
+		this.bus.Captured.Clear();
+
+		ActionResult<ChatDto> result = await this.sut.Archive("ar", default);
+		ChatDto dto = Assert.IsType<ChatDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.NotNull(dto.ArchivedAt);
+		Assert.Equal(this.time.GetUtcNow(), dto.ArchivedAt);
+
+		ServerEvent ev = Assert.Single(this.bus.Captured);
+		Assert.Equal(ChatEventNames.Archived, ev.Name);
+		Assert.IsType<ChatArchivedPayload>(ev.Data);
+	}
+
+	[Fact]
+	public async Task Archive_Already_Archived_Is_Idempotent_And_Does_Not_Re_Emit() {
+		await this.SeedChatAsync("ar", updatedHoursAgo: 1, archivedHoursAgo: 0.5);
+		this.bus.Captured.Clear();
+
+		ActionResult<ChatDto> result = await this.sut.Archive("ar", default);
+		Assert.IsType<OkObjectResult>(result.Result);
+		Assert.Empty(this.bus.Captured);
+	}
+
+	[Fact]
+	public async Task Archive_Missing_Throws_KeyNotFoundException() {
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.Archive("missing", default));
+	}
+
+	// ── Delete ────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task Delete_Removes_The_Chat_And_Returns_204() {
+		await this.SeedChatAsync("del", updatedHoursAgo: 1);
+		this.bus.Captured.Clear();
+
+		IActionResult result = await this.sut.Delete("del", default);
+
+		Assert.IsType<NoContentResult>(result);
+		Assert.Empty(this.db.Chats);
+		ServerEvent ev = Assert.Single(this.bus.Captured);
+		Assert.Equal(ChatEventNames.Deleted, ev.Name);
+		ChatDeletedPayload payload = Assert.IsType<ChatDeletedPayload>(ev.Data);
+		Assert.Equal("del", payload.ChatId);
+	}
+
+	[Fact]
+	public async Task Delete_Missing_Is_Idempotent_And_Still_Publishes_The_Deletion_Event() {
+		this.bus.Captured.Clear();
+		IActionResult result = await this.sut.Delete("never-existed", default);
+		Assert.IsType<NoContentResult>(result);
+		// Idempotent broadcast — racing clients still get the "drop this row" signal.
+		Assert.Single(this.bus.Captured);
+		Assert.Equal(ChatEventNames.Deleted, this.bus.Captured[0].Name);
+	}
+
 	// ── Generate ──────────────────────────────────────────────────
 
 	[Fact]

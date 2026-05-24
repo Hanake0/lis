@@ -44,6 +44,15 @@ public sealed record CreateChatRequest(
 );
 
 /// <summary>
+/// Patch a chat. Today only <c>name</c> is patchable (rename) — broader edits
+/// (project move, agent reassignment, override save) go through their own
+/// dedicated endpoints. Null fields are left unchanged.
+/// </summary>
+public sealed record UpdateChatRequest(
+	[property: JsonPropertyName("name"), MaxLength(256)] string? Name
+);
+
+/// <summary>
 /// One-shot LLM invocation against a chat's agent/model. Drives the git view's
 /// commit-message and PR-description generation — the front-end sends a visible
 /// prompt + an optional hidden block carrying structured-output instructions,

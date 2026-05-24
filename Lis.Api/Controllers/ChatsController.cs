@@ -92,6 +92,87 @@ public sealed class ChatsController(
 		return this.CreatedAtAction(nameof(this.Create), new { chatId = dto.ChatId }, dto);
 	}
 
+	/// <summary>
+	/// Rename a chat. Only <c>name</c> is patchable here — broader chat editing
+	/// (project move, agent reassignment, override save) goes through dedicated
+	/// endpoints with their own permission/validation rules.
+	/// </summary>
+	[HttpPatch("{chatExternalId}")]
+	[ProducesResponseType(typeof(ChatDto),         StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails),  StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails),  StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<ChatDto>> Update(
+		[FromRoute] string             chatExternalId,
+		[FromBody]  UpdateChatRequest  request,
+		CancellationToken              ct
+	) {
+		if (request is null) throw new ArgumentException("body is required", nameof(request));
+
+		ChatEntity chat = await this.FindByExternalIdAsync(chatExternalId, includeProject: true, ct);
+
+		if (request.Name is not null) {
+			string trimmed = request.Name.Trim();
+			if (trimmed.Length == 0) throw new ArgumentException("name cannot be empty", nameof(request));
+			chat.Name = trimmed;
+		}
+		chat.UpdatedAt = time.GetUtcNow();
+		await db.SaveChangesAsync(ct);
+
+		ChatDto dto = ChatDto.From(chat);
+		await events.PublishAsync(new ServerEvent(0, ChatEventNames.Updated, new ChatUpdatedPayload(dto), chat.UpdatedAt), ct);
+		return this.Ok(dto);
+	}
+
+	/// <summary>
+	/// Archive a chat — sets <c>archived_at</c> without deleting any data. The
+	/// chat keeps its messages and stays addressable; the sidebar buckets it
+	/// under "Archived". Re-archiving an already-archived chat is a no-op.
+	/// </summary>
+	[HttpPost("{chatExternalId}/archive")]
+	[ProducesResponseType(typeof(ChatDto),        StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<ChatDto>> Archive(
+		[FromRoute] string chatExternalId,
+		CancellationToken  ct
+	) {
+		ChatEntity chat = await this.FindByExternalIdAsync(chatExternalId, includeProject: true, ct);
+
+		DateTimeOffset now = time.GetUtcNow();
+		// Idempotent: only stamp + emit when we actually flip the bucket.
+		if (chat.ArchivedAt is null) {
+			chat.ArchivedAt = now;
+			chat.UpdatedAt  = now;
+			await db.SaveChangesAsync(ct);
+			ChatDto dto = ChatDto.From(chat);
+			await events.PublishAsync(new ServerEvent(0, ChatEventNames.Archived, new ChatArchivedPayload(dto), now), ct);
+			return this.Ok(dto);
+		}
+		return this.Ok(ChatDto.From(chat));
+	}
+
+	/// <summary>
+	/// Delete a chat row and every message under it. Idempotent — deleting a
+	/// missing chat returns 204 so racing clients don't trip on each other.
+	/// </summary>
+	[HttpDelete("{chatExternalId}")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	public async Task<IActionResult> Delete(
+		[FromRoute] string chatExternalId,
+		CancellationToken  ct
+	) {
+		ChatEntity? chat = await db.Chats.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId, ct);
+		if (chat is null) {
+			// Idempotent — still publish so any racing client clears its local row.
+			await events.PublishAsync(new ServerEvent(0, ChatEventNames.Deleted, new ChatDeletedPayload(chatExternalId), time.GetUtcNow()), ct);
+			return this.NoContent();
+		}
+
+		db.Chats.Remove(chat);
+		await db.SaveChangesAsync(ct);
+		await events.PublishAsync(new ServerEvent(0, ChatEventNames.Deleted, new ChatDeletedPayload(chatExternalId), time.GetUtcNow()), ct);
+		return this.NoContent();
+	}
+
 	[HttpPost("{chatExternalId}/generate")]
 	[ProducesResponseType(typeof(GenerateResponseDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails),      StatusCodes.Status400BadRequest)]
@@ -115,5 +196,14 @@ public sealed class ChatsController(
 		);
 
 		return this.Ok(new GenerateResponseDto(result.Text, result.InputTokens, result.OutputTokens));
+	}
+
+	// ── helpers ────────────────────────────────────────────────────
+
+	private async Task<ChatEntity> FindByExternalIdAsync(string externalId, bool includeProject, CancellationToken ct) {
+		IQueryable<ChatEntity> query = db.Chats;
+		if (includeProject) query = query.Include(c => c.Project);
+		ChatEntity? chat = await query.FirstOrDefaultAsync(c => c.ExternalId == externalId, ct);
+		return chat ?? throw new KeyNotFoundException($"Chat '{externalId}' not found");
 	}
 }
