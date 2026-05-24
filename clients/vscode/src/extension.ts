@@ -61,10 +61,17 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('lis.configure',  () =>
 			vscode.commands.executeCommand('workbench.action.openSettings', '@ext:lis.lis-vscode')),
 
-		vscode.commands.registerCommand('lis.newChat', () => {
+		vscode.commands.registerCommand('lis.newChat', async () => {
 			const chatId = `web:${crypto.randomUUID()}`;
-			client?.send({ type: 'create_session', chat_id: chatId, name: 'New Chat' });
-			panels?.openOrFocus(chatId, 'New Chat');
+			// REST-first creation. The legacy WS frame stayed accidentally — once
+			// Stage 13 deletes WebChannelController this is the only path.
+			const created = await createChatViaRest(getConfig(), chatId, 'New Chat', logger);
+			if (!created) {
+				// Don't open a panel for a non-existent chat — the create attempt failed.
+				void vscode.window.showWarningMessage('Lis: could not create a new chat (check the server URL/token in settings).');
+				return;
+			}
+			panels?.openOrFocus(created.chatId, created.name ?? 'New Chat');
 		}),
 
 		vscode.commands.registerCommand('lis.openChat', (chatId: string, title?: string) => {
@@ -127,4 +134,48 @@ async function promptFirstRun(context: vscode.ExtensionContext, serverUrl: strin
 	}
 	// Either choice (or dismissal) marks the prompt seen so we don't nag on every reload.
 	await context.globalState.update(FIRST_RUN_KEY, true);
+}
+
+interface CreatedChatRest {
+	chatId: string;
+	name:   string | null;
+}
+
+/**
+ * Extension-host-side `POST /api/chats` for the `lis.newChat` command. The
+ * webview normally does this itself via LisRpcClient, but commands fire from
+ * the host directly so we keep a thin helper here.
+ */
+async function createChatViaRest(
+	cfg:     LisConfig,
+	chatId:  string,
+	name:    string,
+	logger?: Logger | null,
+): Promise<CreatedChatRest | null> {
+	if (!cfg.baseOrigin) {
+		logger?.warn('lis.newChat: no baseOrigin configured');
+		return null;
+	}
+	const url = `${cfg.baseOrigin}/api/chats`;
+	try {
+		const res = await fetch(url, {
+			method:  'POST',
+			headers: {
+				'Content-Type':  'application/json',
+				...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+			},
+			body: JSON.stringify({ chat_id: chatId, name }),
+		});
+		if (!res.ok) {
+			const text = await res.text().catch(() => '');
+			logger?.warn(`lis.newChat: POST /api/chats → ${res.status} ${text}`);
+			return null;
+		}
+		const body = await res.json() as { chat_id?: string; name?: string | null };
+		if (!body.chat_id) return null;
+		return { chatId: body.chat_id, name: body.name ?? null };
+	} catch (err) {
+		logger?.error('lis.newChat: REST call failed', err);
+		return null;
+	}
 }
