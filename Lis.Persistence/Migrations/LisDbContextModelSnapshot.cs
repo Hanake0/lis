@@ -967,6 +967,47 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("project");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.ProjectMetadataEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("key")
+                        .HasJsonPropertyName("key");
+
+                    b.Property<long>("ProjectId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("project_id")
+                        .HasJsonPropertyName("project_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value")
+                        .HasJsonPropertyName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("project_metadata");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.PromptSectionEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -1454,6 +1495,17 @@ namespace Lis.Persistence.Migrations
                     b.Navigation("Chat");
 
                     b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.ProjectMetadataEntity", b =>
+                {
+                    b.HasOne("Lis.Persistence.Entities.ProjectEntity", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Lis.Persistence.Entities.PromptSectionEntity", b =>

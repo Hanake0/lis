@@ -7,6 +7,7 @@ namespace Lis.Persistence;
 public class LisDbContext(DbContextOptions<LisDbContext> options) :DbContext(options) {
 	public DbSet<ChatEntity>                Chats               { get; init; } = null!;
 	public DbSet<ProjectEntity>             Projects            { get; init; } = null!;
+	public DbSet<ProjectMetadataEntity>     ProjectMetadata     { get; init; } = null!;
 	public DbSet<SessionFolderEntity>       SessionFolders      { get; init; } = null!;
 	public DbSet<SessionFolderItemEntity>   SessionFolderItems  { get; init; } = null!;
 	public DbSet<MessageEntity>             Messages            { get; init; } = null!;
