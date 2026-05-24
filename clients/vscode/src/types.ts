@@ -54,7 +54,7 @@ export type ServerFrame =
 // ── Client → Server frames ─────────────────────────────────────────
 
 export type ClientFrame =
-	| { type: 'message';        chat_id: string; text: string; dispatch?: DispatchMode; model?: string; effort?: string; tool_profile?: string }
+	| { type: 'message';        chat_id: string; text: string; dispatch?: DispatchMode; model?: string; effort?: string; tool_profile?: string; thinking_mode?: string }
 	| { type: 'history';        chat_id: string; limit?: number }
 	| { type: 'list_chats' }
 	| { type: 'set_agent';      chat_id: string; agent_name: string }

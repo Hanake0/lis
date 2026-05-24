@@ -28,6 +28,13 @@ export function initControls(): void {
 			<option value="low">low</option>
 			<option value="medium">medium</option>
 			<option value="high">high</option>
+			<option value="xhigh">xhigh</option>
+			<option value="max">max</option>
+		</select>
+		<select id="ctrl-thinking-mode" title="Thinking mode (auto picks adaptive for Opus 4.7+, budget otherwise)">
+			<option value="">auto</option>
+			<option value="budget">budget</option>
+			<option value="adaptive">adaptive</option>
 		</select>
 		<select id="ctrl-profile" title="Tool profile">
 			<option value="">profile</option>
@@ -44,14 +51,16 @@ export function initControls(): void {
 	getEl<HTMLButtonElement>('ctrl-save').addEventListener('click', onSave);
 }
 
-export function getOverrides(): { model?: string; effort?: string; tool_profile?: string } {
-	const model   = getEl<HTMLInputElement>('ctrl-model').value.trim();
-	const effort  = getEl<HTMLSelectElement>('ctrl-effort').value;
-	const profile = getEl<HTMLSelectElement>('ctrl-profile').value;
+export function getOverrides(): { model?: string; effort?: string; tool_profile?: string; thinking_mode?: string } {
+	const model        = getEl<HTMLInputElement>('ctrl-model').value.trim();
+	const effort       = getEl<HTMLSelectElement>('ctrl-effort').value;
+	const profile      = getEl<HTMLSelectElement>('ctrl-profile').value;
+	const thinkingMode = getEl<HTMLSelectElement>('ctrl-thinking-mode').value;
 	return {
-		model:        model || undefined,
-		effort:       effort || undefined,
-		tool_profile: profile || undefined,
+		model:         model || undefined,
+		effort:        effort || undefined,
+		tool_profile:  profile || undefined,
+		thinking_mode: thinkingMode || undefined,
 	};
 }
 

@@ -5,12 +5,13 @@ import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
 interface WebviewInbound {
-	type:          'ready' | 'send' | 'send_frame';
-	text?:         string;
-	model?:        string;
-	effort?:       string;
-	tool_profile?: string;
-	frame?:        Record<string, unknown>;
+	type:           'ready' | 'send' | 'send_frame';
+	text?:          string;
+	model?:         string;
+	effort?:        string;
+	tool_profile?:  string;
+	thinking_mode?: string;
+	frame?:         Record<string, unknown>;
 }
 
 interface ChatPanel {
@@ -90,6 +91,7 @@ export class ChatPanelManager {
 				this.client.send({
 					type: 'message', chat_id: entry.chatId, text: msg.text, dispatch: 'immediate',
 					model: msg.model, effort: msg.effort, tool_profile: msg.tool_profile,
+					thinking_mode: msg.thinking_mode,
 				});
 				break;
 
