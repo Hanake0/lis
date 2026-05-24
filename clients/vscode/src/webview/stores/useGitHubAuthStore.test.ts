@@ -65,11 +65,25 @@ describe('useGitHubAuthStore', () => {
 	});
 
 	test('refreshStatus issues GET /api/github/status and stores the result', async () => {
-		fake.respond = () => jsonResponse({ connected: true, login: 'me', scopes: 'repo' });
+		fake.respond = () => jsonResponse({
+			connected: true,
+			login: 'me',
+			scopes: 'repo',
+			user:     { login: 'me', avatar_url: 'https://avatars/me.png' },
+			accounts: [{ id: 'me', login: 'me', avatar_url: 'https://avatars/me.png', is_active: true }],
+		});
 		const result = await useGitHubAuthStore.getState().refreshStatus();
 		expect(fake.calls[0].url).toBe('http://localhost:3010/api/github/status');
 		expect(fake.calls[0].init?.method).toBeOneOf(['GET', undefined]);
-		expect(result).toEqual({ connected: true, login: 'me', scopes: 'repo' });
+		// Wire is snake_case; the rpc-client remaps to camelCase so OC consumers see avatarUrl/isActive.
+		expect(result).toEqual({
+			connected: true,
+			login:     'me',
+			scopes:    'repo',
+			error:     undefined,
+			user:      { login: 'me', avatarUrl: 'https://avatars/me.png' },
+			accounts:  [{ id: 'me', login: 'me', avatarUrl: 'https://avatars/me.png', isActive: true }],
+		});
 		const s = useGitHubAuthStore.getState();
 		expect(s.status?.connected).toBe(true);
 		expect(s.isLoading).toBe(false);

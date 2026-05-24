@@ -40,6 +40,11 @@ public sealed class GitHubIdentityEntity {
 	[JsonPropertyName("scopes")]
 	public string? Scopes { get; set; }
 
+	[MaxLength(512)]
+	[Column("avatar_url", TypeName = "varchar(512)")]
+	[JsonPropertyName("avatar_url")]
+	public string? AvatarUrl { get; set; }
+
 	[Column("added_at")]
 	[JsonPropertyName("added_at")]
 	public DateTimeOffset AddedAt { get; set; }

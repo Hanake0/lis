@@ -540,6 +540,12 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("added_at")
                         .HasJsonPropertyName("added_at");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("avatar_url")
+                        .HasJsonPropertyName("avatar_url");
+
                     b.Property<string>("Login")
                         .IsRequired()
                         .HasMaxLength(128)

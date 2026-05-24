@@ -6,12 +6,38 @@ using Lis.Api.Services;
 namespace Lis.Api.Schemas.GitHub;
 
 public sealed record GitHubStatusDto(
-	[property: JsonPropertyName("connected")] bool    Connected,
-	[property: JsonPropertyName("login")]     string? Login,
-	[property: JsonPropertyName("scopes")]    string? Scopes
+	[property: JsonPropertyName("connected")] bool                  Connected,
+	[property: JsonPropertyName("login")]     string?               Login,
+	[property: JsonPropertyName("scopes")]    string?               Scopes,
+	[property: JsonPropertyName("user")]      GitHubUserDto?        User,
+	[property: JsonPropertyName("accounts")]  IReadOnlyList<GitHubAccountDto> Accounts
 ) {
-	public static GitHubStatusDto From(GitHubStatus s) => new(s.Connected, s.Login, s.Scopes);
+	public static GitHubStatusDto From(GitHubStatus s) {
+		GitHubUserDto? user = s.Login is null
+			? null
+			: new GitHubUserDto(Login: s.Login, AvatarUrl: s.AvatarUrl);
+
+		// Lis is single-account today, so `accounts` is the current user as the only
+		// (and active) account. OC's switcher hides itself when the list has one entry.
+		IReadOnlyList<GitHubAccountDto> accounts = s.Connected && s.Login is not null
+			? [new GitHubAccountDto(Id: s.Login, Login: s.Login, AvatarUrl: s.AvatarUrl, IsActive: true)]
+			: [];
+
+		return new GitHubStatusDto(s.Connected, s.Login, s.Scopes, user, accounts);
+	}
 }
+
+public sealed record GitHubUserDto(
+	[property: JsonPropertyName("login")]      string  Login,
+	[property: JsonPropertyName("avatar_url")] string? AvatarUrl
+);
+
+public sealed record GitHubAccountDto(
+	[property: JsonPropertyName("id")]         string  Id,
+	[property: JsonPropertyName("login")]      string  Login,
+	[property: JsonPropertyName("avatar_url")] string? AvatarUrl,
+	[property: JsonPropertyName("is_active")]  bool    IsActive
+);
 
 public sealed record SetGitHubTokenRequest(
 	[property: JsonPropertyName("token"), Required, MaxLength(512)] string Token

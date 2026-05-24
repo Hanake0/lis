@@ -38,7 +38,7 @@ public interface IGitHubService {
 	Task<IReadOnlyDictionary<string, PrStatus>> GetPrStatusByDirectoryAsync(IReadOnlyList<DirectoryPrKey> targets, CancellationToken ct = default);
 }
 
-public sealed record GitHubStatus(bool Connected, string? Login, string? Scopes);
+public sealed record GitHubStatus(bool Connected, string? Login, string? Scopes, string? AvatarUrl);
 
 public sealed record PrKey(string Owner, string Repo, string Branch) {
 	public string Cache => $"{this.Owner}/{this.Repo}@{this.Branch}";
@@ -118,8 +118,8 @@ public sealed class GitHubService(
 	public async Task<GitHubStatus> GetStatusAsync(CancellationToken ct = default) {
 		GitHubIdentityEntity? id = await db.GitHubIdentities.AsNoTracking().FirstOrDefaultAsync(ct);
 		return id is null
-			? new GitHubStatus(Connected: false, Login: null, Scopes: null)
-			: new GitHubStatus(Connected: true,  Login: id.Login, Scopes: id.Scopes);
+			? new GitHubStatus(Connected: false, Login: null, Scopes: null, AvatarUrl: null)
+			: new GitHubStatus(Connected: true,  Login: id.Login, Scopes: id.Scopes, AvatarUrl: id.AvatarUrl);
 	}
 
 	[Trace("GitHubService > SetTokenAsync")]
@@ -144,6 +144,7 @@ public sealed class GitHubService(
 				Login          = user.Login,
 				TokenProtected = this.protector.Protect(token),
 				Scopes         = scopes,
+				AvatarUrl      = user.AvatarUrl,
 				AddedAt        = now,
 				UpdatedAt      = now,
 			});
@@ -151,12 +152,13 @@ public sealed class GitHubService(
 			existing.Login          = user.Login;
 			existing.TokenProtected = this.protector.Protect(token);
 			existing.Scopes         = scopes;
+			existing.AvatarUrl      = user.AvatarUrl;
 			existing.UpdatedAt      = now;
 		}
 		await db.SaveChangesAsync(ct);
 		Cache.Clear(); // identity changed → drop stale PR cache so future queries use the new token
 
-		return new GitHubStatus(Connected: true, Login: user.Login, Scopes: scopes);
+		return new GitHubStatus(Connected: true, Login: user.Login, Scopes: scopes, AvatarUrl: user.AvatarUrl);
 	}
 
 	[Trace("GitHubService > ClearTokenAsync")]

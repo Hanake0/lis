@@ -14,7 +14,7 @@ public sealed class GitHubControllerTests {
 
 	[Fact]
 	public async Task Status_Returns_Ok_With_Mapped_Dto() {
-		StubGitHubService svc = new() { Status = new GitHubStatus(Connected: true, Login: "octocat", Scopes: "repo") };
+		StubGitHubService svc = new() { Status = new GitHubStatus(Connected: true, Login: "octocat", Scopes: "repo", AvatarUrl: "https://avatars/octocat.png") };
 		GitHubController sut = new(svc);
 
 		ActionResult<GitHubStatusDto> result = await sut.Status(default);
@@ -27,7 +27,7 @@ public sealed class GitHubControllerTests {
 
 	[Fact]
 	public async Task SetToken_Returns_Ok_With_Mapped_Dto() {
-		StubGitHubService svc = new() { Status = new GitHubStatus(Connected: true, Login: "octocat", Scopes: null) };
+		StubGitHubService svc = new() { Status = new GitHubStatus(Connected: true, Login: "octocat", Scopes: null, AvatarUrl: null) };
 		GitHubController sut = new(svc);
 
 		ActionResult<GitHubStatusDto> result = await sut.SetToken(new SetGitHubTokenRequest("ghp_xxx"), default);
@@ -136,7 +136,7 @@ public sealed class GitHubControllerTests {
 	}
 
 	private sealed class StubGitHubService :IGitHubService {
-		public GitHubStatus                   Status                  { get; set; } = new(Connected: false, Login: null, Scopes: null);
+		public GitHubStatus                   Status                  { get; set; } = new(Connected: false, Login: null, Scopes: null, AvatarUrl: null);
 		public string?                        LastSetToken            { get; private set; }
 		public bool                           CleardCalled            { get; private set; }
 		public Dictionary<string, PrStatus>   PrStatusResult          { get; } = [];

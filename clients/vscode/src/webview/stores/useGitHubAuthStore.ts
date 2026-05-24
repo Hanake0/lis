@@ -58,7 +58,7 @@ export const useGitHubAuthStore = create<GitHubAuthStore>((set, get) => ({
 					:           err instanceof Error        ? err.message
 					:           String(err);
 				set({
-					status:     { connected: false, error: message },
+					status:     { connected: false, error: message, accounts: [] },
 					isLoading:  false,
 					hasChecked: true,
 				});

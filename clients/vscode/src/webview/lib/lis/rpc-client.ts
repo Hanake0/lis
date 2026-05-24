@@ -214,8 +214,14 @@ export class LisRpcClient {
 
 	// ── GitHub ─────────────────────────────────────────────────────
 
-	getGitHubStatus():                                                Promise<unknown>   { return this.get('/github/status'); }
-	setGitHubToken(token: string):                                    Promise<unknown>   { return this.put('/github/token', { token }); }
+	async getGitHubStatus(): Promise<GitHubStatusResponse> {
+		const raw = await this.get<GitHubStatusWire>('/github/status');
+		return remapGitHubStatus(raw);
+	}
+	async setGitHubToken(token: string): Promise<GitHubStatusResponse> {
+		const raw = await this.put<GitHubStatusWire>('/github/token', { token });
+		return remapGitHubStatus(raw);
+	}
 	clearGitHubToken():                                               Promise<void>      { return this.delete('/github/token'); }
 	getPrStatus(keys: { owner: string; repo: string; branch: string }[]): Promise<unknown> {
 		return this.post('/github/pr-status', { keys });
@@ -248,4 +254,46 @@ export class LisRpcClient {
 			return;
 		}
 	}
+}
+
+// ── GitHub status: snake_case wire ↔ camelCase response ──────────────────────
+
+interface GitHubStatusWire {
+	connected: boolean;
+	login?:    string | null;
+	scopes?:   string | null;
+	error?:    string;
+	user?:     { login: string; avatar_url?: string | null } | null;
+	accounts?: { id: string; login: string; avatar_url?: string | null; is_active: boolean }[];
+}
+
+export interface GitHubStatusResponse {
+	connected: boolean;
+	login?:    string | null;
+	scopes?:   string | null;
+	error?:    string;
+	user?:     { login: string; avatarUrl?: string | null } | null;
+	accounts:  { id: string; login: string; avatarUrl?: string | null; isActive: boolean }[];
+}
+
+/**
+ * The Lis backend speaks snake_case (project convention); the OC sidebar
+ * components expect camelCase on the GitHub auth surface. This is the one
+ * place the convention crosses — re-key here so consumers stay byte-identical
+ * to OC originals.
+ */
+export function remapGitHubStatus(raw: GitHubStatusWire): GitHubStatusResponse {
+	return {
+		connected: raw.connected,
+		login:     raw.login,
+		scopes:    raw.scopes,
+		error:     raw.error,
+		user:      raw.user ? { login: raw.user.login, avatarUrl: raw.user.avatar_url ?? null } : null,
+		accounts:  (raw.accounts ?? []).map((a) => ({
+			id:        a.id,
+			login:     a.login,
+			avatarUrl: a.avatar_url ?? null,
+			isActive:  a.is_active,
+		})),
+	};
 }

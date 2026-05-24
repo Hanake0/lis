@@ -15,11 +15,15 @@ export interface RuntimeAPIs {
 }
 
 /**
- * Mirror of `Lis.Api.Schemas.GitHub.GitHubStatusDto` with the OC-compatible
- * `user`/`accounts` optional surface bolted on so byte-identical OC consumers
- * (Header.tsx, NewWorktreeDialog) still compile. The Lis backend currently
- * fills only `connected`, `login`, and `scopes`; the rest are left `undefined`
- * and OC's optional-chaining handles them gracefully.
+ * Mirror of `Lis.Api.Schemas.GitHub.GitHubStatusDto`. `user` is populated from the
+ * `/user` Octokit call we make at token-save time and cached on the
+ * `github_identity` row (login + avatar_url). `accounts` is the single-element
+ * array carrying the currently active identity — OC's account switcher hides
+ * itself when there's only one entry, so this is the right shape for both the
+ * single-user Lis deployment today and any future multi-account expansion.
+ *
+ * The field names use camelCase here (JS convention) while the wire DTO uses
+ * snake_case; the rpc-client re-keys on the way in.
  */
 export interface GitHubAuthStatus {
 	connected: boolean;
@@ -27,9 +31,8 @@ export interface GitHubAuthStatus {
 	scopes?:   string | null;
 	error?:    string;
 
-	/** Reserved for parity with OC. Lis backend does not populate these today. */
-	user?:     { login?: string; avatarUrl?: string } | null;
-	accounts?: Array<{ id: string; login: string; avatarUrl?: string; isActive?: boolean }>;
+	user?:     { login: string; avatarUrl?: string | null } | null;
+	accounts:  Array<{ id: string; login: string; avatarUrl?: string | null; isActive: boolean }>;
 }
 
 // ── Pull request shapes (consumed by GitView and the session sidebar) ────────
