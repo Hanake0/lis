@@ -76,6 +76,10 @@ public static class AgentSetup {
 		// Compaction
 		services.AddSingleton<CompactionService>();
 
+		// One-shot generation (commit message, PR description)
+		services.AddSingleton<ChatGenerationService>();
+		services.AddSingleton<IChatGenerationService>(sp => sp.GetRequiredService<ChatGenerationService>());
+
 		return services;
 	}
 }

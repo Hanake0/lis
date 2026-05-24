@@ -1,3 +1,4 @@
+using Lis.Agent;
 using Lis.Api.Controllers;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
@@ -18,20 +19,22 @@ namespace Lis.Tests.Api;
 /// InMemory + a capturing <see cref="IEventBus"/>.
 /// </summary>
 public class ChatsControllerTests :IDisposable {
-	private readonly LisDbContext       db;
-	private readonly FakeTimeProvider   time;
-	private readonly CapturingEventBus  bus;
-	private readonly ChatsController    sut;
+	private readonly LisDbContext            db;
+	private readonly FakeTimeProvider        time;
+	private readonly CapturingEventBus       bus;
+	private readonly FakeGenerationService   generation;
+	private readonly ChatsController         sut;
 
 	public ChatsControllerTests() {
 		DbContextOptions<LisDbContext> options = new DbContextOptionsBuilder<LisDbContext>()
 			.UseInMemoryDatabase($"chats-api-{Guid.NewGuid()}")
 			.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
 			.Options;
-		this.db   = new TestDbContext(options);
-		this.time = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-		this.bus  = new CapturingEventBus();
-		this.sut  = new ChatsController(this.db, this.bus, this.time);
+		this.db         = new TestDbContext(options);
+		this.time       = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+		this.bus        = new CapturingEventBus();
+		this.generation = new FakeGenerationService();
+		this.sut        = new ChatsController(this.db, this.bus, this.time, this.generation);
 	}
 
 	public void Dispose() {
@@ -163,6 +166,51 @@ public class ChatsControllerTests :IDisposable {
 		Assert.Single(this.db.Chats);     // no duplicate row
 	}
 
+	// ── Generate ──────────────────────────────────────────────────
+
+	[Fact]
+	public async Task Generate_Calls_Generation_Service_With_Composed_Request_And_Returns_The_Text() {
+		this.generation.ReturnedText  = "{\"subject\":\"feat: thing\",\"highlights\":[\"a\",\"b\"]}";
+		this.generation.InputTokens   = 123;
+		this.generation.OutputTokens  = 45;
+
+		ActionResult<GenerateResponseDto> result = await this.sut.Generate(
+			"chat-1",
+			new GenerateRequest(
+				VisiblePrompt: "Summarise the staged changes",
+				HiddenPrompt:  "{ subject: string, highlights: string[] }",
+				Kind:          "commit",
+				Model:         "claude-sonnet-4"
+			),
+			default
+		);
+
+		OkObjectResult ok = Assert.IsType<OkObjectResult>(result.Result);
+		GenerateResponseDto dto = Assert.IsType<GenerateResponseDto>(ok.Value);
+		Assert.Equal(this.generation.ReturnedText, dto.Text);
+		Assert.Equal(123,                          dto.InputTokens);
+		Assert.Equal(45,                           dto.OutputTokens);
+
+		ChatGenerationService.GenerationRequest forwarded = Assert.Single(this.generation.Calls);
+		Assert.Equal("chat-1",                                       forwarded.ChatExternalId);
+		Assert.Equal("Summarise the staged changes",                 forwarded.VisiblePrompt);
+		Assert.Equal("{ subject: string, highlights: string[] }",    forwarded.HiddenPrompt);
+		Assert.Equal("commit",                                       forwarded.Kind);
+		Assert.Equal("claude-sonnet-4",                              forwarded.ModelOverride);
+	}
+
+	[Fact]
+	public async Task Generate_Defaults_Kind_To_Generate_When_Omitted() {
+		await this.sut.Generate(
+			"chat-1",
+			new GenerateRequest(VisiblePrompt: "hi", HiddenPrompt: null, Kind: null, Model: null),
+			default
+		);
+
+		ChatGenerationService.GenerationRequest forwarded = Assert.Single(this.generation.Calls);
+		Assert.Equal("generate", forwarded.Kind);
+	}
+
 	[Fact]
 	public async Task Create_Idempotent_Hit_Includes_Project_So_Dto_Carries_ProjectExternalId() {
 		await this.SeedProjectAsync("p1", "/r");
@@ -217,5 +265,24 @@ public class ChatsControllerTests :IDisposable {
 			throw new NotSupportedException("Tests do not subscribe directly.");
 
 		public IReadOnlyList<ServerEvent> ReplaySince(long? lastEventId) => [];
+	}
+
+	/// <summary>
+	/// Captures generation requests + returns a canned <c>{"text":"..."}</c> body so
+	/// the Generate test can assert the prompt/model wiring without spinning up a real LLM.
+	/// </summary>
+	private sealed class FakeGenerationService :IChatGenerationService {
+		public List<ChatGenerationService.GenerationRequest> Calls { get; } = [];
+		public string ReturnedText  { get; set; } = "{\"subject\":\"chore: stub\",\"highlights\":[]}";
+		public int    InputTokens   { get; set; }
+		public int    OutputTokens  { get; set; }
+
+		public Task<ChatGenerationService.GenerationResult> GenerateAsync(
+			ChatGenerationService.GenerationRequest request,
+			CancellationToken                        ct
+		) {
+			this.Calls.Add(request);
+			return Task.FromResult(new ChatGenerationService.GenerationResult(this.ReturnedText, this.InputTokens, this.OutputTokens));
+		}
 	}
 }

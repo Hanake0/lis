@@ -42,3 +42,23 @@ public sealed record CreateChatRequest(
 	[property: JsonPropertyName("project_id"), MaxLength(64)]              string? ProjectExternalId,
 	[property: JsonPropertyName("channel"), MaxLength(32)]                 string? Channel
 );
+
+/// <summary>
+/// One-shot LLM invocation against a chat's agent/model. Drives the git view's
+/// commit-message and PR-description generation — the front-end sends a visible
+/// prompt + an optional hidden block carrying structured-output instructions,
+/// and parses JSON out of the assistant text we return. The exchange is NOT
+/// saved to chat history.
+/// </summary>
+public sealed record GenerateRequest(
+	[property: JsonPropertyName("visible_prompt"), Required]   string  VisiblePrompt,
+	[property: JsonPropertyName("hidden_prompt")]              string? HiddenPrompt,
+	[property: JsonPropertyName("kind"),           MaxLength(32)] string? Kind,
+	[property: JsonPropertyName("model"),          MaxLength(128)] string? Model
+);
+
+public sealed record GenerateResponseDto(
+	[property: JsonPropertyName("text")]          string Text,
+	[property: JsonPropertyName("input_tokens")]  int    InputTokens,
+	[property: JsonPropertyName("output_tokens")] int    OutputTokens
+);

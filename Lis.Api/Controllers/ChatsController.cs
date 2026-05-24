@@ -1,3 +1,4 @@
+using Lis.Agent;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
 using Lis.Core.Events;
@@ -24,9 +25,10 @@ namespace Lis.Api.Controllers;
 [Tags("Chats")]
 [Produces("application/json")]
 public sealed class ChatsController(
-	LisDbContext  db,
-	IEventBus     events,
-	TimeProvider  time
+	LisDbContext            db,
+	IEventBus               events,
+	TimeProvider            time,
+	IChatGenerationService  generation
 ) :ControllerBase {
 
 	[HttpPost]
@@ -71,5 +73,30 @@ public sealed class ChatsController(
 		await events.PublishAsync(new ServerEvent(0, ChatEventNames.Created, new ChatCreatedPayload(dto), now), ct);
 
 		return this.CreatedAtAction(nameof(this.Create), new { chatId = dto.ChatId }, dto);
+	}
+
+	[HttpPost("{chatExternalId}/generate")]
+	[ProducesResponseType(typeof(GenerateResponseDto), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails),      StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails),      StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<GenerateResponseDto>> Generate(
+		[FromRoute] string          chatExternalId,
+		[FromBody]  GenerateRequest request,
+		CancellationToken           ct
+	) {
+		if (request is null) throw new ArgumentException("body is required", nameof(request));
+
+		ChatGenerationService.GenerationResult result = await generation.GenerateAsync(
+			new ChatGenerationService.GenerationRequest(
+				ChatExternalId: chatExternalId,
+				VisiblePrompt:  request.VisiblePrompt,
+				HiddenPrompt:   request.HiddenPrompt,
+				Kind:           string.IsNullOrWhiteSpace(request.Kind) ? "generate" : request.Kind.Trim(),
+				ModelOverride:  request.Model
+			),
+			ct
+		);
+
+		return this.Ok(new GenerateResponseDto(result.Text, result.InputTokens, result.OutputTokens));
 	}
 }
