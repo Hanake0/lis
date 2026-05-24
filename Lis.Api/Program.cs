@@ -1,6 +1,7 @@
 using Grafana.OpenTelemetry;
 
 using Lis.Agent;
+using Lis.Channels.Web;
 using Lis.Channels.WhatsApp;
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
@@ -104,16 +105,18 @@ if (Env("LIS_COMPACTION_PROVIDER") is { Length: > 0 } compProvider
 // Embedding (optional — enables vector search for memories)
 if (Env("MEMORIES_EMBEDDING_ENABLED") == "true") builder.Services.AddEmbedding();
 
-// Channel
-if (Env("GOWA_ENABLED") == "true") builder.Services.AddWhatsApp();
+// Channels
+if (Env("GOWA_ENABLED")        == "true") builder.Services.AddWhatsApp();
+if (Env("WEB_CHANNEL_ENABLED") == "true") builder.Services.AddWebChannel();
 
 // Application services
 builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
 builder.Services.AddSingleton<ToolRunner>();
 
-// Conversation + Agent require both AI and Channel
-if (Env("ANTHROPIC_ENABLED") == "true" && Env("GOWA_ENABLED") == "true") {
+// Conversation + Agent require AI and at least one channel
+bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
+if (Env("ANTHROPIC_ENABLED") == "true" && hasChannel) {
 	builder.Services.AddScoped<ConversationService>();
 	builder.Services.AddSingleton<IConversationService, MessageDebouncer>();
 	builder.Services.AddLisAgent();
@@ -138,6 +141,7 @@ if (app.Services.GetService<IConversationService>() is MessageDebouncer debounce
 
 // Middleware
 app.UseExceptionHandler();
+app.UseWebSockets();
 
 // Endpoints
 app.MapControllers();
