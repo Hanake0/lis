@@ -100,6 +100,12 @@ public sealed class ContextBreakdownService(
 			? sectionCounts.Sum(s => s.Tokens!.Value) + memoriesTokens.Value
 			: (int?)null;
 
+		// Compaction reserves the top of the budget for the summarizer. Show it
+		// even on a fresh chat so the user sees what's actually available for
+		// conversation tokens up-front.
+		int freshThresholdPct = agent.CompactionThreshold > 0 ? agent.CompactionThreshold : 80;
+		int freshCompactionBuffer = Math.Max(0, budget - (int)(budget * (freshThresholdPct / 100.0)));
+
 		// Fresh chat — no assistant turn has happened. Show per-section breakdown
 		// with Free space taking the rest. Tools is unknown (no anchor yet).
 		if (lastAssistant is null) {
@@ -108,7 +114,9 @@ public sealed class ContextBreakdownService(
 				fresh.Add(new Segment(name, tokens ?? -1));
 			if (composed.Memories is { Length: > 0 })
 				fresh.Add(new Segment("Memory files", memoriesTokens ?? -1));
-			fresh.Add(new Segment("Free space", budget));
+			if (freshCompactionBuffer > 0)
+				fresh.Add(new Segment("Compaction buffer", freshCompactionBuffer));
+			fresh.Add(new Segment("Free space", Math.Max(0, budget - freshCompactionBuffer)));
 			return new Breakdown(0, budget, fresh, agent.Model, agent.ThinkingEffort);
 		}
 
@@ -159,7 +167,13 @@ public sealed class ContextBreakdownService(
 			? Math.Max(0, actualTotal - spt2 - sumT)
 			: (int?)null;
 
-		int freeSpace = Math.Max(0, budget - actualTotal);
+		// Compaction reserves the top of the budget for the summarizer to work in —
+		// this many tokens are unavailable to the conversation even before Free space.
+		// Match the math ConversationService.MaybeRunCompactionAsync uses.
+		int thresholdPct = agent.CompactionThreshold > 0 ? agent.CompactionThreshold : 80;
+		int compactionAbsolute = (int)(budget * (thresholdPct / 100.0));
+		int compactionBuffer = Math.Max(0, budget - compactionAbsolute);
+		int freeSpace = Math.Max(0, budget - actualTotal - compactionBuffer);
 
 		// A segment whose counter call failed gets Tokens = -1 so the UI can render "—".
 		// Never substitute a local tokenizer here — that's the bug we just fixed.
@@ -172,6 +186,8 @@ public sealed class ContextBreakdownService(
 		if (composed.Memories is { Length: > 0 })
 			segments.Add(new Segment("Memory files", memoriesTokens ?? -1));
 		segments.Add(new Segment("Summaries", summaryTokens ?? -1));
+		if (compactionBuffer > 0)
+			segments.Add(new Segment("Compaction buffer", compactionBuffer));
 		segments.Add(new Segment("Free space", freeSpace));
 
 		return new Breakdown(actualTotal, budget, segments, agent.Model, agent.ThinkingEffort);

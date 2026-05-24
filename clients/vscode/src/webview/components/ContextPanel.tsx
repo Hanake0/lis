@@ -3,12 +3,13 @@ import { contextOpen, contextData, chatId } from '../state';
 import { vscode } from '../vscodeApi';
 
 const SEGMENT_COLORS: Record<string, string> = {
-	'Messages':      '#569cd6',
-	'Tools':         '#dcdcaa',
-	'System prompt': '#4ec9b0',
-	'Memory files':  '#c586c0',
-	'Summaries':     '#9b59b6',
-	'Free space':    'transparent',
+	'Messages':          '#569cd6',
+	'Tools':             '#dcdcaa',
+	'System prompt':     '#4ec9b0',
+	'Memory files':      '#c586c0',
+	'Summaries':         '#9b59b6',
+	'Compaction buffer': '#888',
+	'Free space':        'transparent',
 };
 // Per-section system rows (names come from PromptSectionEntity.Name in the DB)
 // get a deterministic color derived from the name hash so colors stay stable
@@ -44,10 +45,14 @@ export function ContextPanel() {
 
 	const pct = data && data.budget > 0 ? Math.min(100, (data.total / data.budget) * 100) : 0;
 
+	// Pin "Free space" at the bottom and "Compaction buffer" just above it,
+	// so they read as the budget tail. Everything else sorts by tokens desc.
+	const tailRank = (name: string) =>
+		name === 'Free space' ? 2 : name === 'Compaction buffer' ? 1 : 0;
 	const sorted = data
 		? [...data.segments].sort((a, b) => {
-			if (a.name === 'Free space') return  1;
-			if (b.name === 'Free space') return -1;
+			const ra = tailRank(a.name), rb = tailRank(b.name);
+			if (ra !== rb) return ra - rb;
 			return b.tokens - a.tokens;
 		})
 		: [];
