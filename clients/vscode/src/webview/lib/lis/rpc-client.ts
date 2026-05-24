@@ -117,6 +117,11 @@ export class LisRpcClient {
 	removeProjectIcon(id: string):                                    Promise<unknown>   { return this.delete(`/projects/${encodeURIComponent(id)}/icon`); }
 	moveChat(chatId: string, projectId: string | null):               Promise<void>      { return this.post(`/chats/${encodeURIComponent(chatId)}/move`, { project_external_id: projectId }); }
 
+	// ── Agents ─────────────────────────────────────────────────────
+
+	listAgents():                Promise<unknown[]> { return this.get('/agents'); }
+	getAgent(name: string):      Promise<unknown>   { return this.get(`/agents/${encodeURIComponent(name)}`); }
+
 	// ── Chats ──────────────────────────────────────────────────────
 
 	/**
