@@ -1,4 +1,5 @@
 using Lis.Api.Services;
+using Lis.Git.Services;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
 
@@ -20,6 +21,7 @@ public sealed class GitHubServiceTests :IDisposable {
 	private readonly LisDbContext                    db;
 	private readonly FakeTimeProvider                time;
 	private readonly EphemeralDataProtectionProvider dataProtection;
+	private readonly FakeGitService                  git;
 	private readonly GitHubService                   sut;
 
 	public GitHubServiceTests() {
@@ -30,7 +32,10 @@ public sealed class GitHubServiceTests :IDisposable {
 		this.db             = new TestDbContext(options);
 		this.time           = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
 		this.dataProtection = new EphemeralDataProtectionProvider();
-		this.sut            = new GitHubService(this.db, this.dataProtection, this.time);
+		this.git            = new FakeGitService();
+		this.sut            = new GitHubService(this.db, this.dataProtection, this.git, this.time);
+		// Static PR cache is shared across tests — wipe it so each test starts fresh.
+		GitHubService.ResetCacheForTesting();
 	}
 
 	public void Dispose() {
@@ -105,11 +110,54 @@ public sealed class GitHubServiceTests :IDisposable {
 	}
 
 	[Fact]
-	public async Task GetPrStatusAsync_No_Identity_Returns_Empty() {
+	public async Task GetPrStatusAsync_No_Identity_Returns_Disconnected_Entries() {
 		IReadOnlyDictionary<string, PrStatus> result = await this.sut.GetPrStatusAsync([
 			new PrKey("octocat", "Hello-World", "main")
 		]);
-		Assert.Empty(result);
+		PrStatus entry = Assert.Single(result.Values);
+		Assert.False(entry.Connected);
+		Assert.Null(entry.Pr);
+	}
+
+	[Fact]
+	public async Task GetPrStatusByDirectoryAsync_No_Identity_No_Remote_Returns_Disconnected() {
+		this.git.Remote = null;
+		IReadOnlyDictionary<string, PrStatus> result = await this.sut.GetPrStatusByDirectoryAsync([
+			new DirectoryPrKey("/repo", "main")
+		]);
+
+		PrStatus entry = Assert.Single(result.Values);
+		Assert.False(entry.Connected);
+		Assert.Null(entry.Repo);
+	}
+
+	[Fact]
+	public async Task GetPrStatusByDirectoryAsync_With_Resolved_Remote_But_No_Token_Returns_Disconnected_With_Repo_Hint() {
+		this.git.Remote = new RemoteRef("origin", "octocat", "Hello-World", "https://github.com/octocat/Hello-World.git");
+
+		IReadOnlyDictionary<string, PrStatus> result = await this.sut.GetPrStatusByDirectoryAsync([
+			new DirectoryPrKey("/repo", "feat/x")
+		]);
+
+		PrStatus entry = Assert.Single(result.Values);
+		Assert.False(entry.Connected);
+		Assert.Equal("octocat",     entry.Repo!.Owner);
+		Assert.Equal("Hello-World", entry.Repo.Repo);
+		Assert.Equal("feat/x",      entry.Branch);
+		Assert.Equal("origin",      entry.ResolvedRemoteName);
+	}
+
+	[Fact]
+	public async Task GetPrStatusByDirectoryAsync_Bubbles_Git_Errors_As_Disconnected_Per_Target() {
+		this.git.ThrowOnGetRemote = new InvalidOperationException("locked");
+
+		IReadOnlyDictionary<string, PrStatus> result = await this.sut.GetPrStatusByDirectoryAsync([
+			new DirectoryPrKey("/repo", "main")
+		]);
+
+		PrStatus entry = Assert.Single(result.Values);
+		Assert.False(entry.Connected);
+		Assert.Contains("locked", entry.Error);
 	}
 
 	[Fact]
@@ -118,5 +166,22 @@ public sealed class GitHubServiceTests :IDisposable {
 		string protectedToken = protector.Protect("ghp_secret_abc");
 		Assert.NotEqual("ghp_secret_abc", protectedToken);
 		Assert.Equal("ghp_secret_abc",     protector.Unprotect(protectedToken));
+	}
+
+	private sealed class FakeGitService :IGitService {
+		public RemoteRef?  Remote            { get; set; }
+		public Exception?  ThrowOnGetRemote  { get; set; }
+
+		public Task<RemoteRef?> GetRemoteRefAsync(string path, string branch, CancellationToken ct = default) {
+			if (this.ThrowOnGetRemote is not null) throw this.ThrowOnGetRemote;
+			return Task.FromResult(this.Remote);
+		}
+
+		// Not exercised by these tests:
+		public Task<RepoStatus>    GetRepoStatusAsync(string path, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<BranchListing> ListBranchesAsync(string path, CancellationToken ct = default)  => throw new NotImplementedException();
+		public Task<IReadOnlyList<WorktreeMetadata>> ListWorktreesAsync(string projectPath, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<WorktreeMetadata> CreateWorktreeAsync(string projectPath, string newPath, string branch, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task                   RemoveWorktreeAsync(string projectPath, string worktreePath, bool force = false, CancellationToken ct = default) => throw new NotImplementedException();
 	}
 }

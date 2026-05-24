@@ -15,6 +15,15 @@ public interface IGitService {
 	Task<IReadOnlyList<WorktreeMetadata>> ListWorktreesAsync(string projectPath, CancellationToken ct = default);
 	Task<WorktreeMetadata>    CreateWorktreeAsync(string projectPath, string newPath, string branch, CancellationToken ct = default);
 	Task                      RemoveWorktreeAsync(string projectPath, string worktreePath, bool force = false, CancellationToken ct = default);
+
+	/// <summary>
+	/// Resolve the GitHub coordinates for a branch in a working tree by reading its
+	/// upstream remote URL. Returns null when:
+	///   - the path is not a git repo;
+	///   - no remote is configured for the branch and there's no <c>origin</c> fallback;
+	///   - the remote URL does not point at github.com.
+	/// </summary>
+	Task<RemoteRef?> GetRemoteRefAsync(string path, string branch, CancellationToken ct = default);
 }
 
 /// <summary>Snapshot of a working tree's relationship to its upstream.</summary>
@@ -43,6 +52,9 @@ public sealed record WorktreeMetadata(
 	bool    IsLocked,
 	bool    IsPrunable
 );
+
+/// <summary>Resolved GitHub coordinates for a branch's tracking remote.</summary>
+public sealed record RemoteRef(string RemoteName, string Owner, string Repo, string Url);
 
 public sealed class GitService :IGitService {
 
@@ -178,6 +190,79 @@ public sealed class GitService :IGitService {
 		repo.Worktrees.Prune(wt, ifLocked: force);
 		return Task.CompletedTask;
 	}
+
+	[Trace("GitService > GetRemoteRefAsync")]
+	public Task<RemoteRef?> GetRemoteRefAsync(string path, string branch, CancellationToken ct = default) {
+		ct.ThrowIfCancellationRequested();
+		if (!Repository.IsValid(path)) return Task.FromResult<RemoteRef?>(null);
+
+		using Repository repo = new(path);
+
+		// Prefer the branch's tracked remote; fall back to `origin` so detached branches still resolve.
+		string? remoteName = null;
+		if (!string.IsNullOrWhiteSpace(branch)) {
+			Branch? local = repo.Branches[branch];
+			if (local?.IsTracking == true && local.RemoteName is not null) remoteName = local.RemoteName;
+		}
+		remoteName ??= repo.Network.Remotes.Any(r => r.Name == "origin")
+			? "origin"
+			: repo.Network.Remotes.FirstOrDefault()?.Name;
+		if (remoteName is null) return Task.FromResult<RemoteRef?>(null);
+
+		Remote? remote = repo.Network.Remotes[remoteName];
+		if (remote is null) return Task.FromResult<RemoteRef?>(null);
+
+		(string owner, string repoName)? parsed = ParseGitHubUrl(remote.Url);
+		if (parsed is null) return Task.FromResult<RemoteRef?>(null);
+
+		return Task.FromResult<RemoteRef?>(new RemoteRef(
+			RemoteName: remoteName,
+			Owner:      parsed.Value.owner,
+			Repo:       parsed.Value.repoName,
+			Url:        remote.Url
+		));
+	}
+
+	/// <summary>
+	/// Best-effort parse of common GitHub remote URL shapes:
+	///   https://github.com/owner/repo.git
+	///   https://user:token@github.com/owner/repo.git
+	///   git@github.com:owner/repo.git
+	///   ssh://git@github.com/owner/repo
+	/// Returns null for non-GitHub hosts.
+	/// </summary>
+	internal static (string owner, string repo)? ParseGitHubUrl(string url) {
+		if (string.IsNullOrWhiteSpace(url)) return null;
+
+		string normalised = url.Trim();
+		// scp-style: git@github.com:owner/repo[.git]
+		int colon = normalised.IndexOf(':');
+		if (normalised.StartsWith("git@", StringComparison.OrdinalIgnoreCase) && colon > 0 && !normalised.Contains("://")) {
+			string host = normalised[4..colon];
+			if (!IsGitHubHost(host)) return null;
+			string path = normalised[(colon + 1)..].Trim('/');
+			return SplitOwnerRepo(path);
+		}
+
+		// URL-style (https / ssh)
+		if (!Uri.TryCreate(normalised, UriKind.Absolute, out Uri? uri)) return null;
+		if (!IsGitHubHost(uri.Host)) return null;
+		return SplitOwnerRepo(uri.AbsolutePath.Trim('/'));
+	}
+
+	private static (string owner, string repo)? SplitOwnerRepo(string segment) {
+		if (string.IsNullOrWhiteSpace(segment)) return null;
+		string trimmed = segment.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
+			? segment[..^4]
+			: segment;
+		string[] parts = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+		if (parts.Length < 2) return null;
+		return (parts[0], parts[1]);
+	}
+
+	private static bool IsGitHubHost(string host) =>
+		string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+		host.EndsWith(".github.com", StringComparison.OrdinalIgnoreCase);
 
 	private static bool PathsEquivalent(string? a, string b) =>
 		!string.IsNullOrEmpty(a) &&

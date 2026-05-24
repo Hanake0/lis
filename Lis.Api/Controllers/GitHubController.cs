@@ -47,4 +47,21 @@ public sealed class GitHubController(IGitHubService github) :ControllerBase {
 		Dictionary<string, PrStatusDto> dtos = results.ToDictionary(kv => kv.Key, kv => PrStatusDto.From(kv.Value));
 		return this.Ok(new PrStatusResponse(dtos));
 	}
+
+	/// <summary>
+	/// Sidebar's primary path: resolve `{directory, branch}` to GitHub coordinates
+	/// (by reading the local repo's tracking remote) before fetching enriched PR status.
+	/// Keyed by `directory::branch` so the client can map results back to the row that
+	/// triggered the query.
+	/// </summary>
+	[HttpPost("pr-status/by-directory")]
+	[ProducesResponseType(typeof(PrStatusResponse), StatusCodes.Status200OK)]
+	public async Task<ActionResult<PrStatusResponse>> PrStatusByDirectory([FromBody] PrStatusByDirectoryRequest request, CancellationToken ct) {
+		IReadOnlyDictionary<string, PrStatus> results = await github.GetPrStatusByDirectoryAsync(
+			request.Keys.Select(k => new DirectoryPrKey(k.Directory, k.Branch)).ToArray(),
+			ct
+		);
+		Dictionary<string, PrStatusDto> dtos = results.ToDictionary(kv => kv.Key, kv => PrStatusDto.From(kv.Value));
+		return this.Ok(new PrStatusResponse(dtos));
+	}
 }

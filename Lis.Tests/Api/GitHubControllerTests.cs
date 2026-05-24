@@ -49,9 +49,23 @@ public sealed class GitHubControllerTests {
 	}
 
 	[Fact]
-	public async Task PrStatus_Maps_Keys_And_Wraps_Result() {
+	public async Task PrStatus_Maps_Keys_And_Wraps_Enriched_Result() {
 		StubGitHubService svc = new();
-		svc.PrStatusResult["octocat/Hello-World@main"] = new PrStatus("open", null, null);
+		svc.PrStatusResult["octocat/Hello-World@main"] = new PrStatus(
+			Connected:          true,
+			Repo:               new PrRepoRef("octocat", "Hello-World"),
+			Branch:             "main",
+			Pr:                 new PullRequestDetail(
+				Number: 7, Title: "ship it", Body: null, Url: "https://github.com/octocat/Hello-World/pull/7",
+				State: "open", Draft: false, Base: "main", Head: "feat/x", HeadSha: "abc123",
+				Mergeable: true, MergeableState: "clean"
+			),
+			Checks:             new ChecksSummary(State: "success", Total: 3, Pending: 0, Success: 3, Failure: 0),
+			CanMerge:           true,
+			DefaultBranch:      "main",
+			ResolvedRemoteName: "origin",
+			Error:              null
+		);
 		GitHubController sut = new(svc);
 
 		ActionResult<PrStatusResponse> result = await sut.PrStatus(
@@ -62,14 +76,71 @@ public sealed class GitHubControllerTests {
 		OkObjectResult ok = Assert.IsType<OkObjectResult>(result.Result);
 		PrStatusResponse response = Assert.IsType<PrStatusResponse>(ok.Value);
 		Assert.Single(response.Results);
-		Assert.Equal("open", response.Results["octocat/Hello-World@main"].State);
+		PrStatusDto dto = response.Results["octocat/Hello-World@main"];
+		Assert.True(dto.Connected);
+		Assert.Equal("origin", dto.ResolvedRemoteName);
+		Assert.Equal(7, dto.Pr!.Number);
+		Assert.Equal("open", dto.Pr!.State);
+		Assert.Equal(3, dto.Checks!.Success);
+		Assert.Equal("success", dto.Checks.State);
+		Assert.True(dto.CanMerge);
+	}
+
+	[Fact]
+	public async Task PrStatusByDirectory_Wraps_Result_Keyed_By_DirectoryAndBranch() {
+		StubGitHubService svc = new();
+		svc.DirectoryPrResult["/repo::feat/x"] = new PrStatus(
+			Connected:          true,
+			Repo:               new PrRepoRef("octocat", "Hello-World"),
+			Branch:             "feat/x",
+			Pr:                 null,
+			Checks:             null,
+			CanMerge:           null,
+			DefaultBranch:      "main",
+			ResolvedRemoteName: "origin",
+			Error:              null
+		);
+		GitHubController sut = new(svc);
+
+		ActionResult<PrStatusResponse> result = await sut.PrStatusByDirectory(
+			new PrStatusByDirectoryRequest([new DirectoryPrKeyDto("/repo", "feat/x")]),
+			default
+		);
+
+		OkObjectResult ok = Assert.IsType<OkObjectResult>(result.Result);
+		PrStatusResponse response = Assert.IsType<PrStatusResponse>(ok.Value);
+		PrStatusDto dto = response.Results["/repo::feat/x"];
+		Assert.True(dto.Connected);
+		Assert.Null(dto.Pr);
+		Assert.Equal("origin", dto.ResolvedRemoteName);
+		Assert.Equal("octocat", dto.Repo!.Owner);
+	}
+
+	[Fact]
+	public async Task PrStatusByDirectory_Returns_Disconnected_For_Unresolved_Targets() {
+		StubGitHubService svc = new();
+		svc.DirectoryPrResult["/no-repo::main"] = PrStatus.Disconnected();
+		GitHubController sut = new(svc);
+
+		ActionResult<PrStatusResponse> result = await sut.PrStatusByDirectory(
+			new PrStatusByDirectoryRequest([new DirectoryPrKeyDto("/no-repo", "main")]),
+			default
+		);
+
+		OkObjectResult ok = Assert.IsType<OkObjectResult>(result.Result);
+		PrStatusResponse response = Assert.IsType<PrStatusResponse>(ok.Value);
+		PrStatusDto dto = response.Results["/no-repo::main"];
+		Assert.False(dto.Connected);
+		Assert.Null(dto.Pr);
+		Assert.Null(dto.Checks);
 	}
 
 	private sealed class StubGitHubService :IGitHubService {
-		public GitHubStatus Status                           { get; set; } = new(Connected: false, Login: null, Scopes: null);
-		public string?      LastSetToken                     { get; private set; }
-		public bool         CleardCalled                     { get; private set; }
-		public Dictionary<string, PrStatus> PrStatusResult   { get; } = [];
+		public GitHubStatus                   Status                  { get; set; } = new(Connected: false, Login: null, Scopes: null);
+		public string?                        LastSetToken            { get; private set; }
+		public bool                           CleardCalled            { get; private set; }
+		public Dictionary<string, PrStatus>   PrStatusResult          { get; } = [];
+		public Dictionary<string, PrStatus>   DirectoryPrResult       { get; } = [];
 
 		public Task<GitHubStatus> GetStatusAsync(CancellationToken ct = default) => Task.FromResult(this.Status);
 
@@ -85,5 +156,8 @@ public sealed class GitHubControllerTests {
 
 		public Task<IReadOnlyDictionary<string, PrStatus>> GetPrStatusAsync(IReadOnlyList<PrKey> keys, CancellationToken ct = default) =>
 			Task.FromResult<IReadOnlyDictionary<string, PrStatus>>(this.PrStatusResult);
+
+		public Task<IReadOnlyDictionary<string, PrStatus>> GetPrStatusByDirectoryAsync(IReadOnlyList<DirectoryPrKey> targets, CancellationToken ct = default) =>
+			Task.FromResult<IReadOnlyDictionary<string, PrStatus>>(this.DirectoryPrResult);
 	}
 }

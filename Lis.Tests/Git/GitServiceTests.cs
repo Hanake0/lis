@@ -157,6 +157,74 @@ public sealed class GitServiceTests :IDisposable {
 		}
 	}
 
+	// ── GetRemoteRefAsync ──────────────────────────────────────────
+
+	[Fact]
+	public async Task GetRemoteRefAsync_Returns_Null_When_Not_A_Repo() {
+		RemoteRef? r = await this.sut.GetRemoteRefAsync(this.repoDir, "main");
+		Assert.Null(r);
+	}
+
+	[Fact]
+	public async Task GetRemoteRefAsync_Returns_Null_When_No_Remotes() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		RemoteRef? r = await this.sut.GetRemoteRefAsync(this.repoDir, "main");
+		Assert.Null(r);
+	}
+
+	[Fact]
+	public async Task GetRemoteRefAsync_Resolves_Origin_For_Detached_Branch() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		using (Repository repo = new(this.repoDir)) {
+			repo.Network.Remotes.Add("origin", "https://github.com/octocat/Hello-World.git");
+		}
+
+		RemoteRef? r = await this.sut.GetRemoteRefAsync(this.repoDir, "non-tracking-branch");
+
+		Assert.NotNull(r);
+		Assert.Equal("origin",       r!.RemoteName);
+		Assert.Equal("octocat",      r.Owner);
+		Assert.Equal("Hello-World",  r.Repo);
+	}
+
+	[Fact]
+	public async Task GetRemoteRefAsync_Returns_Null_For_Non_GitHub_Remote() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		using (Repository repo = new(this.repoDir)) {
+			repo.Network.Remotes.Add("origin", "https://gitlab.com/octocat/Hello-World.git");
+		}
+
+		RemoteRef? r = await this.sut.GetRemoteRefAsync(this.repoDir, "main");
+		Assert.Null(r);
+	}
+
+	// ── ParseGitHubUrl ─────────────────────────────────────────────
+
+	[Theory]
+	[InlineData("https://github.com/owner/repo.git",                  "owner", "repo")]
+	[InlineData("https://github.com/owner/repo",                      "owner", "repo")]
+	[InlineData("https://user:token@github.com/owner/repo.git",       "owner", "repo")]
+	[InlineData("git@github.com:owner/repo.git",                      "owner", "repo")]
+	[InlineData("git@github.com:owner/repo",                          "owner", "repo")]
+	[InlineData("ssh://git@github.com/owner/repo.git",                "owner", "repo")]
+	[InlineData("https://api.github.com/repos/owner/repo",            "repos", "owner")] // accepts any path with ≥2 segments; caller's responsibility to feed remote URLs
+	public void ParseGitHubUrl_Parses_Common_Shapes(string url, string expectedOwner, string expectedRepo) {
+		(string owner, string repo)? parsed = GitService.ParseGitHubUrl(url);
+		Assert.NotNull(parsed);
+		Assert.Equal(expectedOwner, parsed!.Value.owner);
+		Assert.Equal(expectedRepo,  parsed.Value.repo);
+	}
+
+	[Theory]
+	[InlineData("")]
+	[InlineData("not a url")]
+	[InlineData("https://gitlab.com/owner/repo.git")]
+	[InlineData("git@bitbucket.org:owner/repo.git")]
+	[InlineData("https://github.com/owner")] // only one segment
+	public void ParseGitHubUrl_Rejects_Non_GitHub_Or_Incomplete(string url) {
+		Assert.Null(GitService.ParseGitHubUrl(url));
+	}
+
 	// ── Helpers ────────────────────────────────────────────────────
 
 	private static (string head, string branch) SeedRepoWithCommit(string dir, string fileName, string content, string message) {

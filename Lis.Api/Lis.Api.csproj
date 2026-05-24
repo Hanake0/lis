@@ -29,5 +29,8 @@
     <ProjectReference Include="..\Lis.Git\Lis.Git.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lis.Tests" />
+  </ItemGroup>
 
 </Project>

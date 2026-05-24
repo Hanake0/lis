@@ -8,4 +8,8 @@
     <ProjectReference Include="..\Lis.Core\Lis.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lis.Tests" />
+  </ItemGroup>
+
 </Project>
