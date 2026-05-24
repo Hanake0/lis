@@ -6,9 +6,20 @@ const SEGMENT_COLORS: Record<string, string> = {
 	'Messages':      '#569cd6',
 	'Tools':         '#dcdcaa',
 	'System prompt': '#4ec9b0',
-	'Summaries':     '#c586c0',
+	'Memory files':  '#c586c0',
+	'Summaries':     '#9b59b6',
 	'Free space':    'transparent',
 };
+// Per-section system rows (names come from PromptSectionEntity.Name in the DB)
+// get a deterministic color derived from the name hash so colors stay stable
+// across renders without needing a lookup table.
+function colorForSegment(name: string): string {
+	if (SEGMENT_COLORS[name] !== undefined) return SEGMENT_COLORS[name];
+	let h = 0;
+	for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+	const hue = Math.abs(h) % 360;
+	return `hsl(${hue}, 45%, 55%)`;
+}
 
 export function ContextPanel() {
 	const open = contextOpen.value;
@@ -67,7 +78,7 @@ export function ContextPanel() {
 							{sorted.map(seg => (
 								<tr key={seg.name} class={seg.name === 'Free space' ? 'context-free' : ''}>
 									<td class="context-swatch">
-										<span style={{ background: SEGMENT_COLORS[seg.name] ?? '#888' }} />
+										<span style={{ background: colorForSegment(seg.name) }} />
 									</td>
 									<td class="context-name">{seg.name}</td>
 									<td class="context-tokens">{fmtTok(seg.tokens)}</td>

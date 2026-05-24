@@ -25,39 +25,54 @@ public sealed class PromptComposer(
 		+ "or doesn't need your input. When quoting is appropriate, use [QUOTE] to reply to the "
 		+ "specific message.";
 
+	public sealed record PromptPart(string Name, string Content);
+	public sealed record ComposedPrompt(IReadOnlyList<PromptPart> Sections, string? Memories);
+
 	public async Task<string> BuildAsync(
 		LisDbContext db, long agentId, CancellationToken ct,
 		ChatEntity? chat = null, AgentEntity? agent = null) {
-		bool isGroup = chat?.IsGroup == true;
-		StringBuilder sb = new();
+		ComposedPrompt composed = await this.BuildSectionsAsync(db, agentId, ct, chat, agent);
 
-		List<PromptSectionEntity> sections = await db.PromptSections
+		StringBuilder sb = new();
+		foreach (PromptPart part in composed.Sections) {
+			if (sb.Length > 0) sb.Append("\n\n");
+			sb.Append(part.Content);
+		}
+		if (composed.Memories is { Length: > 0 } mem) sb.Append(mem);
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// Same composition <see cref="BuildAsync"/> performs, but returns the structured
+	/// pieces (named sections, memories block) separately so analytics can tokenize
+	/// each piece on its own. The concatenation of the parts equals what
+	/// <c>BuildAsync</c> would return.
+	/// </summary>
+	public async Task<ComposedPrompt> BuildSectionsAsync(
+		LisDbContext db, long agentId, CancellationToken ct,
+		ChatEntity? chat = null, AgentEntity? agent = null) {
+		bool isGroup = chat?.IsGroup == true;
+
+		List<PromptSectionEntity> sectionEntities = await db.PromptSections
 			.Where(s => s.IsEnabled && s.AgentId == agentId)
 			.OrderBy(s => s.SortOrder)
 			.ToListAsync(ct);
 
-		// Resolve group context text for interpolation
 		string groupContextText = isGroup
 			? agent?.GroupContextPrompt ?? DefaultGroupContext
 			: "";
-
-		// Build chat context metadata
 		string chatContextText = BuildChatContext(chat);
 
-		foreach (PromptSectionEntity section in sections) {
+		List<PromptPart> sections = new();
+		foreach (PromptSectionEntity section in sectionEntities) {
 			string content = section.Content;
-
 			if (string.IsNullOrWhiteSpace(content)) continue;
-
 			content = this.Interpolate(content, groupContextText, chatContextText);
-
 			if (content.Length > MAX_SECTION_CHARS) {
 				content = content[..MAX_SECTION_CHARS];
 				logger.LogWarning("Prompt section {Section} truncated to {Max} chars", section.Name, MAX_SECTION_CHARS);
 			}
-
-			if (sb.Length > 0) sb.Append("\n\n");
-			sb.Append(content);
+			sections.Add(new PromptPart(section.Name, content));
 		}
 
 		List<MemoryEntity> memories = await db.Memories
@@ -65,25 +80,30 @@ public sealed class PromptComposer(
 			.OrderByDescending(m => m.CreatedAt)
 			.ToListAsync(ct);
 
+		string? memoriesBlock = null;
 		if (memories.Count > 0) {
 			StringBuilder memorySb = new("\n\nMemories:");
 			int totalLen = 0;
-
 			foreach (MemoryEntity mem in memories) {
 				string line = mem.Contact is not null
 					? $"\n- [{mem.Contact.Name}] {mem.Content}"
 					: $"\n- {mem.Content}";
-
 				if (totalLen + line.Length > MAX_MEMORY_CHARS) break;
-
 				memorySb.Append(line);
 				totalLen += line.Length;
 			}
-
-			sb.Append(memorySb);
+			memoriesBlock = memorySb.ToString();
 		}
 
-		return sb.ToString();
+		// Glue between sections: BuildAsync joins sections with "\n\n". Attribute
+		// that glue to each non-first section's content so the structured shape
+		// here recomposes byte-for-byte into BuildAsync's output.
+		if (sections.Count > 1) {
+			for (int i = 1; i < sections.Count; i++)
+				sections[i] = sections[i] with { Content = "\n\n" + sections[i].Content };
+		}
+
+		return new ComposedPrompt(sections, memoriesBlock);
 	}
 
 	private static string BuildChatContext(ChatEntity? chat) {

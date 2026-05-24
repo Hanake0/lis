@@ -78,17 +78,37 @@ public sealed class ContextBreakdownService(
 		int budget = modelSettings.ContextBudget;
 		string model = modelSettings.Model;
 
-		string systemPrompt = await promptComposer.BuildAsync(db, agent.Id, ct, chat, agent);
+		PromptComposer.ComposedPrompt composed = await promptComposer.BuildSectionsAsync(db, agent.Id, ct, chat, agent);
+		string systemPrompt = ConcatPrompt(composed);
 
-		// Fresh chat — no assistant turn has happened. Count the current system prompt
-		// (one counter call, cached) and report the rest as zero. Never invent numbers
-		// for content that doesn't exist yet.
+		// Per-section + memory file counts. Each gets its own count_tokens call (cached).
+		// Tokenize all in parallel.
+		Task<(string Name, int? Tokens)>[] sectionTasks = composed.Sections
+			.Select(async p => (Name: p.Name, Tokens: await this.CountTextAsync(model, p.Content, ct)))
+			.ToArray();
+		Task<int?> memoriesTask = composed.Memories is { Length: > 0 } mem
+			? this.CountTextAsync(model, mem, ct)
+			: Task.FromResult<int?>(0);
+
+		(string Name, int? Tokens)[] sectionCounts = await Task.WhenAll(sectionTasks);
+		int? memoriesTokens = await memoriesTask;
+
+		// Sum is needed both for drift detection and for the live tools-by-subtraction.
+		// If any section count failed, we mark the sum unusable (null) so downstream
+		// segments degrade to "—" rather than report a too-low system total.
+		int? systemTokens = (sectionCounts.All(s => s.Tokens is not null) && memoriesTokens is not null)
+			? sectionCounts.Sum(s => s.Tokens!.Value) + memoriesTokens.Value
+			: (int?)null;
+
+		// Fresh chat — no assistant turn has happened. Show per-section breakdown
+		// with Free space taking the rest. Tools is unknown (no anchor yet).
 		if (lastAssistant is null) {
-			int? sysOnly = await this.CountSystemAsync(model, systemPrompt, ct);
-			List<Segment> fresh = new() {
-				new Segment("System prompt", sysOnly ?? -1),
-				new Segment("Free space",    budget),
-			};
+			List<Segment> fresh = new();
+			foreach ((string name, int? tokens) in sectionCounts)
+				fresh.Add(new Segment(name, tokens ?? -1));
+			if (composed.Memories is { Length: > 0 })
+				fresh.Add(new Segment("Memory files", memoriesTokens ?? -1));
+			fresh.Add(new Segment("Free space", budget));
 			return new Breakdown(0, budget, fresh, agent.Model, agent.ThinkingEffort);
 		}
 
@@ -107,7 +127,6 @@ public sealed class ContextBreakdownService(
 			.OrderBy(m => m.Timestamp)
 			.FirstOrDefaultAsync(ct);
 
-		int? systemTokens  = await this.CountSystemAsync(model, systemPrompt, ct);
 		int? summaryTokens = await this.CountSummariesAsync(model, parentSession?.Summary, session.Summary, ct);
 
 		int? systemPlusTools = null;
@@ -145,14 +164,25 @@ public sealed class ContextBreakdownService(
 		// A segment whose counter call failed gets Tokens = -1 so the UI can render "—".
 		// Never substitute a local tokenizer here — that's the bug we just fixed.
 		List<Segment> segments = new() {
-			new Segment("Messages",      messageTokens ?? -1),
-			new Segment("Tools",         toolTokens    ?? -1),
-			new Segment("System prompt", systemTokens  ?? -1),
-			new Segment("Summaries",     summaryTokens ?? -1),
-			new Segment("Free space",    freeSpace),
+			new Segment("Messages", messageTokens ?? -1),
+			new Segment("Tools",    toolTokens    ?? -1),
 		};
+		foreach ((string name, int? tokens) in sectionCounts)
+			segments.Add(new Segment(name, tokens ?? -1));
+		if (composed.Memories is { Length: > 0 })
+			segments.Add(new Segment("Memory files", memoriesTokens ?? -1));
+		segments.Add(new Segment("Summaries", summaryTokens ?? -1));
+		segments.Add(new Segment("Free space", freeSpace));
 
 		return new Breakdown(actualTotal, budget, segments, agent.Model, agent.ThinkingEffort);
+	}
+
+	private static string ConcatPrompt(PromptComposer.ComposedPrompt composed) {
+		StringBuilder sb = new();
+		foreach (PromptComposer.PromptPart part in composed.Sections)
+			sb.Append(part.Content);
+		if (composed.Memories is { Length: > 0 } mem) sb.Append(mem);
+		return sb.ToString();
 	}
 
 	// ── Counter helpers ─────────────────────────────────────────────
