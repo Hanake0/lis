@@ -22,6 +22,13 @@ export function ContextPanel() {
 		if (id) vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: id } });
 	}, [open]);
 
+	function refresh() {
+		const id = chatId.value;
+		if (!id) return;
+		contextData.value = null;
+		vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: id, force_refresh: true } });
+	}
+
 	if (!open) return null;
 
 	const pct = data && data.budget > 0 ? Math.min(100, (data.total / data.budget) * 100) : 0;
@@ -46,6 +53,7 @@ export function ContextPanel() {
 						<span class="context-pct">({pct.toFixed(1)}%)</span>
 					</span>
 				)}
+				<button type="button" class="context-refresh" title="Force refresh (re-count tokens via Anthropic)" onClick={refresh}>⟳</button>
 				<button type="button" class="context-close" onClick={() => { contextOpen.value = false; }}>✕</button>
 			</div>
 

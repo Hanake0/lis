@@ -44,7 +44,8 @@ public sealed class ContextBreakdownService(
 
 	private readonly ConcurrentDictionary<string, int> countCache = new();
 
-	public async Task<Breakdown?> ComputeAsync(string chatId, CancellationToken ct) {
+	public async Task<Breakdown?> ComputeAsync(string chatId, CancellationToken ct, bool forceRefresh = false) {
+		if (forceRefresh) this.countCache.Clear();
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 

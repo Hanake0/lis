@@ -61,6 +61,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 /* ── Message list ─────────────────────────────────────────────────── */
 .message-list {
 	flex:           1;
+	min-height:     0;
 	overflow-y:     auto;
 	padding:        20px 14px 10px;
 	display:        flex;
@@ -145,20 +146,10 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* ── Thinking block ───────────────────────────────────────────────── */
 .thinking-block {
-	align-self:    flex-start;
-	max-width:     88%;
-	background:    rgba(186,128,233,0.06);
-	border:        1px solid rgba(186,128,233,0.22);
-	border-left:   3px solid rgba(186,128,233,0.55);
-	border-radius: var(--lis-r-sm);
-	overflow:      hidden;
-	font-size:     12px;
-	color:         var(--vscode-descriptionForeground);
-	transition:    box-shadow var(--lis-anim-fast);
-}
-.thinking-block--streaming {
-	border-left:  3px solid rgba(186,128,233,0.95);
-	animation:    thinkPulse 2.2s ease-in-out infinite;
+	align-self: flex-start;
+	max-width:  88%;
+	font-size:  12px;
+	color:      var(--vscode-foreground);
 }
 .thinking-header {
 	display:       flex;
@@ -168,61 +159,77 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	width:         100%;
 	text-align:    left;
 	user-select:   none;
+	border-radius: var(--lis-r-sm);
 	transition:    background var(--lis-anim-fast);
 }
-.thinking-header:hover { background: rgba(186,128,233,0.09); }
-.thinking-chevron { font-size: 11px; opacity: 0.55; flex-shrink: 0; }
-.thinking-icon    { font-size: 12px; color: rgba(186,128,233,0.7); flex-shrink: 0; }
+.thinking-header:hover { background: rgba(186,128,233,0.07); }
+.thinking-chevron { font-size: 11px; color: rgba(186,128,233,0.65); flex-shrink: 0; }
+.thinking-icon    { font-size: 12px; color: rgba(186,128,233,0.7);  flex-shrink: 0; }
 .thinking-label   { font-style: italic; color: rgba(186,128,233,0.9); font-size: 11.5px; }
-.thinking-tokens  {
+.thinking-summary {
+	font-style:    italic;
+	font-size:     11px;
+	color:         var(--vscode-descriptionForeground);
+	overflow:      hidden;
+	text-overflow: ellipsis;
+	white-space:   nowrap;
+	flex:          1;
+	min-width:     0;
+}
+.thinking-tokens {
 	margin-left:   auto;
 	font-size:     10px;
 	font-style:    normal;
-	opacity:       0.7;
 	padding:       1px 6px;
 	background:    rgba(128,128,128,0.12);
 	border-radius: var(--lis-r-pill);
+	color:         var(--vscode-descriptionForeground);
 }
+.thinking-dots { display: inline-flex; align-items: center; gap: 3px; }
+.thinking-dots span {
+	display:       inline-block;
+	width: 3px; height: 3px;
+	border-radius: 50%;
+	background:    rgba(186,128,233,0.8);
+	animation:     busyPulse 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.3s;  }
 .thinking-label--streaming {
-	background:             linear-gradient(90deg, rgba(186,128,233,0.95) 0%, rgba(186,128,233,0.35) 40%, rgba(186,128,233,0.95) 75%);
-	background-size:        200% 100%;
+	background:              linear-gradient(90deg, rgba(186,128,233,0.95) 0%, rgba(186,128,233,0.35) 40%, rgba(186,128,233,0.95) 75%);
+	background-size:         200% 100%;
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
-	background-clip:        text;
-	animation:              labelShimmer 2s ease-in-out infinite;
-	font-style:             italic;
+	background-clip:         text;
+	animation:               labelShimmer 2s ease-in-out infinite;
+	font-style:              italic;
 }
 .thinking-body-wrap {
-	position:   relative;
-	border-top: 1px solid rgba(186,128,233,0.18);
+	position:    relative;
+	border-left: 2px solid rgba(186,128,233,0.3);
+	margin:      2px 10px 6px 12px;
 }
+.thinking-block--streaming .thinking-body-wrap { border-left-color: rgba(186,128,233,0.75); }
 .thinking-body {
-	padding:     8px 12px 12px;
-	font-family: var(--vscode-editor-font-family, monospace);
-	font-size:   11.5px;
-	white-space: pre-wrap;
-	word-break:  break-word;
-	max-height:  260px;
-	overflow-y:  auto;
-	opacity:     0.82;
-	line-height: 1.55;
+	padding:         8px 10px 10px 12px;
+	font-family:     var(--vscode-editor-font-family, monospace);
+	font-size:       11.5px;
+	white-space:     pre-wrap;
+	word-break:      break-word;
+	max-height:      260px;
+	overflow-y:      auto;
+	color:           var(--vscode-foreground);
+	line-height:     1.55;
 	scrollbar-width: none;
 }
 .thinking-body::-webkit-scrollbar { display: none; }
-.thinking-fade {
+.thinking-fade-bot {
 	position:       absolute;
+	bottom:         0;
 	left: 0; right: 0;
 	height:         32px;
 	pointer-events: none;
-	z-index:        1;
-}
-.thinking-fade--top {
-	top: 0;
-	background: linear-gradient(to bottom, var(--vscode-editor-background), transparent);
-}
-.thinking-fade--bot {
-	bottom: 0;
-	background: linear-gradient(to top, var(--vscode-editor-background), transparent);
+	background:     linear-gradient(to top, var(--vscode-editor-background), transparent);
 }
 
 /* ── Tool block ───────────────────────────────────────────────────── */
@@ -255,7 +262,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	transition:  background var(--lis-anim-fast);
 }
 .tool-header:hover { background: rgba(128,128,128,0.1); }
-.tool-icon-codicon { font-size: 13px; flex-shrink: 0; opacity: 0.6; }
+.tool-icon-codicon { font-size: 13px; flex-shrink: 0; color: var(--vscode-descriptionForeground); }
 .tool-name  { font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; }
 .tool-spacer { flex: 1; }
 .tool-tokens {
@@ -268,7 +275,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .tool-spinner   { font-size: 13px; flex-shrink: 0; color: var(--lis-run); }
 .tool-done-icon  { font-size: 13px; flex-shrink: 0; color: var(--lis-done); }
 .tool-error-icon { font-size: 13px; flex-shrink: 0; color: var(--lis-err); }
-.tool-chevron    { font-size: 11px; opacity: 0.45; flex-shrink: 0; }
+.tool-chevron    { font-size: 11px; color: var(--vscode-descriptionForeground); flex-shrink: 0; }
 
 .tool-body-wrap { position: relative; }
 .tool-body {
@@ -290,7 +297,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .tool-section-label {
 	font-size:      10px;
 	padding:        4px 10px 2px;
-	opacity:        0.55;
+	color:          var(--vscode-descriptionForeground);
 	font-weight:    500;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
@@ -301,7 +308,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	font-size:   11px;
 	white-space: pre-wrap;
 	word-break:  break-all;
-	color:       var(--vscode-descriptionForeground);
+	color:       var(--vscode-foreground);
 	line-height: 1.45;
 }
 .tool-result { color: var(--vscode-foreground); }
@@ -349,15 +356,18 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .context-summary strong { color: var(--vscode-foreground); }
 .context-sep  { opacity: 0.4; }
 .context-pct  { opacity: 0.6; font-size: 10px; }
-.context-close {
-	margin-left:   auto;
+.context-close,
+.context-refresh {
 	font-size:     14px;
 	padding:       2px 6px;
 	opacity:       0.5;
 	border-radius: var(--lis-r-sm);
 	transition:    opacity var(--lis-anim-fast), background var(--lis-anim-fast);
 }
-.context-close:hover { opacity: 1; background: rgba(128,128,128,0.1); }
+.context-refresh { margin-left: auto; }
+.context-close:hover,
+.context-refresh:hover { opacity: 1; background: rgba(128,128,128,0.1); }
+.context-refresh:active { transform: rotate(180deg); transition: transform var(--lis-anim); }
 
 .context-bar {
 	height:        5px;

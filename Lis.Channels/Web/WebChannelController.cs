@@ -342,7 +342,7 @@ public sealed class WebChannelController(
 
 		ContextBreakdownService.Breakdown? breakdown;
 		try {
-			breakdown = await contextBreakdown.ComputeAsync(frame.ChatId, ct);
+			breakdown = await contextBreakdown.ComputeAsync(frame.ChatId, ct, frame.ForceRefresh == true);
 		} catch (Exception ex) {
 			logger.LogError(ex, "Failed to compute context breakdown for {ChatId}", frame.ChatId);
 			await client.PublishAsync(ServerFrame.Error($"context breakdown failed: {ex.Message}", frame.ChatId), ct);

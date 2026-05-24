@@ -39,4 +39,9 @@ public sealed class ClientFrame {
 	// Agent management
 	[JsonPropertyName("agent_name")]
 	public string? AgentName { get; init; }
+
+	// get_context — bypass the in-memory counter cache and force a fresh
+	// count_tokens roundtrip for every text-to-token conversion.
+	[JsonPropertyName("force_refresh")]
+	public bool? ForceRefresh { get; init; }
 }

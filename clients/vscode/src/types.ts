@@ -71,4 +71,4 @@ export type ClientFrame =
 	| { type: 'get_agent';      chat_id: string }
 	| { type: 'list_agents' }
 	| { type: 'save_overrides'; chat_id: string; model?: string; effort?: string; tool_profile?: string }
-	| { type: 'get_context';    chat_id: string };
+	| { type: 'get_context';    chat_id: string; force_refresh?: boolean };
