@@ -146,7 +146,7 @@ const BUNDLED_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src \${cspSource} 'unsafe-inline'; script-src 'nonce-\${nonce}'; font-src data: \${cspSource}; img-src data: \${cspSource} https:;">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src \${cspSource} 'unsafe-inline'; script-src 'nonce-\${nonce}'; font-src data: \${cspSource}; img-src data: \${cspSource} https:; connect-src \${cspSource};">
 	<link rel="stylesheet" href="\${cssUri}">
 	<title>Lis Chat</title>
 </head>

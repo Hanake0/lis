@@ -5,6 +5,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { TooltipProvider } from './components/ui/tooltip';
 import { Toaster } from './components/ui/sonner';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { I18nProvider } from './lib/i18n';
 
 export function App() {
 	useEffect(() => {
@@ -27,12 +28,14 @@ export function App() {
 
 	return (
 		<ErrorBoundary>
-			<TooltipProvider delayDuration={300} skipDelayDuration={150}>
-				<div className="h-full w-full text-foreground bg-background dark">
-					<MainLayout />
-					<Toaster />
-				</div>
-			</TooltipProvider>
+			<I18nProvider>
+				<TooltipProvider delayDuration={300} skipDelayDuration={150}>
+					<div className="h-full w-full text-foreground bg-background dark">
+						<MainLayout />
+						<Toaster />
+					</div>
+				</TooltipProvider>
+			</I18nProvider>
 		</ErrorBoundary>
 	);
 }
