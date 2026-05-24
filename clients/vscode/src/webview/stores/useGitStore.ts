@@ -4,7 +4,7 @@ const EMPTY_ARR: any[] = [];
 const EMPTY_MAP: Map<string, any> = new Map();
 export const useGitStore = create<any>(() => ({
 	branches: EMPTY_ARR, currentBranch: null, isGitRepo: false,
-	status: null, log: EMPTY_ARR, fileCount: 0, directories: EMPTY_ARR,
+	status: null, log: EMPTY_ARR, fileCount: 0, directories: EMPTY_MAP,
 	isLoadingBranches: false, isLoadingStatus: false, isLoadingLog: false,
 	repoStatusMap: EMPTY_MAP, identity: null, allBranches: EMPTY_ARR, branchLabel: '',
 	fetchBranches: noop, fetchStatus: noop, fetchLog: noop,
@@ -15,7 +15,7 @@ export const useGitStore = create<any>(() => ({
 }));
 export function useGitBranches(): string[] { return EMPTY_ARR; }
 export function useIsGitRepo(): boolean { return false; }
-export function useGitAllBranches(): any { return EMPTY_ARR; }
+export function useGitAllBranches(): any { return EMPTY_MAP; }
 export function useGitBranchLabel(): any { return ''; }
 export function useGitFileCount(): any { return 0; }
 export function useGitIdentity(): any { return null; }
