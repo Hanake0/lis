@@ -9,9 +9,23 @@ import { I18nProvider } from './lib/i18n';
 import { vscode } from './vscodeApi';
 import { useSessionUIStore } from './sync/session-ui-store';
 import { useGlobalSessionsStore } from './stores/useGlobalSessionsStore';
+import { useProjectsStore } from './stores/useProjectsStore';
+
+const LIS_PROJECT_ID = 'lis';
+const LIS_PROJECT_PATH = '/lis';
+
+function ensureLisProject(): void {
+	const state = useProjectsStore.getState();
+	if (state.projects?.some((p: any) => p.id === LIS_PROJECT_ID)) return;
+	useProjectsStore.setState({
+		projects: [{ id: LIS_PROJECT_ID, path: LIS_PROJECT_PATH, label: 'Lis' }],
+		activeProjectId: LIS_PROJECT_ID,
+	});
+}
 
 export function installSidebarFrameHandler(): void {
 	document.documentElement.classList.add('dark');
+	ensureLisProject();
 
 	window.addEventListener('message', (ev: MessageEvent<{ type: string; [k: string]: unknown }>) => {
 		const msg = ev.data;
@@ -41,7 +55,13 @@ export function SidebarOCApp() {
 		<I18nProvider>
 			<ErrorBoundary>
 				<TooltipProvider delayDuration={300} skipDelayDuration={150}>
-					<div className="h-full w-full text-foreground bg-background dark overflow-hidden">
+					<div
+						className="h-full w-full text-foreground dark overflow-hidden"
+						style={{
+							background: 'var(--vscode-sideBar-background, var(--vscode-editor-background))',
+							color: 'var(--vscode-sideBar-foreground, var(--vscode-foreground))',
+						}}
+					>
 						<SessionSidebar />
 						<SessionDialogs />
 					</div>
@@ -129,6 +149,8 @@ function syncToGlobalStore(raw: Array<{ chat_id: string; name?: string; updated_
 	const toOCSession = (s: typeof raw[number]) => ({
 		id: s.chat_id,
 		title: s.name,
+		directory: LIS_PROJECT_PATH,
+		projectID: LIS_PROJECT_ID,
 		time: {
 			updated: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
 			archived: s.archived_at ? new Date(s.archived_at).getTime() : undefined,

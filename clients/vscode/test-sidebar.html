@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="dist/chat.css">
+	<script>window.__LIS_SIDEBAR_MODE = true;</script>
+	<style>
+		html,body,#app{height:100%;width:100%;margin:0;padding:0;overflow:hidden;}
+		:root {
+			--vscode-editor-background: #1e1e2e;
+			--vscode-editor-foreground: #cdd6f4;
+			--vscode-sideBar-background: #181825;
+			--vscode-sideBar-foreground: #cdd6f4;
+			--vscode-foreground: #cdd6f4;
+			--vscode-input-background: #313244;
+			--vscode-input-foreground: #cdd6f4;
+			--vscode-focusBorder: #89b4fa;
+			--vscode-panel-border: #45475a;
+			--vscode-list-hoverBackground: #313244;
+			--vscode-descriptionForeground: #a6adc8;
+			--vscode-button-background: #89b4fa;
+			--vscode-button-foreground: #1e1e2e;
+			--vscode-errorForeground: #f38ba8;
+			color-scheme: dark;
+		}
+	</style>
+	<title>Test Sidebar</title>
+</head>
+<body>
+	<div id="app"></div>
+	<script>
+		window.acquireVsCodeApi = () => ({
+			postMessage: (msg) => console.log('[sidebar postMessage]', JSON.stringify(msg)),
+			getState: () => ({}),
+			setState: () => {},
+		});
+	</script>
+	<script src="dist/chat.js"></script>
+	<script>
+		setTimeout(() => {
+			// Simulate connected + session list
+			window.postMessage({ type: 'state', state: 'connected' }, '*');
+			setTimeout(() => {
+				window.postMessage({ type: 'frame', frame: {
+					type: 'chat_list',
+					chats: [
+						{ chat_id: 'web:abc123', name: 'Debug login flow', updated_at: new Date(Date.now() - 4*60000).toISOString() },
+						{ chat_id: 'web:def456', name: 'Refactor auth middleware', updated_at: new Date(Date.now() - 35*60000).toISOString() },
+						{ chat_id: 'web:ghi789', name: 'Add unit tests for API', updated_at: new Date(Date.now() - 3*3600000).toISOString() },
+						{ chat_id: 'web:jkl012', name: 'Fix CSS layout bug', updated_at: new Date(Date.now() - 2*86400000).toISOString() },
+					]
+				}}, '*');
+			}, 100);
+		}, 300);
+	</script>
+</body>
+</html>

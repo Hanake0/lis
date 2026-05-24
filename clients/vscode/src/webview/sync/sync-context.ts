@@ -156,6 +156,8 @@ export function useAllLiveSessions(): any[] {
 		return sessions.map(s => ({
 			id: s.chat_id,
 			title: s.name,
+			directory: '/lis',
+			projectID: 'lis',
 			time: {
 				updated: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
 				archived: s.archived_at ? new Date(s.archived_at).getTime() : undefined,
