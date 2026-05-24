@@ -227,5 +227,11 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 		}
 	}
 
-	private readonly record struct ToolInvocation(FunctionResultContent Result, bool IsError);
+	/// <summary>
+	/// Must be public so TraceAspect's dynamic dispatch (in Lis.Core) can bind
+	/// AwaitTask&lt;T&gt; with T = ToolInvocation. Making it private causes the DLR to
+	/// pick the non-generic AwaitTask(Task,…) overload instead, which then fails an
+	/// InvalidCast back to Task&lt;ToolInvocation&gt; at the caller.
+	/// </summary>
+	public readonly record struct ToolInvocation(FunctionResultContent Result, bool IsError);
 }
