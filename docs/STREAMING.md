@@ -46,11 +46,11 @@ Two thinking modes:
 
 - **budget** — `{type: "enabled", budget_tokens: N, display: "summarized"}`. Fixed
   budget. Default for Sonnet/Haiku and older Opus models. Deprecated on Claude
-  4.6 but still functional. Required for `xhigh` effort (no adaptive equivalent).
+  4.6 but still functional.
 - **adaptive** — `{type: "adaptive", display: "summarized", output_config: {effort: <level>}}`.
   Model decides how much to think within the effort budget. **Required for Opus 4.7+**
-  (budget mode is removed on that model). `output_config.effort` accepts only
-  `low/medium/high/max` — `xhigh` falls back to `high` in adaptive.
+  (budget mode is removed on that model). `xhigh` is Opus 4.7+ exclusive — selecting it
+  on any other model disables thinking with a warning.
 
 Budget values per effort (budget mode):
 
@@ -62,8 +62,33 @@ Budget values per effort (budget mode):
 | xhigh  | 32000                 |
 | max    | Opus 64000, Sonnet 32000, Haiku 8192 |
 
-The `"display": "summarized"` parameter is set on both modes so thinking content
-streams in real-time. Without it, thinking arrives as a long pause then output.
+The `"display": "summarized"` parameter is set on both modes — required for Opus 4.7+
+(thinking content is omitted by default there) and harmless on older models.
+
+### How the request reaches the wire
+
+The SK→`Microsoft.Extensions.AI` adapter does **not** forward
+`PromptExecutionSettings.ExtensionData["thinking"]` (or `ChatOptions.AdditionalProperties`)
+to the Anthropic SDK's request body — this was verified empirically. We flow the
+thinking config via `Lis.Core.Channel.ThinkingContext.Pending` (an `AsyncLocal<JsonNode?>`)
+which `ThinkingInjectionHandler` (in `AnthropicProvider`) reads and patches into the
+JSON body, identical to how `OAuthSystemPromptHandler` injects the system prefix and
+`CacheControlHandler` injects cache markers.
+
+### How the response surfaces
+
+Anthropic emits thinking deltas as `content_block_delta` events with
+`Delta.Type == "thinking_delta"` and the text on `Delta.Thinking`. The SK→M.E.AI
+adapter **strips** these from `StreamingChatMessageContent.Items`, but the raw
+`MessageResponse` (per-event) is still available on `chunk.InnerContent`. The
+provider-specific `IReasoningExtractor` reads `Delta.Thinking` from there and
+`ToolRunner` calls `IChannelClient.SendThinkingChunkAsync` with the text.
+
+### Thinking token counts
+
+Anthropic includes thinking tokens in `output_tokens` rather than reporting them
+separately. `UsageDetails.ReasoningTokenCount` is read when present but is usually
+null/zero — the `output_tokens` already covers thinking.
 
 Per-message overrides on the `message` client frame:
 
