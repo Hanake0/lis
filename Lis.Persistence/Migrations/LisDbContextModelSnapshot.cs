@@ -576,6 +576,92 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("github_identity");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.GitIdentityEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AuthType")
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)")
+                        .HasColumnName("auth_type")
+                        .HasJsonPropertyName("auth_type");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("color")
+                        .HasJsonPropertyName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasJsonPropertyName("created_at");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("external_id")
+                        .HasJsonPropertyName("external_id");
+
+                    b.Property<string>("Host")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("host")
+                        .HasJsonPropertyName("host");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("icon")
+                        .HasJsonPropertyName("icon");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("name")
+                        .HasJsonPropertyName("name");
+
+                    b.Property<string>("SshKeyPath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)")
+                        .HasColumnName("ssh_key_path")
+                        .HasJsonPropertyName("ssh_key_path");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.Property<string>("UserEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("user_email")
+                        .HasJsonPropertyName("user_email");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("user_name")
+                        .HasJsonPropertyName("user_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("git_identity");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.MemoryEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -1229,6 +1315,42 @@ namespace Lis.Persistence.Migrations
                     b.HasIndex("ChatExternalId");
 
                     b.ToTable("session_folder_item");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.SettingEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("key")
+                        .HasJsonPropertyName("key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value")
+                        .HasJsonPropertyName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("setting");
                 });
 
             modelBuilder.Entity("Lis.Persistence.Entities.ChatAllowedSenderEntity", b =>

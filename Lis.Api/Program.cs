@@ -133,6 +133,7 @@ builder.Services.AddSingleton<ContextBreakdownService>();
 builder.Services.AddScoped<IProjectService,       ProjectService>();
 builder.Services.AddScoped<ISessionFolderService, SessionFolderService>();
 builder.Services.AddScoped<IChatPinService,       ChatPinService>();
+builder.Services.AddScoped<IGitIdentityService,   GitIdentityService>();
 builder.Services.AddScoped<IScheduledTaskService, ScheduledTaskService>();
 // Git is stateless (every call opens its own Repository), so a singleton is fine.
 builder.Services.AddSingleton<IGitService, GitService>();

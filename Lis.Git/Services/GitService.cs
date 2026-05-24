@@ -24,6 +24,13 @@ public interface IGitService {
 	///   - the remote URL does not point at github.com.
 	/// </summary>
 	Task<RemoteRef?> GetRemoteRefAsync(string path, string branch, CancellationToken ct = default);
+
+	/// <summary>
+	/// Read the user's global git identity (<c>git config --global user.name/user.email/core.sshCommand</c>)
+	/// from the system git config. Returns null when neither name nor email is set
+	/// (treated as "no global identity configured").
+	/// </summary>
+	Task<GlobalGitIdentity?> GetGlobalIdentityAsync(CancellationToken ct = default);
 }
 
 /// <summary>Snapshot of a working tree's relationship to its upstream.</summary>
@@ -55,6 +62,11 @@ public sealed record WorktreeMetadata(
 
 /// <summary>Resolved GitHub coordinates for a branch's tracking remote.</summary>
 public sealed record RemoteRef(string RemoteName, string Owner, string Repo, string Url);
+
+/// <summary>
+/// User's host-wide git identity from <c>git config --global</c>. Surfaced read-only.
+/// </summary>
+public sealed record GlobalGitIdentity(string? UserName, string? UserEmail, string? SshCommand);
 
 public sealed class GitService :IGitService {
 
@@ -189,6 +201,32 @@ public sealed class GitService :IGitService {
 		// Prune removes the .git/worktrees entry plus the working directory when allowed.
 		repo.Worktrees.Prune(wt, ifLocked: force);
 		return Task.CompletedTask;
+	}
+
+	[Trace("GitService > GetGlobalIdentityAsync")]
+	public Task<GlobalGitIdentity?> GetGlobalIdentityAsync(CancellationToken ct = default) {
+		ct.ThrowIfCancellationRequested();
+
+		try {
+			// BuildFrom(null) loads the global + xdg + system tiers — the same set
+			// `git config --global` would write to. No working tree needed.
+			using Configuration cfg = Configuration.BuildFrom(null);
+			string? name = cfg.Get<string>("user.name")?.Value;
+			string? email = cfg.Get<string>("user.email")?.Value;
+			string? sshCommand = cfg.Get<string>("core.sshCommand")?.Value;
+
+			if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(email)) {
+				return Task.FromResult<GlobalGitIdentity?>(null);
+			}
+			return Task.FromResult<GlobalGitIdentity?>(new GlobalGitIdentity(
+				UserName:   string.IsNullOrWhiteSpace(name)       ? null : name,
+				UserEmail:  string.IsNullOrWhiteSpace(email)      ? null : email,
+				SshCommand: string.IsNullOrWhiteSpace(sshCommand) ? null : sshCommand
+			));
+		} catch (LibGit2SharpException) {
+			// No config files on disk yet (fresh containers, sandboxed CI). Treat as no identity.
+			return Task.FromResult<GlobalGitIdentity?>(null);
+		}
 	}
 
 	[Trace("GitService > GetRemoteRefAsync")]

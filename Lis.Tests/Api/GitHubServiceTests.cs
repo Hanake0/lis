@@ -183,5 +183,6 @@ public sealed class GitHubServiceTests :IDisposable {
 		public Task<IReadOnlyList<WorktreeMetadata>> ListWorktreesAsync(string projectPath, CancellationToken ct = default) => throw new NotImplementedException();
 		public Task<WorktreeMetadata> CreateWorktreeAsync(string projectPath, string newPath, string branch, CancellationToken ct = default) => throw new NotImplementedException();
 		public Task                   RemoveWorktreeAsync(string projectPath, string worktreePath, bool force = false, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<GlobalGitIdentity?> GetGlobalIdentityAsync(CancellationToken ct = default) => throw new NotImplementedException();
 	}
 }
