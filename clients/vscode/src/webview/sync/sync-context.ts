@@ -57,3 +57,11 @@ export function setActiveSession(_sessionId: string): void {}
 export class SyncProvider {
 	static defaultProps = {};
 }
+export function buildSessionMessageRecordsSnapshot(..._args: any[]): any { return null; }
+export function useAllLiveSessions(..._args: any[]): any { return null; }
+export function useAllSessionStatuses(..._args: any[]): any { return null; }
+export function useDirectoryStore(..._args: any[]): any { return null; }
+export function useEnsureSessionMessages(..._args: any[]): any { return null; }
+export function useGlobalSessionStatus(..._args: any[]): any { return null; }
+export function useSession(..._args: any[]): any { return null; }
+export function useSessionPermissions(..._args: any[]): any { return null; }

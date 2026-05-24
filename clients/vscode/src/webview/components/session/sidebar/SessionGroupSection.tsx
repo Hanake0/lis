@@ -1,0 +1,901 @@
+import React from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import type { Session } from '@opencode-ai/sdk/v2';
+
+// Archived buckets routinely grow into the hundreds/thousands; virtualize
+// when we cross this row count so the DOM stays bounded.
+const ARCHIVED_VIRTUALIZE_THRESHOLD = 50;
+// Compact rows in the archived bucket without nested subagents render
+// around 24-32px; tanstack-virtual will measure precisely via the row ref.
+const ARCHIVED_ROW_ESTIMATE_PX = 28;
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Icon } from "@/components/icon/Icon";
+import { cn } from '@/lib/utils';
+import { sessionEvents } from '@/lib/sessionEvents';
+import type { MainTab } from '@/stores/useUIStore';
+import { SessionFolderItem } from '../SessionFolderItem';
+import { DroppableFolderWrapper, SessionFolderDndScope } from './sessionFolderDnd';
+import type { SortableDragHandleProps } from './sortableItems';
+import type { GroupSearchData, SessionGroup, SessionNode } from './types';
+import { compareSessionsByPinnedAndTime, isBranchDifferentFromLabel, normalizePath, renderHighlightedText } from './utils';
+import type { SessionFolder } from '@/stores/useSessionFoldersStore';
+import { useSessionFoldersStore } from '@/stores/useSessionFoldersStore';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
+import { openExternalUrl } from '@/lib/url';
+import { useI18n } from '@/lib/i18n';
+
+type DeleteFolderConfirm = {
+  scopeKey: string;
+  folderId: string;
+  folderName: string;
+  subFolderCount: number;
+  sessionCount: number;
+} | null;
+
+type Props = {
+  group: SessionGroup;
+  groupKey: string;
+  projectId?: string | null;
+  hideGroupLabel?: boolean;
+  hasSessionSearchQuery: boolean;
+  normalizedSessionSearchQuery: string;
+  groupSearchDataByGroup: WeakMap<SessionGroup, GroupSearchData>;
+  expandedSessionGroups: Set<string>;
+  collapsedGroups: Set<string>;
+  hideDirectoryControls: boolean;
+  collapsedFolderIds: Set<string>;
+  toggleFolderCollapse: (folderId: string) => void;
+  renameFolder: (scopeKey: string, folderId: string, name: string) => void;
+  deleteFolder: (scopeKey: string, folderId: string) => void;
+  showDeletionDialog: boolean;
+  setDeleteFolderConfirm: React.Dispatch<React.SetStateAction<DeleteFolderConfirm>>;
+  renderSessionNode: (node: SessionNode, depth?: number, groupDirectory?: string | null, projectId?: string | null, archivedBucket?: boolean, secondaryMeta?: { projectLabel?: string | null; branchLabel?: string | null } | null) => React.ReactNode;
+  currentSessionDirectory: string | null;
+  projectRepoStatus: Map<string, boolean | null>;
+  lastRepoStatus: boolean;
+  toggleGroupSessionLimit: (groupKey: string) => void;
+  mobileVariant: boolean;
+  alwaysShowActions: boolean;
+  activeProjectId: string | null;
+  setActiveProjectIdOnly: (id: string) => void;
+  setActiveMainTab: (tab: MainTab) => void;
+  setSessionSwitcherOpen: (open: boolean) => void;
+  openNewSessionDraft: (options?: { directoryOverride?: string | null; targetFolderId?: string }) => void;
+  addSessionToFolder: (scopeKey: string, folderId: string, sessionId: string) => void;
+  createFolderAndStartRename: (scopeKey: string, parentId?: string | null) => { id: string } | null;
+  renamingFolderId: string | null;
+  renameFolderDraft: string;
+  setRenameFolderDraft: React.Dispatch<React.SetStateAction<string>>;
+  setRenamingFolderId: React.Dispatch<React.SetStateAction<string | null>>;
+  pinnedSessionIds: Set<string>;
+  sessionOrderIndex: Map<string, number>;
+  prVisualStateByDirectoryBranch: Map<string, {
+    visualState: 'draft' | 'open' | 'blocked' | 'merged' | 'closed';
+    number: number;
+    url: string | null;
+    state: 'open' | 'closed' | 'merged';
+    draft: boolean;
+    title: string | null;
+    base: string | null;
+    head: string | null;
+    checks: {
+      state: 'success' | 'failure' | 'pending' | 'unknown';
+      total: number;
+      success: number;
+      failure: number;
+      pending: number;
+    } | null;
+    canMerge: boolean | null;
+    mergeableState: string | null;
+    repo: {
+      owner: string;
+      repo: string;
+    } | null;
+  }>;
+  onToggleCollapsedGroup: (groupKey: string) => void;
+  dragHandleProps?: SortableDragHandleProps | null;
+  compactBodyPadding?: boolean;
+};
+
+export function SessionGroupSection(props: Props): React.ReactNode {
+  const { t } = useI18n();
+  const {
+    group,
+    groupKey,
+    projectId,
+    hideGroupLabel,
+    hasSessionSearchQuery,
+    normalizedSessionSearchQuery,
+    groupSearchDataByGroup,
+    expandedSessionGroups,
+    collapsedGroups,
+    hideDirectoryControls,
+    collapsedFolderIds,
+    toggleFolderCollapse,
+    renameFolder,
+    deleteFolder,
+    showDeletionDialog,
+    setDeleteFolderConfirm,
+    renderSessionNode,
+    projectRepoStatus,
+    lastRepoStatus,
+    toggleGroupSessionLimit,
+    mobileVariant,
+    alwaysShowActions,
+    activeProjectId,
+    setActiveProjectIdOnly,
+    setActiveMainTab,
+    setSessionSwitcherOpen,
+    openNewSessionDraft,
+    addSessionToFolder,
+    createFolderAndStartRename,
+    renamingFolderId,
+    renameFolderDraft,
+    setRenameFolderDraft,
+    setRenamingFolderId,
+    pinnedSessionIds,
+    sessionOrderIndex,
+    prVisualStateByDirectoryBranch,
+    onToggleCollapsedGroup,
+    dragHandleProps,
+    compactBodyPadding = false,
+  } = props;
+
+  const compareSessionNodes = React.useCallback((a: SessionNode, b: SessionNode) => {
+    const aIndex = sessionOrderIndex.get(a.session.id);
+    const bIndex = sessionOrderIndex.get(b.session.id);
+    if (aIndex !== undefined || bIndex !== undefined) {
+      if (aIndex === undefined) return 1;
+      if (bIndex === undefined) return -1;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+    return compareSessionsByPinnedAndTime(a.session, b.session, pinnedSessionIds);
+  }, [pinnedSessionIds, sessionOrderIndex]);
+
+  const searchData = hasSessionSearchQuery ? groupSearchDataByGroup.get(group) : null;
+  const displayMode = useSessionDisplayStore((state) => state.displayMode);
+  const foldersMap = useSessionFoldersStore((state) => state.foldersMap);
+  const isMinimalMode = displayMode === 'minimal';
+  const isExpanded = expandedSessionGroups.has(groupKey);
+  const isCollapsed = hasSessionSearchQuery ? false : collapsedGroups.has(groupKey);
+  const maxVisible = hideDirectoryControls ? 10 : 5;
+  const groupMatchesSearch = hasSessionSearchQuery ? searchData?.groupMatches === true : false;
+  const shouldFilterGroupContents = hasSessionSearchQuery;
+  const sourceGroupNodes = React.useMemo(
+    () => [...(shouldFilterGroupContents ? (searchData?.filteredNodes ?? []) : group.sessions)]
+      .sort(compareSessionNodes),
+    [compareSessionNodes, group.sessions, searchData?.filteredNodes, shouldFilterGroupContents],
+  );
+  const folderScopeKey = group.folderScopeKey ?? normalizePath(group.directory ?? null);
+  const scopeFolders = React.useMemo(
+    () => folderScopeKey ? (foldersMap[folderScopeKey] ?? []) : [],
+    [folderScopeKey, foldersMap]
+  );
+
+  const nodeBySessionId = React.useMemo(() => {
+    const map = new Map<string, SessionNode>();
+    const collectNodeLookup = (nodes: SessionNode[]) => {
+      nodes.forEach((node) => {
+        map.set(node.session.id, node);
+        if (node.children.length > 0) {
+          collectNodeLookup(node.children);
+        }
+      });
+    };
+    collectNodeLookup(sourceGroupNodes);
+    return map;
+  }, [sourceGroupNodes]);
+
+  const allFoldersForGroupBase = React.useMemo(() => scopeFolders.map((folder) => {
+    const nodes = folder.sessionIds
+      .map((sid) => nodeBySessionId.get(sid))
+      .filter((n): n is SessionNode => Boolean(n))
+      .sort(compareSessionNodes);
+    return { folder, nodes };
+  }), [scopeFolders, nodeBySessionId, compareSessionNodes]);
+
+  const allFoldersForGroup = React.useMemo(() => {
+    const folderMapById = new Map(allFoldersForGroupBase.map((entry) => [entry.folder.id, entry]));
+    const childFolderIdsByParentId = new Map<string, string[]>();
+    for (const { folder } of allFoldersForGroupBase) {
+      if (!folder.parentId) continue;
+      const existing = childFolderIdsByParentId.get(folder.parentId);
+      if (existing) {
+        existing.push(folder.id);
+      } else {
+        childFolderIdsByParentId.set(folder.parentId, [folder.id]);
+      }
+    }
+
+    const keepByFolderId = new Map<string, boolean>();
+    const shouldKeepFolder = (folderId: string): boolean => {
+      const cached = keepByFolderId.get(folderId);
+      if (cached !== undefined) return cached;
+
+      const entry = folderMapById.get(folderId);
+      if (!entry) {
+        keepByFolderId.set(folderId, false);
+        return false;
+      }
+
+      const childFolderIds = childFolderIdsByParentId.get(folderId) ?? [];
+
+      // For archived buckets, hide folders with no sessions unless descendants have content.
+      if (group.isArchivedBucket && entry.nodes.length === 0) {
+        const hasContentInChildren = childFolderIds.some((childId) => shouldKeepFolder(childId));
+        keepByFolderId.set(folderId, hasContentInChildren);
+        return hasContentInChildren;
+      }
+
+      if (!hasSessionSearchQuery) {
+        keepByFolderId.set(folderId, true);
+        return true;
+      }
+
+      const folderMatches = entry.folder.name.toLowerCase().includes(normalizedSessionSearchQuery);
+      if (folderMatches || entry.nodes.length > 0) {
+        keepByFolderId.set(folderId, true);
+        return true;
+      }
+
+      const hasMatchingChildren = childFolderIds.some((childId) => shouldKeepFolder(childId));
+      keepByFolderId.set(folderId, hasMatchingChildren);
+      return hasMatchingChildren;
+    };
+
+    return allFoldersForGroupBase.filter(({ folder }) => shouldKeepFolder(folder.id));
+  }, [allFoldersForGroupBase, group.isArchivedBucket, hasSessionSearchQuery, normalizedSessionSearchQuery]);
+
+  const sessionIdsInFolders = React.useMemo(() => new Set(allFoldersForGroup.flatMap((f) => f.folder.sessionIds)), [allFoldersForGroup]);
+  const ungroupedSessions = React.useMemo(() => sourceGroupNodes.filter((node) => !sessionIdsInFolders.has(node.session.id)), [sourceGroupNodes, sessionIdsInFolders]);
+  const rootFolders = React.useMemo(() => allFoldersForGroup.filter(({ folder }) => !folder.parentId), [allFoldersForGroup]);
+
+  const totalSessions = ungroupedSessions.length;
+  const visibleSessions = group.isArchivedBucket
+    ? ungroupedSessions
+    : hasSessionSearchQuery
+      ? ungroupedSessions
+      : (isExpanded ? ungroupedSessions : ungroupedSessions.slice(0, maxVisible));
+  const remainingCount = totalSessions - visibleSessions.length;
+
+  // Virtualize the archived bucket once it grows past a threshold. The
+  // archived list is the only group that can routinely hit hundreds or
+  // thousands of rows (projects accumulate archived sessions over time);
+  // every other group renders eagerly because they're small. All hooks
+  // below MUST stay above the search-empty early-return so they fire in
+  // the same order every render — rules-of-hooks.
+  const shouldVirtualizeArchived = group.isArchivedBucket === true
+    && !hasSessionSearchQuery
+    && visibleSessions.length >= ARCHIVED_VIRTUALIZE_THRESHOLD;
+
+  const archivedVirtualContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [archivedScrollEl, setArchivedScrollEl] = React.useState<HTMLElement | null>(null);
+  // Offset of the virtual container from the scroll element's content origin.
+  // tanstack-virtual reads scrollMargin from useVirtualizer options and uses it
+  // to translate scrollTop into container-relative coordinates. Without this,
+  // when the scroll element is an ancestor (the sidebar's ScrollableOverlay),
+  // the virtualizer assumes the container starts at the top of the scroll
+  // element and renders rows in the wrong subset / position.
+  const [archivedScrollMargin, setArchivedScrollMargin] = React.useState(0);
+
+  // Find the nearest scrolling ancestor by walking up the DOM. The sidebar
+  // routes its scroll through `ScrollableOverlay` higher up the tree;
+  // threading a ref through every intermediate component would be invasive
+  // for this single use case.
+  const archivedVirtualizer = useVirtualizer({
+    count: visibleSessions.length,
+    getScrollElement: () => archivedScrollEl,
+    estimateSize: () => ARCHIVED_ROW_ESTIMATE_PX,
+    overscan: 8,
+    enabled: shouldVirtualizeArchived && archivedScrollEl !== null,
+    scrollMargin: archivedScrollMargin,
+  });
+
+  // Resolve the scrolling ancestor and measure the virtual container's offset
+  // from its content origin, both on every render. The container ref is null
+  // while the archived bucket is collapsed (the body isn't mounted), so a
+  // dep-gated effect that only fires when shouldVirtualizeArchived flips
+  // would miss the eventual mount and leave the scroll element null forever.
+  // Running on every render lets us pick up the container as soon as
+  // expanding the bucket mounts it; the cached scroll element is reused as
+  // long as it still contains the container. Both state setters compare
+  // before writing, so a stable layout produces no state churn.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useLayoutEffect(() => {
+    if (!shouldVirtualizeArchived) {
+      if (archivedScrollEl !== null) setArchivedScrollEl(null);
+      if (archivedScrollMargin !== 0) setArchivedScrollMargin(0);
+      return;
+    }
+    const container = archivedVirtualContainerRef.current;
+    if (!container) {
+      // Bucket still collapsed — body not mounted. We'll re-run on the
+      // render that mounts it.
+      return;
+    }
+    let scrollEl: HTMLElement | null = archivedScrollEl;
+    if (!scrollEl || !scrollEl.contains(container)) {
+      // Walk up to find the nearest scrolling ancestor. Only happens on
+      // first mount or if the DOM tree restructured.
+      let el: HTMLElement | null = container.parentElement;
+      while (el) {
+        const style = window.getComputedStyle(el);
+        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+          scrollEl = el;
+          break;
+        }
+        el = el.parentElement;
+      }
+      if (scrollEl !== archivedScrollEl) {
+        setArchivedScrollEl(scrollEl);
+        // setState triggers a re-render; bail out and let the next pass
+        // measure the margin against the fresh element.
+        return;
+      }
+    }
+    if (!scrollEl) return;
+    const offset = container.getBoundingClientRect().top
+      - scrollEl.getBoundingClientRect().top
+      + scrollEl.scrollTop;
+    setArchivedScrollMargin((prev) => (Math.abs(prev - offset) < 1 ? prev : offset));
+  });
+
+  // Re-measure when the sidebar's scroll container resizes (e.g. window
+  // resize, sidebar width change). Mirrors the pattern in ChangesSection.
+  React.useEffect(() => {
+    if (!shouldVirtualizeArchived || !archivedScrollEl) return;
+    const observer = new ResizeObserver(() => {
+      archivedVirtualizer.measure();
+    });
+    observer.observe(archivedScrollEl);
+    return () => observer.disconnect();
+  }, [shouldVirtualizeArchived, archivedScrollEl, archivedVirtualizer]);
+
+  const archivedTotalSize = archivedVirtualizer.getTotalSize();
+  // Read virtual rows directly in render rather than via useMemo. The
+  // virtualizer instance is a stable reference across renders, and on a
+  // pure scroll event neither it nor `archivedTotalSize` change — only the
+  // virtualizer's internal scroll offset does. Memoizing here would return
+  // stale rows after every scroll. tanstack-virtual v3 expects callers to
+  // read getVirtualItems() inline; it's cheap and returns [] when the
+  // virtualizer is disabled.
+  const archivedVirtualRows = shouldVirtualizeArchived && archivedScrollEl !== null
+    ? archivedVirtualizer.getVirtualItems()
+    : [];
+
+  if (hasSessionSearchQuery && !groupMatchesSearch && rootFolders.length === 0 && ungroupedSessions.length === 0) {
+    return null;
+  }
+
+  const collectGroupSessions = (nodes: SessionNode[]): Session[] => {
+    const collected: Session[] = [];
+    const visit = (list: SessionNode[]) => {
+      list.forEach((node) => {
+        collected.push(node.session);
+        if (node.children.length > 0) visit(node.children);
+      });
+    };
+    visit(nodes);
+    return collected;
+  };
+
+  const allGroupSessions = collectGroupSessions(sourceGroupNodes);
+  const isGitProject = projectId && projectRepoStatus.has(projectId)
+    ? Boolean(projectRepoStatus.get(projectId))
+    : lastRepoStatus;
+  const groupDirectoryKey = normalizePath(group.directory ?? null);
+  const groupBranchKey = group.branch?.trim() ?? null;
+  const prIndicator = groupDirectoryKey && groupBranchKey
+    ? (prVisualStateByDirectoryBranch.get(`${groupDirectoryKey}::${groupBranchKey}`) ?? null)
+    : null;
+  const showInlinePrTitle = Boolean(prIndicator && group.branch);
+  const showBranchSubtitle = !prIndicator && !group.isMain && Boolean(group.branch);
+  const prVisualState = prIndicator?.visualState ?? null;
+  const checksSummary = prIndicator && prIndicator.state === 'open' && prIndicator.checks
+    ? t('sessions.sidebar.group.pr.checksPassed', {
+      success: prIndicator.checks.success,
+      total: prIndicator.checks.total,
+    })
+    : null;
+  const checksTail = prIndicator && prIndicator.state === 'open' && prIndicator.checks
+    ? [
+      prIndicator.checks.failure > 0
+        ? t('sessions.sidebar.group.pr.failingCount', { count: prIndicator.checks.failure })
+        : null,
+      prIndicator.checks.pending > 0
+        ? t('sessions.sidebar.group.pr.pendingCount', { count: prIndicator.checks.pending })
+        : null,
+    ].filter((item): item is string => Boolean(item)).join(', ')
+    : null;
+  const mergeabilityLabel = prIndicator && prIndicator.state === 'open'
+    ? (prIndicator.mergeableState === 'blocked' || prIndicator.mergeableState === 'dirty'
+        ? t('sessions.sidebar.group.pr.conflictsOrBlocked')
+        : (prIndicator.mergeableState === 'clean' || prIndicator.canMerge === true ? t('sessions.sidebar.group.pr.mergeable') : null))
+    : null;
+  const mergeStateLabel = prIndicator && prIndicator.state === 'open' && prIndicator.mergeableState
+    ? t('sessions.sidebar.group.pr.mergeState', { state: prIndicator.mergeableState })
+    : null;
+  const baseBranchLabel = prIndicator?.base ?? null;
+  const headBranchLabel = prIndicator?.head ?? null;
+  const statusLine = (() => {
+    if (!prIndicator) {
+      return group.branch && isBranchDifferentFromLabel(group.branch, group.label)
+        ? { label: group.branch, color: null as string | null }
+        : null;
+    }
+    switch (prIndicator.visualState) {
+      case 'merged':
+        return { label: t('sessions.sidebar.group.pr.status.merged'), color: 'var(--pr-merged)' };
+      case 'open':
+        return (prIndicator.canMerge === true || prIndicator.mergeableState === 'clean' || prIndicator.checks?.state === 'success')
+          ? { label: t('sessions.sidebar.group.pr.status.readyToMerge'), color: 'var(--pr-open)' }
+          : { label: t('sessions.sidebar.group.pr.status.open'), color: 'var(--pr-open)' };
+      case 'blocked':
+        return {
+          label: prIndicator.mergeableState === 'dirty'
+            ? t('sessions.sidebar.group.pr.status.mergeConflicts')
+            : t('sessions.sidebar.group.pr.status.mergeBlocked'),
+          color: 'var(--pr-blocked)',
+        };
+      case 'draft':
+        return { label: t('sessions.sidebar.group.pr.status.draft'), color: 'var(--pr-draft)' };
+      case 'closed':
+        return { label: t('sessions.sidebar.group.pr.status.closed'), color: 'var(--pr-closed)' };
+      default:
+        return null;
+    }
+  })();
+  const branchIconColor = statusLine?.color ?? (prVisualState ? `var(--pr-${prVisualState})` : undefined);
+  const handlePrLinkClick = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const url = prIndicator?.url;
+    if (!url) {
+      return;
+    }
+    void openExternalUrl(url);
+  };
+
+  const renderOneFolderItem = (folder: SessionFolder, nodes: SessionNode[], depth: number): React.ReactNode => {
+    const directSubFolders = allFoldersForGroup.filter(({ folder: f }) => f.parentId === folder.id);
+    const subFolderItems = directSubFolders.length > 0
+      ? <>{directSubFolders.map(({ folder: sf, nodes: sn }) => renderOneFolderItem(sf, sn, depth + 1))}</>
+      : undefined;
+    const collectFolderSessions = (targetFolderId: string): Session[] => {
+      const directNodes = allFoldersForGroup.find(({ folder: candidate }) => candidate.id === targetFolderId)?.nodes ?? [];
+      const childFolders = allFoldersForGroup.filter(({ folder: candidate }) => candidate.parentId === targetFolderId);
+      return [
+        ...collectGroupSessions(directNodes),
+        ...childFolders.flatMap(({ folder: child }) => collectFolderSessions(child.id)),
+      ];
+    };
+    const folderSessionsForDelete = group.isArchivedBucket ? collectFolderSessions(folder.id) : [];
+
+    return (
+      <DroppableFolderWrapper key={folder.id} folderId={folder.id}>
+        {(droppableRef, isDropTarget) => (
+          <SessionFolderItem
+            folder={folder}
+            sessions={nodes}
+            subFolderItems={subFolderItems}
+            isCollapsed={hasSessionSearchQuery ? false : collapsedFolderIds.has(folder.id)}
+            onToggle={() => toggleFolderCollapse(folder.id)}
+            onRename={(name) => {
+              if (folderScopeKey) renameFolder(folderScopeKey, folder.id, name);
+            }}
+            onDelete={() => {
+              if (group.isArchivedBucket) {
+                // Delete sessions in the folder
+                // Empty folders are auto-hidden by useArchivedAutoFolders
+                sessionEvents.requestDelete({
+                  sessions: folderSessionsForDelete,
+                  mode: 'session',
+                });
+                return;
+              }
+              if (!folderScopeKey) return;
+              if (!showDeletionDialog) {
+                deleteFolder(folderScopeKey, folder.id);
+                return;
+              }
+              const subFolderCount = allFoldersForGroup.filter(({ folder: f }) => f.parentId === folder.id).length;
+              const sessionCount = nodes.length;
+              setDeleteFolderConfirm({
+                scopeKey: folderScopeKey,
+                folderId: folder.id,
+                folderName: folder.name,
+                subFolderCount,
+                sessionCount,
+              });
+            }}
+            renderSessionNode={renderSessionNode}
+            groupDirectory={group.directory}
+            projectId={projectId}
+            mobileVariant={mobileVariant}
+            alwaysShowActions={alwaysShowActions}
+            isRenaming={renamingFolderId === folder.id}
+            renameDraft={renamingFolderId === folder.id ? renameFolderDraft : undefined}
+            onRenameDraftChange={(value) => setRenameFolderDraft(value)}
+            onRenameSave={() => {
+              const trimmed = renameFolderDraft.trim();
+              if (trimmed && folderScopeKey) {
+                renameFolder(folderScopeKey, folder.id, trimmed);
+              }
+              setRenamingFolderId(null);
+              setRenameFolderDraft('');
+            }}
+            onRenameCancel={() => {
+              setRenamingFolderId(null);
+              setRenameFolderDraft('');
+            }}
+            droppableRef={droppableRef}
+            isDropTarget={isDropTarget}
+            depth={depth}
+            onNewSession={() => {
+              if (projectId && projectId !== activeProjectId) setActiveProjectIdOnly(projectId);
+              setActiveMainTab('chat');
+              if (mobileVariant) setSessionSwitcherOpen(false);
+              openNewSessionDraft({ directoryOverride: group.directory, targetFolderId: folder.id });
+            }}
+            onNewSubFolder={depth === 0 ? () => {
+              if (!folderScopeKey) return;
+              createFolderAndStartRename(folderScopeKey, folder.id);
+            } : undefined}
+            hideActions={false}
+            archivedBucket={group.isArchivedBucket === true}
+          />
+        )}
+      </DroppableFolderWrapper>
+    );
+  };
+
+  const renderFolderItems = () => rootFolders.map(({ folder, nodes }) => renderOneFolderItem(folder, nodes, 0));
+  const hasWorktreeDeleteAction = Boolean(!group.isMain && group.worktree);
+  const groupHeaderRightPadding = alwaysShowActions
+    ? (hasWorktreeDeleteAction ? 'pr-14' : 'pr-7')
+    : isMinimalMode
+      ? (hasWorktreeDeleteAction
+          ? 'pr-2 group-hover/gh:pr-14 group-focus-within/gh:pr-14'
+          : 'pr-2')
+      : (hasWorktreeDeleteAction
+          ? 'pr-5 group-hover/gh:pr-14 group-focus-within/gh:pr-14'
+          : 'pr-5');
+
+  const body = (
+    <SessionFolderDndScope
+      scopeKey={folderScopeKey}
+      hasFolders={allFoldersForGroup.length > 0}
+      onSessionDroppedOnFolder={(sessionId, folderId) => {
+        if (folderScopeKey) addSessionToFolder(folderScopeKey, folderId, sessionId);
+      }}
+    >
+      {renderFolderItems()}
+      {shouldVirtualizeArchived ? (
+        <div
+          ref={archivedVirtualContainerRef}
+          style={{
+            position: 'relative',
+            // Reserve scroll height for all archived rows so the parent
+            // scroll thumb reflects the full list. Individual rows are
+            // absolutely positioned by translateY.
+            height: archivedTotalSize > 0 ? archivedTotalSize : undefined,
+            width: '100%',
+          }}
+        >
+          {archivedVirtualRows.map((virtualRow) => {
+            const node = visibleSessions[virtualRow.index];
+            if (!node) return null;
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={archivedVirtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  // virtualRow.start is in scroll-element coordinates (offset by
+                  // scrollMargin). Subtract scrollMargin to position within the
+                  // container, which itself starts at scrollMargin in the scroll
+                  // element.
+                  transform: `translateY(${virtualRow.start - archivedScrollMargin}px)`,
+                }}
+              >
+                {renderSessionNode(node, 0, group.directory, projectId, true)}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        visibleSessions.map((node) => renderSessionNode(node, 0, group.directory, projectId, group.isArchivedBucket === true))
+      )}
+      {totalSessions === 0 && allFoldersForGroup.length === 0 ? (
+        <div className="py-1 text-left typography-micro text-muted-foreground">
+          {group.isArchivedBucket
+            ? t('sessions.sidebar.group.empty.noArchivedSessions')
+            : t('sessions.sidebar.group.empty.noSessionsInWorkspace')}
+        </div>
+      ) : null}
+      {remainingCount > 0 && !isExpanded ? (
+        <button
+          type="button"
+          onClick={() => toggleGroupSessionLimit(groupKey)}
+          className="mt-0.5 flex items-center justify-start rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground/70 leading-tight hover:text-foreground hover:underline"
+        >
+          {remainingCount === 1
+            ? t('sessions.sidebar.group.showMoreSingle', { count: remainingCount })
+            : t('sessions.sidebar.group.showMorePlural', { count: remainingCount })}
+        </button>
+      ) : null}
+      {isExpanded && totalSessions > maxVisible ? (
+        <button
+          type="button"
+          onClick={() => toggleGroupSessionLimit(groupKey)}
+          className="mt-0.5 flex items-center justify-start rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground/70 leading-tight hover:text-foreground hover:underline"
+        >
+          {t('sessions.sidebar.group.showFewer')}
+        </button>
+      ) : null}
+    </SessionFolderDndScope>
+  );
+
+  const groupBodyPaddingClass = compactBodyPadding ? 'pb-2 pl-1' : 'pb-3 pl-4';
+
+  if (hideGroupLabel) {
+    return <div className="oc-group"><div className={cn('oc-group-body', groupBodyPaddingClass)}>{body}</div></div>;
+  }
+
+  return (
+    <div className="oc-group">
+      <div
+        className={cn('group/gh relative flex items-start justify-between gap-1 py-1 min-w-0 rounded-md', 'cursor-pointer')}
+        onClick={() => onToggleCollapsedGroup(groupKey)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onToggleCollapsedGroup(groupKey);
+          }
+        }}
+        aria-label={isCollapsed
+          ? t('sessions.sidebar.group.expandAria', { label: group.label })
+          : t('sessions.sidebar.group.collapseAria', { label: group.label })}
+        aria-expanded={!isCollapsed}
+      >
+        <div
+          ref={dragHandleProps?.setActivatorNodeRef}
+          className={cn(
+            'min-w-0 flex flex-1 items-start gap-1 overflow-hidden pl-0.5 transition-[padding] cursor-grab active:cursor-grabbing',
+            groupHeaderRightPadding,
+          )}
+          {...(dragHandleProps?.listeners ?? {})}
+        >
+          <div className="min-w-0 flex flex-1 flex-col justify-center gap-0.5 overflow-hidden">
+            <p className="text-[14px] font-normal truncate text-foreground/92">
+              {showInlinePrTitle && prIndicator ? (
+                <span className="inline-flex min-w-0 max-w-full items-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex shrink-0 items-center gap-1 leading-none align-middle">
+                        <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                          <Icon name="git-branch"
+                            className={cn('h-3.5 w-3.5 shrink-0', alwaysShowActions ? 'hidden' : 'group-hover/gh:hidden')}
+                            style={branchIconColor ? { color: branchIconColor } : undefined}
+                          />
+                          <span className={cn(
+                            'text-muted-foreground h-3.5 w-3.5 items-center justify-center',
+                            alwaysShowActions ? 'inline-flex' : 'hidden group-hover/gh:inline-flex',
+                          )}>
+                            {isCollapsed ? <Icon name="arrow-right-s" className="h-3.5 w-3.5" /> : <Icon name="arrow-down-s" className="h-3.5 w-3.5" />}
+                          </span>
+                        </span>
+                        {prIndicator.url ? (
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 items-center leading-none"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={handlePrLinkClick}
+                          >
+                            #{prIndicator.number}
+                          </button>
+                        ) : (
+                          <span className="inline-flex shrink-0 items-center leading-none">#{prIndicator.number}</span>
+                        )}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={6} align="start" className="max-w-sm">
+                      <div className="space-y-1 text-xs">
+                        {(baseBranchLabel || headBranchLabel) ? (
+                          <div className="text-muted-foreground truncate">
+                            {baseBranchLabel && headBranchLabel ? (
+                              <>
+                                <span>{baseBranchLabel}</span>
+                                <Icon name="arrow-left-long" className="mx-0.5 inline h-3 w-3 align-[-2px]" />
+                                <span>{headBranchLabel}</span>
+                              </>
+                            ) : (
+                              <span>{baseBranchLabel ?? headBranchLabel ?? ''}</span>
+                            )}
+                          </div>
+                        ) : null}
+                        {mergeStateLabel ? <div className="text-muted-foreground truncate">{mergeStateLabel}</div> : null}
+                        {(mergeabilityLabel || checksSummary) ? (
+                          <div className="text-muted-foreground truncate">
+                            {mergeabilityLabel ?? ''}
+                            {mergeabilityLabel && checksSummary ? ' • ' : ''}
+                            {checksSummary ?? ''}
+                            {checksTail ? ` (${checksTail})` : ''}
+                          </div>
+                        ) : null}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                  <span className="ml-1 min-w-0 flex-1 truncate leading-none align-middle">{group.branch}</span>
+                </span>
+              ) : group.isArchivedBucket ? (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                    <Icon name="archive" className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground', alwaysShowActions ? 'hidden' : 'group-hover/gh:hidden')} />
+                    <span className={cn(
+                      'text-muted-foreground h-3.5 w-3.5 items-center justify-center',
+                      alwaysShowActions ? 'inline-flex' : 'hidden group-hover/gh:inline-flex',
+                    )}>
+                      {isCollapsed ? <Icon name="arrow-right-s" className="h-3.5 w-3.5" /> : <Icon name="arrow-down-s" className="h-3.5 w-3.5" />}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{renderHighlightedText(group.label, normalizedSessionSearchQuery)}</span>
+                </span>
+              ) : (!group.isMain || group.worktree) ? (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                    <Icon name="git-branch"
+                      className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground', alwaysShowActions ? 'hidden' : 'group-hover/gh:hidden')}
+                      style={branchIconColor ? { color: branchIconColor } : undefined}
+                    />
+                    <span className={cn(
+                      'text-muted-foreground h-3.5 w-3.5 items-center justify-center',
+                      alwaysShowActions ? 'inline-flex' : 'hidden group-hover/gh:inline-flex',
+                    )}>
+                      {isCollapsed ? <Icon name="arrow-right-s" className="h-3.5 w-3.5" /> : <Icon name="arrow-down-s" className="h-3.5 w-3.5" />}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{renderHighlightedText(group.label, normalizedSessionSearchQuery)}</span>
+                </span>
+              ) : (
+                renderHighlightedText(group.label, normalizedSessionSearchQuery)
+              )}
+            </p>
+            {showBranchSubtitle && statusLine ? (
+              <span className="inline-flex min-w-0 items-center gap-1.5 leading-tight">
+                {group.isArchivedBucket ? (
+                  <Icon name="archive" className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                ) : (!group.isMain || isGitProject) ? (
+                  showInlinePrTitle && prIndicator ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">
+                          <Icon name="git-branch" className="h-3.5 w-3.5 text-muted-foreground"
+                            
+                            style={branchIconColor ? { color: branchIconColor } : undefined}/>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" sideOffset={6} align="start" className="max-w-sm">
+                        <div className="space-y-1 text-xs">
+                          {(baseBranchLabel || headBranchLabel) ? (
+                            <div className="text-muted-foreground truncate">
+                              {baseBranchLabel && headBranchLabel ? (
+                                <>
+                                  <span>{baseBranchLabel}</span>
+                                  <Icon name="arrow-left-long" className="mx-0.5 inline h-3 w-3 align-[-2px]" />
+                                  <span>{headBranchLabel}</span>
+                                </>
+                              ) : (
+                                <span>{baseBranchLabel ?? headBranchLabel ?? ''}</span>
+                              )}
+                            </div>
+                          ) : null}
+                          {mergeStateLabel ? <div className="text-muted-foreground truncate">{mergeStateLabel}</div> : null}
+                          {(mergeabilityLabel || checksSummary) ? (
+                            <div className="text-muted-foreground truncate">
+                              {mergeabilityLabel ?? ''}
+                              {mergeabilityLabel && checksSummary ? ' • ' : ''}
+                              {checksSummary ?? ''}
+                              {checksTail ? ` (${checksTail})` : ''}
+                            </div>
+                          ) : null}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <Icon name="git-branch" className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground"
+                      
+                      style={branchIconColor ? { color: branchIconColor } : undefined}/>
+                  )
+                ) : null}
+                <span
+                  className={cn('min-w-0 truncate text-[11px] font-medium', !statusLine.color && 'text-muted-foreground/80')}
+                  style={statusLine.color ? { color: statusLine.color } : undefined}
+                >
+                  {statusLine.label}
+                </span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {group.isArchivedBucket && allGroupSessions.length > 0 ? (
+          <div className={cn('absolute right-0.5 top-1/2 -translate-y-1/2 z-10 transition-opacity', alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover/gh:opacity-100 group-focus-within/gh:opacity-100')}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    sessionEvents.requestDelete({
+                      sessions: allGroupSessions,
+                      mode: 'session',
+                    });
+                  }}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-label={t('sessions.sidebar.group.actions.deleteArchivedInGroupAria', { label: group.label })}
+                >
+                  <Icon name="delete-bin" className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.group.actions.deleteArchivedSessions')}</p></TooltipContent>
+            </Tooltip>
+          </div>
+        ) : null}
+        {group.directory && !group.isMain && group.worktree ? (
+          <div className={cn('absolute right-7 top-1/2 -translate-y-1/2 z-10 transition-opacity', alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover/gh:opacity-100 group-focus-within/gh:opacity-100')}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    sessionEvents.requestDelete({
+                      sessions: allGroupSessions,
+                      mode: 'worktree',
+                      worktree: group.worktree,
+                    });
+                  }}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-label={t('sessions.sidebar.group.actions.deleteGroupAria', { label: group.label })}
+                >
+                  <Icon name="delete-bin" className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.group.actions.deleteWorktree')}</p></TooltipContent>
+            </Tooltip>
+          </div>
+        ) : null}
+        {group.directory ? (
+          <div className={cn('absolute right-0.5 top-1/2 -translate-y-1/2 z-10 transition-opacity', alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover/gh:opacity-100 group-focus-within/gh:opacity-100')}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (projectId && projectId !== activeProjectId) setActiveProjectIdOnly(projectId);
+                    setActiveMainTab('chat');
+                    if (mobileVariant) setSessionSwitcherOpen(false);
+                    openNewSessionDraft({ directoryOverride: group.directory });
+                  }}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-label={t('sessions.sidebar.group.actions.newDraftInGroupAria', { label: group.label })}
+                 >
+                   <Icon name="add" className="h-4 w-4" />
+                 </button>
+               </TooltipTrigger>
+               <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.project.actions.newDraftSession')}</p></TooltipContent>
+             </Tooltip>
+           </div>
+         ) : null}
+      </div>
+      {!isCollapsed ? <div className={cn('oc-group-body', groupBodyPaddingClass)}>{body}</div> : null}
+    </div>
+  );
+}

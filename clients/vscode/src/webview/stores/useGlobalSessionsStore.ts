@@ -7,3 +7,4 @@ export const useGlobalSessionsStore = create(() => ({
 export function resolveGlobalSessionDirectory(_sessionId: string): string | null {
 	return null;
 }
+export function refreshGlobalSessions(..._args: any[]): any { return null; }

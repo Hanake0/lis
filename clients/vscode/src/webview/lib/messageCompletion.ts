@@ -1,0 +1,1 @@
+export function isMessageComplete(_msg: unknown): boolean { return true; }

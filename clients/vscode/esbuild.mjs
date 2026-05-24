@@ -5,6 +5,10 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const watch = process.argv.includes('--watch');
 
+const sdkStub = path.resolve(__dirname, 'src/webview/lib/opencode-sdk-stub.ts');
+const tauriStub = path.resolve(__dirname, 'src/webview/lib/tauri-stub.ts');
+const pierreStub = path.resolve(__dirname, 'src/webview/lib/pierre-stub.ts');
+
 /** @type {import('esbuild').Plugin} */
 const aliasPlugin = {
 	name: 'alias',
@@ -19,6 +23,9 @@ const aliasPlugin = {
 			);
 			return resolved;
 		});
+		b.onResolve({ filter: /^@opencode-ai\/sdk/ }, () => ({ path: sdkStub }));
+		b.onResolve({ filter: /^@tauri-apps\// }, () => ({ path: tauriStub }));
+		b.onResolve({ filter: /^@pierre\// }, () => ({ path: pierreStub }));
 	},
 };
 
@@ -47,6 +54,11 @@ const webviewConfig = {
 	logLevel: 'info',
 	jsx: 'automatic',
 	plugins: [aliasPlugin],
+	loader: {
+		'.ttf': 'dataurl',
+		'.woff': 'dataurl',
+		'.woff2': 'dataurl',
+	},
 };
 
 if (watch) {

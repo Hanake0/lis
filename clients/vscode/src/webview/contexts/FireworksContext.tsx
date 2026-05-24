@@ -4,3 +4,4 @@ export const FireworksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 	<FireworksContext.Provider value={null}>{children}</FireworksContext.Provider>
 );
 export function useFireworks() { return { fire: () => {} }; }
+export function useFireworksCelebration(..._args: any[]): any { return null; }

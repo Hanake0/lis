@@ -1,0 +1,1 @@
+export function isDebugEnabled(): boolean { return false; }

@@ -1,0 +1,1 @@
+export function execCommand(_cmd: string): Promise<void> { return Promise.resolve(); }
