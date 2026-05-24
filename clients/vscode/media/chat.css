@@ -114,3 +114,80 @@ body { display: flex; flex-direction: column; }
 }
 .composer button:hover     { background: var(--vscode-button-hoverBackground); }
 .composer button:disabled  { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Streaming cursor ─────────────────────────────────────────── */
+.msg.streaming::after {
+	content: '▊';
+	animation: blink 0.8s steps(2) infinite;
+	color: var(--vscode-descriptionForeground);
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ── Thinking block ───────────────────────────────────────────── */
+.thinking-block {
+	max-width: 80%;
+	align-self: flex-start;
+	border-radius: 8px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	border: 1px solid var(--vscode-panel-border);
+	overflow: hidden;
+}
+.thinking-label {
+	padding: 6px 10px;
+	cursor: pointer;
+	user-select: none;
+	font-style: italic;
+}
+.thinking-label::before { content: '▼ '; font-size: 10px; }
+.thinking-block.collapsed .thinking-label::before { content: '▶ '; }
+.thinking-content {
+	padding: 4px 10px 8px;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	max-height: 200px;
+	overflow-y: auto;
+	opacity: 0.7;
+}
+.thinking-block.collapsed .thinking-content { display: none; }
+
+/* ── Tool call blocks ─────────────────────────────────────────── */
+.tool-block {
+	max-width: 80%;
+	align-self: flex-start;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-panel-border);
+	font-size: 12px;
+	overflow: hidden;
+}
+.tool-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 10px;
+	cursor: pointer;
+	user-select: none;
+	background: var(--vscode-editor-inactiveSelectionBackground);
+}
+.tool-icon { font-size: 13px; }
+.tool-name { font-family: var(--vscode-editor-font-family, monospace); }
+.tool-status { font-size: 10px; margin-left: auto; }
+.tool-status.running { color: var(--vscode-charts-yellow); }
+.tool-status.done    { color: var(--vscode-charts-green); }
+.tool-status.error   { color: var(--vscode-errorForeground); }
+.tool-args, .tool-result {
+	padding: 6px 10px;
+	margin: 0;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	max-height: 150px;
+	overflow-y: auto;
+	color: var(--vscode-descriptionForeground);
+}
+.tool-result.error { color: var(--vscode-errorForeground); }
+.tool-block.collapsed .tool-args,
+.tool-block.collapsed .tool-result { display: none; }

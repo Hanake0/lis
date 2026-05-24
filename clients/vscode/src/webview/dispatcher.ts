@@ -1,6 +1,8 @@
 // Frame dispatch — routes incoming frames to the appropriate handler.
 
 import { appendSystem, hideTyping, renderMessage, renderAll, showTyping, setStatus } from './renderer';
+import { handleChunk, handleThinkingChunk, finalizeStreamedMessage } from './streaming';
+import { handleToolStart, handleToolResult } from './toolBlocks';
 
 interface Message {
 	id:        string;
@@ -26,13 +28,32 @@ export function handleHostMessage(msg: { type: string; [key: string]: unknown })
 function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 	switch (frame.type) {
 		case 'message':
-			if (frame.role === 'assistant') hideTyping();
+			if (frame.role === 'assistant') {
+				hideTyping();
+				finalizeStreamedMessage(frame.id as string, frame.text as string);
+			}
 			appendMessage({
 				id:        frame.id as string,
 				role:      frame.role as string,
 				text:      frame.text as string,
 				timestamp: frame.timestamp as string,
 			});
+			break;
+
+		case 'chunk':
+			handleChunk(frame.id as string, frame.delta as string, frame.done as boolean);
+			break;
+
+		case 'thinking_chunk':
+			handleThinkingChunk(frame.id as string, frame.delta as string, frame.done as boolean);
+			break;
+
+		case 'tool_start':
+			handleToolStart(frame.id as string, frame.tool_name as string, frame.tool_args as string | undefined);
+			break;
+
+		case 'tool_result':
+			handleToolResult(frame.id as string, frame.tool_name as string, frame.result as string | undefined, frame.error as string | undefined);
 			break;
 
 		case 'typing':         showTyping(); break;
