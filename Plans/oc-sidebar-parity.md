@@ -100,14 +100,31 @@ Change [package.json](clients/vscode/package.json):
 
 ---
 
-## Stage 0 — Sidebar sizing investigation (one session, no code in step 1)
+## Stage 0 — Sidebar sizing investigation ✅ DONE
 
-1. Open three views side-by-side: **VS Code Explorer panel**, **OC desktop sidebar** (`/c/bkp/Dev/openchamber/packages/desktop`), **Lis sidebar** (Extension Development Host).
-2. With DevTools, measure on a session row: `font-size`, `line-height`, vertical padding, icon size, gap between icon/text.
-3. Decide target. Most likely: match VS Code Explorer (13px font, ~22px row height) so it feels native in the host. Document the chosen values in this plan.
-4. Implement by overriding root `font-size` and key paddings inside a `[data-lis-sidebar]` scope. Tokens currently use `rem` ([design-system.css:21-26](clients/vscode/src/webview/styles/design-system.css)) so changing the html font-size cascades cleanly.
+### Measurements (via Playwright DevTools eval)
 
-**Files**: [styles.css:85-95](clients/vscode/src/webview/styles.css), [sidebarOC.tsx](clients/vscode/src/webview/sidebarOC.tsx) (add `data-lis-sidebar` attr on the root div).
+| Surface              | html font | label rendered | row height |
+|----------------------|-----------|----------------|------------|
+| OC desktop (browser default) | 16px      | 14px           | ~24px      |
+| VS Code Explorer reference   | 13px      | 13px           | 22px       |
+| Lis sidebar (before) | **13px**  | **11.375px**   | **17px**   |
+| Lis sidebar (after)  | **16px**  | **14px**       | **24px**   |
+
+### Decision
+
+OC tokens (`--text-ui-label`, `--text-meta`, etc.) are `rem`-based and designed against a **16px html base**. We were inheriting `var(--vscode-font-size, 13px)` on `html`, which collapsed every rem to ~76% of intent. The fix is a single CSS rule applied only when the sidebar webview opts in:
+
+```css
+html.lis-sidebar { font-size: 16px; }
+```
+
+Body font stays at `var(--vscode-font-size, 13px)` because the existing `body { font-size: ... }` rule wins for body. So plain inherited text (chat messages, VS Code-style chrome) renders at VS Code's 13px, but rem-based OC tokens hit their designed 14/15/12/11px scale.
+
+### Implementation
+
+- [styles.css](clients/vscode/src/webview/styles.css): the one rule above. No `[data-lis-sidebar]` selectors, no per-token overrides.
+- [sidebarOC.tsx](clients/vscode/src/webview/sidebarOC.tsx): `installSidebarFrameHandler` adds the `lis-sidebar` class onto `html` alongside `dark`.
 
 ---
 
