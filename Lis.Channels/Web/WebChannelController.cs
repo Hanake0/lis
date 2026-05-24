@@ -168,10 +168,15 @@ public sealed class WebChannelController(
 			.Take(limit)
 			.OrderBy(m => m.Id)
 			.Select(m => new MessageRow {
-				Id        = m.ExternalId ?? m.Id.ToString(),
-				Role      = m.Role ?? (m.IsFromMe ? "assistant" : "user"),
-				Text      = m.Body,
-				Timestamp = m.Timestamp,
+				Id                  = m.ExternalId ?? m.Id.ToString(),
+				Role                = m.Role ?? (m.IsFromMe ? "assistant" : "user"),
+				Text                = m.Body,
+				Timestamp           = m.Timestamp,
+				InputTokens         = m.InputTokens,
+				OutputTokens        = m.OutputTokens,
+				CacheReadTokens     = m.CacheReadTokens,
+				CacheCreationTokens = m.CacheCreationTokens,
+				ThinkingTokens      = m.ThinkingTokens,
 			})
 			.ToListAsync(ct);
 
