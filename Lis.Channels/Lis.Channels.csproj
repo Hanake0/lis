@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Lis.Core\Lis.Core.csproj" />
+    <ProjectReference Include="..\Lis.Persistence\Lis.Persistence.csproj" />
   </ItemGroup>
 
 </Project>
