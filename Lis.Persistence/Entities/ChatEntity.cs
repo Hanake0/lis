@@ -79,9 +79,19 @@ public sealed class ChatEntity {
 	[JsonPropertyName("group_topic")]
 	public string? GroupTopic { get; set; }
 
+	[Column("project_id")]
+	[JsonPropertyName("project_id")]
+	public long? ProjectId { get; set; }
+
+	[Column("pinned_at")]
+	[JsonPropertyName("pinned_at")]
+	public DateTimeOffset? PinnedAt { get; set; }
+
 	public SessionEntity? CurrentSession { get; set; }
 
 	public AgentEntity? Agent { get; set; }
+
+	public ProjectEntity? Project { get; set; }
 
 	public ICollection<MessageEntity> Messages { get; set; } = [];
 
@@ -101,5 +111,13 @@ public class ChatEntityConfiguration : IEntityTypeConfiguration<ChatEntity> {
 			   .WithMany()
 			   .HasForeignKey(e => e.AgentId)
 			   .OnDelete(DeleteBehavior.SetNull);
+
+		builder.HasOne(e => e.Project)
+			   .WithMany(p => p.Chats)
+			   .HasForeignKey(e => e.ProjectId)
+			   .OnDelete(DeleteBehavior.SetNull);
+
+		builder.HasIndex(e => e.ProjectId);
+		builder.HasIndex(e => e.PinnedAt);
 	}
 }

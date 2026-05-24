@@ -280,6 +280,16 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("open_group")
                         .HasJsonPropertyName("open_group");
 
+                    b.Property<DateTimeOffset?>("PinnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pinned_at")
+                        .HasJsonPropertyName("pinned_at");
+
+                    b.Property<long?>("ProjectId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("project_id")
+                        .HasJsonPropertyName("project_id");
+
                     b.Property<bool>("RequireMention")
                         .HasColumnType("boolean")
                         .HasColumnName("require_mention")
@@ -298,6 +308,10 @@ namespace Lis.Persistence.Migrations
 
                     b.HasIndex("ExternalId")
                         .IsUnique();
+
+                    b.HasIndex("PinnedAt");
+
+                    b.HasIndex("ProjectId");
 
                     b.ToTable("chat");
                 });
@@ -707,6 +721,115 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("message");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.ProjectEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at")
+                        .HasJsonPropertyName("added_at");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("color")
+                        .HasJsonPropertyName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasJsonPropertyName("created_at");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("external_id")
+                        .HasJsonPropertyName("external_id");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("icon")
+                        .HasJsonPropertyName("icon");
+
+                    b.Property<string>("IconBackground")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("icon_background")
+                        .HasJsonPropertyName("icon_background");
+
+                    b.Property<byte[]>("IconImageBlob")
+                        .HasColumnType("bytea")
+                        .HasColumnName("icon_image_blob");
+
+                    b.Property<string>("IconImageMime")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("icon_image_mime")
+                        .HasJsonPropertyName("icon_image_mime");
+
+                    b.Property<string>("IconImageSource")
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)")
+                        .HasColumnName("icon_image_source")
+                        .HasJsonPropertyName("icon_image_source");
+
+                    b.Property<DateTimeOffset?>("IconImageUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("icon_image_updated_at")
+                        .HasJsonPropertyName("icon_image_updated_at");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("label")
+                        .HasJsonPropertyName("label");
+
+                    b.Property<DateTimeOffset?>("LastOpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_opened_at")
+                        .HasJsonPropertyName("last_opened_at");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)")
+                        .HasColumnName("path")
+                        .HasJsonPropertyName("path");
+
+                    b.Property<bool>("SidebarCollapsed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("sidebar_collapsed")
+                        .HasJsonPropertyName("sidebar_collapsed");
+
+                    b.Property<int>("SortIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_index")
+                        .HasJsonPropertyName("sort_index");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("SortIndex");
+
+                    b.ToTable("project");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.PromptSectionEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -880,9 +1003,16 @@ namespace Lis.Persistence.Migrations
                         .HasForeignKey("CurrentSessionId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("Lis.Persistence.Entities.ProjectEntity", "Project")
+                        .WithMany("Chats")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Agent");
 
                     b.Navigation("CurrentSession");
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Lis.Persistence.Entities.ContactIdentifierEntity", b =>
@@ -999,6 +1129,11 @@ namespace Lis.Persistence.Migrations
                     b.Navigation("Identifiers");
 
                     b.Navigation("Memories");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.ProjectEntity", b =>
+                {
+                    b.Navigation("Chats");
                 });
 #pragma warning restore 612, 618
         }
