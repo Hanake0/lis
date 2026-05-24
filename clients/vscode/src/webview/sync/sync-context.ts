@@ -34,60 +34,65 @@ export function useSessions(): Array<{ id: string; title?: string; parentID?: st
 	return useMemo(() => chatId ? [{ id: chatId, title: 'Chat' }] : [], [chatId]);
 }
 
-function convertMessage(m: ChatMessage): { info: any; parts: any[] } {
-	if (m.kind === 'user') {
-		return {
-			info: { id: m.id, role: 'user', time: {} },
-			parts: [{ type: 'text', text: m.text }],
-		};
-	}
-	if (m.kind === 'assistant') {
-		return {
-			info: {
-				id: m.id, role: 'assistant',
-				time: { completed: m.streaming ? undefined : Date.now() },
-				tokens: m.tokens ? {
-					input: m.tokens.input_tokens ?? 0,
-					output: m.tokens.output_tokens ?? 0,
-					reasoning: m.tokens.thinking_tokens ?? 0,
-					cache: { read: m.tokens.cache_read_tokens ?? 0, write: m.tokens.cache_creation_tokens ?? 0 },
-				} : undefined,
-			},
-			parts: [{ type: 'text', text: m.text }],
-		};
-	}
-	if (m.kind === 'thinking') {
-		return {
-			info: { id: m.id, role: 'assistant', time: { completed: m.streaming ? undefined : Date.now() } },
-			parts: [{ type: 'thinking', text: (m as any).content ?? '' }],
-		};
-	}
-	if (m.kind === 'tool') {
-		return {
-			info: { id: m.id, role: 'assistant', time: { completed: m.status !== 'running' ? Date.now() : undefined } },
-			parts: [{
-				type: 'tool-invocation',
-				toolName: m.name,
-				input: m.args,
-				output: m.error ?? m.result ?? '',
-				state: m.status === 'running' ? 'call' : 'result',
-				isError: m.status === 'error',
-			}],
-		};
-	}
-	if (m.kind === 'error') {
-		return {
-			info: { id: m.id, role: 'assistant', time: { completed: Date.now() } },
-			parts: [{ type: 'text', text: m.text }],
-		};
-	}
-	return { info: { id: 'unknown', role: 'assistant' }, parts: [] };
+function convertMessages(messages: ChatMessage[]): Array<{ info: any; parts: any[] }> {
+	let lastUserID: string | undefined;
+	return messages.map((m) => {
+		if (m.kind === 'user') {
+			lastUserID = m.id;
+			return {
+				info: { id: m.id, role: 'user', time: {} },
+				parts: [{ type: 'text', text: m.text }],
+			};
+		}
+		const parentID = lastUserID;
+		if (m.kind === 'assistant') {
+			return {
+				info: {
+					id: m.id, role: 'assistant', parentID,
+					time: { completed: m.streaming ? undefined : Date.now() },
+					tokens: m.tokens ? {
+						input: m.tokens.input_tokens ?? 0,
+						output: m.tokens.output_tokens ?? 0,
+						reasoning: m.tokens.thinking_tokens ?? 0,
+						cache: { read: m.tokens.cache_read_tokens ?? 0, write: m.tokens.cache_creation_tokens ?? 0 },
+					} : undefined,
+				},
+				parts: [{ type: 'text', text: m.text }],
+			};
+		}
+		if (m.kind === 'thinking') {
+			return {
+				info: { id: m.id, role: 'assistant', parentID, time: { completed: m.streaming ? undefined : Date.now() } },
+				parts: [{ type: 'thinking', text: (m as any).content ?? '' }],
+			};
+		}
+		if (m.kind === 'tool') {
+			return {
+				info: { id: m.id, role: 'assistant', parentID, time: { completed: m.status !== 'running' ? Date.now() : undefined } },
+				parts: [{
+					type: 'tool-invocation',
+					toolName: m.name,
+					input: m.args,
+					output: m.error ?? m.result ?? '',
+					state: m.status === 'running' ? 'call' : 'result',
+					isError: m.status === 'error',
+				}],
+			};
+		}
+		if (m.kind === 'error') {
+			return {
+				info: { id: m.id, role: 'assistant', parentID, time: { completed: Date.now() } },
+				parts: [{ type: 'text', text: m.text }],
+			};
+		}
+		return { info: { id: 'unknown', role: 'assistant', parentID }, parts: [] };
+	});
 }
 
 export function useSessionMessages(_sessionId: string): any[] {
 	const messages = useChatStore((s) => s.messages);
 	return useMemo(
-		() => messages.filter((m) => m.kind === 'user' || m.kind === 'assistant').map((m) => convertMessage(m).info),
+		() => convertMessages(messages).filter((r) => r.info.role === 'user' || r.info.role === 'assistant').map((r) => r.info),
 		[messages],
 	);
 }
@@ -100,7 +105,7 @@ export function useSessionMessageCount(_sessionId: string): number {
 
 export function useSessionMessageRecords(_sessionId: string): Array<{ info: any; parts: any[] }> {
 	const messages = useChatStore((s) => s.messages);
-	return useMemo(() => messages.map(convertMessage), [messages]);
+	return useMemo(() => convertMessages(messages), [messages]);
 }
 
 const BUSY_STATUS = { type: 'busy' as const };

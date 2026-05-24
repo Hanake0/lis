@@ -70,7 +70,10 @@ export const useConfigStore = create<any>((set: any) => ({
 		const agent = useChatStore.getState().currentAgent;
 		return agent ? { id: agent.name, name: agent.display_name ?? agent.name } : undefined;
 	},
-	getCurrentProvider: () => null,
+	getCurrentProvider: () => {
+		const state = useConfigStore.getState();
+		return state.providers.find((p: ProviderEntry) => p.id === state.currentProviderId) ?? null;
+	},
 	getCurrentModelVariants: () => [],
 	getModelMetadata: () => null,
 	getVisibleAgents: () => useChatStore.getState().agents.map((a) => ({ id: a.name, name: a.display_name ?? a.name })),

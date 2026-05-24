@@ -1,1 +1,2 @@
-export function useProviderLogo(_providerId: string): string | null { return null; }
+const EMPTY = { src: '', onError: () => {}, hasLogo: false };
+export function useProviderLogo(_providerId: string): any { return EMPTY; }
