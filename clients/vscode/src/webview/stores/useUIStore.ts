@@ -15,6 +15,31 @@ export type EventStreamStatus = 'idle' | 'connecting' | 'connected' | 'reconnect
 
 const noop: any = () => {};
 
+// ── Favorite models (localStorage-backed UI preference) ──────────────
+//
+// Per-user list of "starred" model IDs that the model selectors render at the
+// top. Pure UI preference — no backend round-trip needed; localStorage keeps
+// it in sync with whatever VS Code window the user is in.
+const FAVORITE_MODELS_KEY = 'lis.favoriteModels';
+
+function readFavoriteModels(): Set<string> {
+	try {
+		if (typeof localStorage === 'undefined') return new Set();
+		const raw = localStorage.getItem(FAVORITE_MODELS_KEY);
+		if (!raw) return new Set();
+		const parsed: unknown = JSON.parse(raw);
+		if (!Array.isArray(parsed)) return new Set();
+		return new Set(parsed.filter((m): m is string => typeof m === 'string'));
+	} catch { return new Set(); }
+}
+
+function writeFavoriteModels(models: Set<string>): void {
+	try {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(FAVORITE_MODELS_KEY, JSON.stringify(Array.from(models)));
+	} catch { /* localStorage full or disabled → swallow; favorites are non-critical */ }
+}
+
 export const useUIStore = create<any>((set: any) => ({
 	activeMainTab: 'chat' as MainTab,
 	isExpandedInput: false,
@@ -146,9 +171,13 @@ export const useUIStore = create<any>((set: any) => ({
 		multiRunLauncherPrefillPrompt:  prompt,
 	}),
 
-	// Favorite-model predicate. Returns false until the favorites feature ships;
-	// keeps the type as a boolean-returning function so consumers don't crash on `.call()`.
-	isFavoriteModel: () => false,
+	// Favorite-model predicate + toggle. localStorage-backed UI preference.
+	favoriteModels: readFavoriteModels(),
+	isFavoriteModel: (modelId: string) => {
+		if (typeof modelId !== 'string' || modelId.length === 0) return false;
+		const current: Set<string> = (useUIStore.getState() as { favoriteModels: Set<string> }).favoriteModels;
+		return current.has(modelId);
+	},
 
 	// ── Below this line: features that don't exist in the Lis sidebar today. ──
 	// Diff/git-change view modes (chat-panel features), context panel (OC desktop),
@@ -173,7 +202,14 @@ export const useUIStore = create<any>((set: any) => ({
 	setContextPanelWidth: noop,
 
 	toggleSidebar2: noop,
-	toggleFavoriteModel: noop,
+	toggleFavoriteModel: (modelId: string) => set((s: { favoriteModels: Set<string> }) => {
+		if (typeof modelId !== 'string' || modelId.length === 0) return s;
+		const next = new Set(s.favoriteModels);
+		if (next.has(modelId)) next.delete(modelId);
+		else                   next.add(modelId);
+		writeFavoriteModels(next);
+		return { favoriteModels: next };
+	}),
 	toggleHiddenModel: noop,
 	toggleContextPanelExpanded: noop,
 

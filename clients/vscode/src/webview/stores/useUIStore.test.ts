@@ -1,6 +1,21 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 
 import { useUIStore } from './useUIStore';
+
+// bun's default runtime has no `localStorage`; stub a minimal map-backed shim
+// so the favorite-model tests can exercise the read/write side-effect.
+beforeAll(() => {
+	if (typeof globalThis.localStorage !== 'undefined') return;
+	const store = new Map<string, string>();
+	(globalThis as unknown as { localStorage: Storage }).localStorage = {
+		get length() { return store.size; },
+		clear:      () => store.clear(),
+		getItem:    (k: string) => store.get(k) ?? null,
+		setItem:    (k: string, v: string) => { store.set(k, v); },
+		removeItem: (k: string) => { store.delete(k); },
+		key:        (i: number) => Array.from(store.keys())[i] ?? null,
+	};
+});
 
 /**
  * Focused tests for the actions the sidebar + dialogs actually consume from
@@ -9,6 +24,8 @@ import { useUIStore } from './useUIStore';
  */
 describe('useUIStore', () => {
 	beforeEach(() => {
+		// Reset localStorage so the favorite-model tests start clean.
+		try { localStorage.removeItem('lis.favoriteModels'); } catch { /* no localStorage in this env */ }
 		useUIStore.setState({
 			isHelpDialogOpen:              false,
 			isMultiRunLauncherOpen:        false,
@@ -17,6 +34,7 @@ describe('useUIStore', () => {
 			todoPanelHeight:               200,
 			settingsPage:                  null,
 			settingsProjectsSelectedId:    null,
+			favoriteModels:                new Set<string>(),
 		});
 	});
 
@@ -60,7 +78,35 @@ describe('useUIStore', () => {
 		expect(useUIStore.getState().settingsProjectsSelectedId).toBe('proj-7');
 	});
 
-	test('isFavoriteModel returns false (favorites are not wired in Lis yet)', () => {
+	test('isFavoriteModel returns false for an unfavourited model', () => {
 		expect(useUIStore.getState().isFavoriteModel('any/model')).toBe(false);
+	});
+
+	test('isFavoriteModel rejects empty / non-string ids without throwing', () => {
+		expect(useUIStore.getState().isFavoriteModel('')).toBe(false);
+		expect((useUIStore.getState() as { isFavoriteModel: (m: unknown) => boolean }).isFavoriteModel(null)).toBe(false);
+	});
+
+	test('toggleFavoriteModel adds + removes a model and isFavoriteModel reflects it', () => {
+		useUIStore.getState().toggleFavoriteModel('claude/sonnet-4');
+		expect(useUIStore.getState().isFavoriteModel('claude/sonnet-4')).toBe(true);
+
+		useUIStore.getState().toggleFavoriteModel('claude/sonnet-4');
+		expect(useUIStore.getState().isFavoriteModel('claude/sonnet-4')).toBe(false);
+	});
+
+	test('toggleFavoriteModel persists across store re-reads via localStorage', () => {
+		useUIStore.getState().toggleFavoriteModel('claude/sonnet-4');
+		// Round-trip the persisted blob — the store reads localStorage at module init,
+		// so we just assert the side-effect made it to storage.
+		const raw = localStorage.getItem('lis.favoriteModels');
+		expect(raw).toBeString();
+		expect(JSON.parse(raw!)).toEqual(['claude/sonnet-4']);
+	});
+
+	test('toggleFavoriteModel is a noop for empty model ids', () => {
+		useUIStore.getState().toggleFavoriteModel('');
+		expect(useUIStore.getState().isFavoriteModel('')).toBe(false);
+		expect(localStorage.getItem('lis.favoriteModels')).toBeNull();
 	});
 });

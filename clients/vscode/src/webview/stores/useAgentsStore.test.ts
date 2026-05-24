@@ -122,10 +122,74 @@ describe('useAgentsStore', () => {
 		expect(useAgentsStore.getState().agentDraft).toBeNull();
 	});
 
-	test('createAgent / updateAgent / deleteAgent throw a clear "not wired" error', async () => {
-		await expect(useAgentsStore.getState().createAgent({ name: 'x' })).rejects.toThrow(/not wired in Lis yet/);
-		await expect(useAgentsStore.getState().updateAgent('x', { description: 'y' })).rejects.toThrow(/not wired/);
-		await expect(useAgentsStore.getState().deleteAgent('x')).rejects.toThrow(/not wired/);
+	test('createAgent POSTs the toLisPayload form and adds the returned agent to state', async () => {
+		fake.respond = (req) => {
+			if (req.init?.method === 'POST') {
+				return jsonResponse({
+					name: 'helper',
+					model: 'anthropic/claude-sonnet-4',
+					description: 'helps with stuff',
+					is_default: false,
+					native: false,
+					max_tokens: 4096,
+					context_budget: 12000,
+					mode: 'subagent',
+					permission_json: '{"bash":"ask"}',
+				});
+			}
+			return new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+		};
+
+		const ok = await useAgentsStore.getState().createAgent({
+			name: 'helper', description: 'helps with stuff', mode: 'subagent',
+			permission: { bash: 'ask' } as never,
+		});
+		expect(ok).toBe(true);
+
+		// Wire body uses snake_case keys.
+		const sentBody = JSON.parse(fake.calls.find(c => c.init?.method === 'POST')!.init!.body as string);
+		expect(sentBody.name).toBe('helper');
+		expect(sentBody.description).toBe('helps with stuff');
+		expect(sentBody.mode).toBe('subagent');
+		expect(sentBody.permission_json).toBe('{"bash":"ask"}');
+
+		const stored = useAgentsStore.getState().agents.find(a => a.name === 'helper');
+		expect(stored?.description).toBe('helps with stuff');
+		expect(stored?.mode).toBe('subagent');
+		expect((stored as { permission?: unknown }).permission).toEqual({ bash: 'ask' });
+	});
+
+	test('updateAgent PATCHes the toLisPayload form and replaces the row in state', async () => {
+		useAgentsStore.setState({ agents: [{ name: 'helper', model: 'm' } as never] });
+		fake.respond = (req) => {
+			if (req.init?.method === 'PATCH') {
+				return jsonResponse({ name: 'helper', model: 'm', description: 'new desc', is_default: false, max_tokens: 4096, context_budget: 12000 });
+			}
+			return new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+		};
+
+		const ok = await useAgentsStore.getState().updateAgent('helper', { description: 'new desc' });
+		expect(ok).toBe(true);
+
+		const sentBody = JSON.parse(fake.calls[0].init!.body as string);
+		expect(sentBody.description).toBe('new desc');
+		expect(useAgentsStore.getState().agents.find(a => a.name === 'helper')?.description).toBe('new desc');
+	});
+
+	test('deleteAgent DELETEs and drops the row from state', async () => {
+		useAgentsStore.setState({ agents: [{ name: 'helper', model: 'm' } as never, { name: 'keep', model: 'm' } as never] });
+		fake.respond = () => new Response(null, { status: 204 });
+
+		const ok = await useAgentsStore.getState().deleteAgent('helper');
+		expect(ok).toBe(true);
+		expect(useAgentsStore.getState().agents.map(a => a.name)).toEqual(['keep']);
+	});
+
+	test('createAgent surfaces backend failure as ok=false with the error message captured', async () => {
+		fake.respond = () => jsonResponse({ error: 'agent already exists' }, 409);
+		const ok = await useAgentsStore.getState().createAgent({ name: 'dup' });
+		expect(ok).toBe(false);
+		expect(useAgentsStore.getState().lastError).toContain('already exists');
 	});
 
 	// ── Pure helpers ──────────────────────────────────────────────

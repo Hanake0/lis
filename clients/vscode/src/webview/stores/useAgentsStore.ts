@@ -5,33 +5,25 @@ import type { Agent, PermissionConfig } from '@opencode-ai/sdk/v2';
 import { LisRpcClient, LisRpcError } from '@/lib/lis/rpc-client';
 
 /**
- * Lis-native agents store. Backed by `GET /api/agents` (Lis's read-side
- * AgentsController) and exposes the OC `useAgentsStore` surface so
- * byte-identical sidebar dialogs + AgentSelector + AgentMentionAutocomplete
- * compile unchanged.
+ * Lis-native agents store. Backed by the full CRUD surface on
+ * `/api/agents` and exposes the OC `useAgentsStore` shape so byte-identical
+ * sidebar dialogs + AgentSelector + AgentMentionAutocomplete compile
+ * unchanged.
  *
- * **Read surface (fully wired)**:
- * - `agents`, `isLoading`, `selectedAgentName`
- * - `loadAgents()` — POSTs nothing; calls `LisRpcClient.listAgents()` and
- *   normalises each row to `AgentWithExtras` so `isAgentBuiltIn` resolves.
- * - `getAgentByName(name)`, `getVisibleAgents()`
- * - `setSelectedAgent(name)`
+ * Surface (all wired):
+ * - `agents`, `isLoading`, `selectedAgentName`, `agentDraft`
+ * - `loadAgents()` calls `LisRpcClient.listAgents()` and normalises each row
+ * - `createAgent(config)` → POST /api/agents
+ * - `updateAgent(name, config)` → PATCH /api/agents/{name}
+ * - `deleteAgent(name)` → DELETE /api/agents/{name} (rejects built-ins with 409)
+ * - `getAgentByName`, `getVisibleAgents`
  *
- * **Write surface (deferred to Stage 13)**:
- * - `createAgent`, `updateAgent`, `deleteAgent` throw a clear error so the
- *   AgentsPage UI surfaces "not yet supported" instead of silently failing.
- *   The AgentEntity schema is missing OC's `temperature`/`top_p`/`mode`/
- *   `permission` fields — wiring those would force a Lis-flavoured port of
- *   the agent settings UI, which the plan defers to Stage 13.
- * - `agentDraft` / `setAgentDraft` are in-memory only — useful for the New
- *   Agent dialog flow to round-trip a draft between sidebar + page.
- *
- * **Lis ↔ OC mapping**:
+ * Lis ↔ OC mapping:
  * - `is_default = true` (Lis) → `native = true` (OC). `isAgentBuiltIn`
  *   honours both `native` + `builtIn`, so our flag flows through cleanly.
- * - No file-system `scope` (user/project) — Lis agents are global DB rows.
- *   Consumers that read `agent.scope` get `undefined`, which renders fine
- *   in OC's AgentsSidebar (the badge just doesn't show).
+ * - `permission` (OC's structured tree) round-trips through `permission_json`
+ *   as a JSON string on the wire. The store JSON.stringifies on write and
+ *   JSON.parses on read so consumers see the structured tree.
  */
 
 export type AgentScope = 'user' | 'project';
@@ -73,10 +65,11 @@ export type AgentWithExtras = Agent & {
 	display_name?: string;
 };
 
-/** Lis agent DTO shape (snake_case from the wire). Kept loose so future fields don't break. */
+/** Lis agent DTO shape (snake_case from the wire). */
 interface LisAgentDto {
 	name:             string;
 	display_name?:    string | null;
+	description?:     string | null;
 	model:            string;
 	thinking_effort?: string | null;
 	tool_profile?:    string | null;
@@ -84,7 +77,13 @@ interface LisAgentDto {
 	native?:          boolean;
 	max_tokens?:      number;
 	context_budget?:  number;
-	description?:     string | null;
+	mode?:            string | null;
+	prompt?:          string | null;
+	temperature?:     number | null;
+	top_p?:           number | null;
+	permission_json?: string | null;
+	scope?:           string | null;
+	disabled?:        boolean;
 }
 
 interface AgentsStore {
@@ -120,7 +119,13 @@ export const isAgentHidden = (agent: Agent): boolean => {
 
 export const filterVisibleAgents = (agents: Agent[]): Agent[] => agents.filter(a => !isAgentHidden(a));
 
-// ── DTO → AgentWithExtras ──────────────────────────────────────────
+// ── DTO ↔ store conversions ───────────────────────────────────────
+
+function parsePermission(raw: string | null | undefined): PermissionConfig | null {
+	if (!raw) return null;
+	try { return JSON.parse(raw) as PermissionConfig; }
+	catch { return null; }
+}
 
 function fromLisDto(dto: LisAgentDto): AgentWithExtras {
 	// The SDK Agent type is loose — we attach Lis-specific fields directly. Consumers
@@ -131,23 +136,40 @@ function fromLisDto(dto: LisAgentDto): AgentWithExtras {
 		display_name: dto.display_name ?? undefined,
 	} as Agent & Record<string, unknown>;
 
+	const scope: AgentScope | undefined =
+		dto.scope === 'user' || dto.scope === 'project' ? dto.scope : undefined;
+
 	return {
 		...base,
 		native:       dto.native ?? dto.is_default ?? false,
 		is_default:   dto.is_default ?? false,
 		display_name: dto.display_name ?? undefined,
 		description:  dto.description ?? undefined,
+		scope,
+		hidden:       dto.disabled ?? false,
+		temperature:  dto.temperature ?? undefined,
+		top_p:        dto.top_p ?? undefined,
+		mode:         dto.mode ?? undefined,
+		prompt:       dto.prompt ?? undefined,
+		permission:   parsePermission(dto.permission_json),
 	} as AgentWithExtras;
 }
 
-// ── Throw helper for the deferred CRUD surface ─────────────────────
-
-function notSupportedYet(action: string): never {
-	throw new Error(
-		`[useAgentsStore] ${action} is not wired in Lis yet — see Stage 13 of the OC sidebar parity plan. `
-		+ `The current AgentEntity is missing OC's temperature/top_p/mode/permission columns; `
-		+ `a follow-up will introduce the Lis-flavoured agent-settings shape + REST surface.`
-	);
+function toLisPayload(config: Partial<AgentConfig & AgentDraft>): Record<string, unknown> {
+	const payload: Record<string, unknown> = {};
+	if (config.name        !== undefined) payload.name            = config.name;
+	if (config.description !== undefined) payload.description     = config.description;
+	if (config.model       !== undefined) payload.model           = config.model;
+	if (config.prompt      !== undefined) payload.prompt          = config.prompt;
+	if (config.mode        !== undefined) payload.mode            = config.mode;
+	if (config.temperature !== undefined) payload.temperature     = config.temperature;
+	if (config.top_p       !== undefined) payload.top_p           = config.top_p;
+	if (config.scope       !== undefined) payload.scope           = config.scope;
+	if (config.disable     !== undefined) payload.disabled        = config.disable;
+	if (config.permission  !== undefined) {
+		payload.permission_json = config.permission === null ? null : JSON.stringify(config.permission);
+	}
+	return payload;
 }
 
 // ── Store ──────────────────────────────────────────────────────────
@@ -176,9 +198,40 @@ export const useAgentsStore = create<AgentsStore>((set, get) => ({
 		}
 	},
 
-	createAgent: async (_config) => { notSupportedYet('createAgent'); },
-	updateAgent: async (_name, _config) => { notSupportedYet('updateAgent'); },
-	deleteAgent: async (_name) => { notSupportedYet('deleteAgent'); },
+	createAgent: async (config) => {
+		try {
+			const dto = await LisRpcClient.instance().createAgent(toLisPayload(config)) as LisAgentDto;
+			const mapped = fromLisDto(dto);
+			set((s) => ({ agents: [...s.agents.filter(a => a.name !== mapped.name), mapped], lastError: null }));
+			return true;
+		} catch (err) {
+			set({ lastError: errorMessage(err) });
+			return false;
+		}
+	},
+
+	updateAgent: async (name, config) => {
+		try {
+			const dto = await LisRpcClient.instance().updateAgent(name, toLisPayload(config)) as LisAgentDto;
+			const mapped = fromLisDto(dto);
+			set((s) => ({ agents: s.agents.map(a => a.name === name ? mapped : a), lastError: null }));
+			return true;
+		} catch (err) {
+			set({ lastError: errorMessage(err) });
+			return false;
+		}
+	},
+
+	deleteAgent: async (name) => {
+		try {
+			await LisRpcClient.instance().deleteAgent(name);
+			set((s) => ({ agents: s.agents.filter(a => a.name !== name), lastError: null }));
+			return true;
+		} catch (err) {
+			set({ lastError: errorMessage(err) });
+			return false;
+		}
+	},
 
 	getAgentByName:   (name) => get().agents.find(a => a.name === name),
 	getVisibleAgents: () => get().agents.filter(a => !isAgentHidden(a)),

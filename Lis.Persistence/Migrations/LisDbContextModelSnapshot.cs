@@ -49,6 +49,17 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("created_at")
                         .HasJsonPropertyName("created_at");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)")
+                        .HasColumnName("description")
+                        .HasJsonPropertyName("description");
+
+                    b.Property<bool>("Disabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("disabled")
+                        .HasJsonPropertyName("disabled");
+
                     b.Property<string>("DisplayName")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)")
@@ -93,6 +104,12 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("mention_triggers")
                         .HasJsonPropertyName("mention_triggers");
 
+                    b.Property<string>("Mode")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("mode")
+                        .HasJsonPropertyName("mode");
+
                     b.Property<string>("Model")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -106,6 +123,27 @@ namespace Lis.Persistence.Migrations
                         .HasColumnType("varchar(64)")
                         .HasColumnName("name")
                         .HasJsonPropertyName("name");
+
+                    b.Property<string>("PermissionJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("permission_json")
+                        .HasJsonPropertyName("permission_json");
+
+                    b.Property<string>("Prompt")
+                        .HasColumnType("text")
+                        .HasColumnName("prompt")
+                        .HasJsonPropertyName("prompt");
+
+                    b.Property<string>("Scope")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("scope")
+                        .HasJsonPropertyName("scope");
+
+                    b.Property<double?>("Temperature")
+                        .HasColumnType("double precision")
+                        .HasColumnName("temperature")
+                        .HasJsonPropertyName("temperature");
 
                     b.Property<string>("ThinkingEffort")
                         .HasMaxLength(16)
@@ -149,6 +187,11 @@ namespace Lis.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("tools_deny")
                         .HasJsonPropertyName("tools_deny");
+
+                    b.Property<double?>("TopP")
+                        .HasColumnType("double precision")
+                        .HasColumnName("top_p")
+                        .HasJsonPropertyName("top_p");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")

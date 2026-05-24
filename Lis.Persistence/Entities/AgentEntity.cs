@@ -25,10 +25,53 @@ public sealed class AgentEntity {
 	[JsonPropertyName("display_name")]
 	public string? DisplayName { get; set; }
 
+	[MaxLength(2048)]
+	[Column("description", TypeName = "varchar(2048)")]
+	[JsonPropertyName("description")]
+	public string? Description { get; set; }
+
 	[MaxLength(256)]
 	[Column("mention_triggers", TypeName = "varchar(256)")]
 	[JsonPropertyName("mention_triggers")]
 	public string? MentionTriggers { get; set; }
+
+	/// <summary>OC-style mode: <c>primary</c>, <c>subagent</c>, <c>all</c>.</summary>
+	[MaxLength(16)]
+	[Column("mode", TypeName = "varchar(16)")]
+	[JsonPropertyName("mode")]
+	public string? Mode { get; set; }
+
+	/// <summary>System prompt (markdown). Overrides the default prompt composer when set.</summary>
+	[Column("prompt", TypeName = "text")]
+	[JsonPropertyName("prompt")]
+	public string? Prompt { get; set; }
+
+	[Column("temperature")]
+	[JsonPropertyName("temperature")]
+	public double? Temperature { get; set; }
+
+	[Column("top_p")]
+	[JsonPropertyName("top_p")]
+	public double? TopP { get; set; }
+
+	/// <summary>
+	/// OC permission tree as JSON: <c>Record&lt;string, "allow"|"ask"|"deny" | Record&lt;string, ...&gt;&gt;</c>.
+	/// Stored as <c>jsonb</c> so future per-tool queries are possible.
+	/// </summary>
+	[Column("permission_json", TypeName = "jsonb")]
+	[JsonPropertyName("permission_json")]
+	public string? PermissionJson { get; set; }
+
+	/// <summary>OC "scope" — user vs project.</summary>
+	[MaxLength(16)]
+	[Column("scope", TypeName = "varchar(16)")]
+	[JsonPropertyName("scope")]
+	public string? Scope { get; set; }
+
+	/// <summary>Soft-disabled agents stay in the list but the sidebar skips them.</summary>
+	[Column("disabled")]
+	[JsonPropertyName("disabled")]
+	public bool Disabled { get; set; }
 
 	// Model config
 

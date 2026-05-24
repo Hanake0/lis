@@ -136,6 +136,11 @@ export class LisRpcClient {
 
 	listAgents():                Promise<unknown[]> { return this.get('/agents'); }
 	getAgent(name: string):      Promise<unknown>   { return this.get(`/agents/${encodeURIComponent(name)}`); }
+	createAgent(input: Record<string, unknown>): Promise<unknown> { return this.post('/agents', input); }
+	updateAgent(name: string, input: Record<string, unknown>): Promise<unknown> {
+		return this.patch(`/agents/${encodeURIComponent(name)}`, input);
+	}
+	deleteAgent(name: string):   Promise<void>      { return this.delete(`/agents/${encodeURIComponent(name)}`); }
 
 	// ── Git: branches (CRUD) ──────────────────────────────────────
 
