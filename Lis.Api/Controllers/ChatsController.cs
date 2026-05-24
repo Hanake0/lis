@@ -1,4 +1,5 @@
 using Lis.Agent;
+using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
 using Lis.Core.Events;
@@ -173,6 +174,89 @@ public sealed class ChatsController(
 		return this.NoContent();
 	}
 
+	// ── Agent assignment + overrides ───────────────────────────────
+
+	/// <summary>
+	/// Returns the agent currently effective for this chat. Falls back to the
+	/// system default when the chat has no explicit agent — same logic the
+	/// legacy WS <c>get_agent</c> frame used so dependent code is unchanged.
+	/// </summary>
+	[HttpGet("{chatExternalId}/agent")]
+	[ProducesResponseType(typeof(AgentDto),       StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<AgentDto>> GetAgent(
+		[FromRoute] string chatExternalId,
+		CancellationToken  ct
+	) {
+		ChatEntity chat = await this.FindByExternalIdWithAgentAsync(chatExternalId, ct);
+		AgentEntity? agent = chat.Agent ?? await db.Agents.FirstOrDefaultAsync(a => a.IsDefault, ct);
+		if (agent is null) throw new KeyNotFoundException($"no agent bound to chat '{chatExternalId}' and no system default exists");
+		return this.Ok(AgentDto.From(agent));
+	}
+
+	/// <summary>
+	/// Rebind the chat to a different agent. Persists the chat→agent FK and
+	/// echoes the agent DTO so the caller doesn't need a follow-up GET. Emits
+	/// <c>chat_updated</c> so other connected sidebars/header components rerender.
+	/// </summary>
+	[HttpPatch("{chatExternalId}/agent")]
+	[ProducesResponseType(typeof(AgentDto),       StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<AgentDto>> SetAgent(
+		[FromRoute] string                chatExternalId,
+		[FromBody]  SetChatAgentRequest   request,
+		CancellationToken                 ct
+	) {
+		if (request is null) throw new ArgumentException("body is required", nameof(request));
+		string name = request.AgentName.Trim();
+		if (string.IsNullOrEmpty(name)) throw new ArgumentException("agent_name is required", nameof(request));
+
+		ChatEntity chat = await this.FindByExternalIdAsync(chatExternalId, includeProject: true, ct);
+		AgentEntity agent = await db.Agents.FirstOrDefaultAsync(a => a.Name == name, ct)
+			?? throw new KeyNotFoundException($"Agent '{name}' not found");
+
+		chat.AgentId    = agent.Id;
+		chat.Agent      = agent;
+		chat.UpdatedAt  = time.GetUtcNow();
+		await db.SaveChangesAsync(ct);
+
+		await events.PublishAsync(new ServerEvent(0, ChatEventNames.Updated, new ChatUpdatedPayload(ChatDto.From(chat)), chat.UpdatedAt), ct);
+		return this.Ok(AgentDto.From(agent));
+	}
+
+	/// <summary>
+	/// Save runtime overrides (<c>model</c>, <c>effort</c>, <c>tool_profile</c>) onto the
+	/// chat's bound agent, or onto the system default when the chat has no explicit
+	/// agent — mirrors the legacy <c>save_overrides</c> WS frame. Emits
+	/// <c>agent_updated</c> so other sidebars/headers showing the agent re-derive.
+	/// </summary>
+	[HttpPatch("{chatExternalId}/overrides")]
+	[ProducesResponseType(typeof(AgentDto),       StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<AgentDto>> SaveOverrides(
+		[FromRoute] string                     chatExternalId,
+		[FromBody]  SaveChatOverridesRequest   request,
+		CancellationToken                      ct
+	) {
+		if (request is null) throw new ArgumentException("body is required", nameof(request));
+
+		ChatEntity chat = await this.FindByExternalIdWithAgentAsync(chatExternalId, ct);
+		AgentEntity agent = chat.Agent ?? await db.Agents.FirstOrDefaultAsync(a => a.IsDefault, ct)
+			?? throw new KeyNotFoundException($"no agent bound to chat '{chatExternalId}' and no system default exists");
+
+		if (!string.IsNullOrEmpty(request.Model))       agent.Model          = request.Model.Trim();
+		if (!string.IsNullOrEmpty(request.Effort))      agent.ThinkingEffort = request.Effort.Trim();
+		if (!string.IsNullOrEmpty(request.ToolProfile)) agent.ToolProfile    = request.ToolProfile.Trim();
+		agent.UpdatedAt = time.GetUtcNow();
+		await db.SaveChangesAsync(ct);
+
+		AgentDto dto = AgentDto.From(agent);
+		await events.PublishAsync(new ServerEvent(0, AgentEventNames.Updated, new AgentUpdatedPayload(dto), agent.UpdatedAt), ct);
+		return this.Ok(dto);
+	}
+
 	[HttpPost("{chatExternalId}/generate")]
 	[ProducesResponseType(typeof(GenerateResponseDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails),      StatusCodes.Status400BadRequest)]
@@ -204,6 +288,14 @@ public sealed class ChatsController(
 		IQueryable<ChatEntity> query = db.Chats;
 		if (includeProject) query = query.Include(c => c.Project);
 		ChatEntity? chat = await query.FirstOrDefaultAsync(c => c.ExternalId == externalId, ct);
+		return chat ?? throw new KeyNotFoundException($"Chat '{externalId}' not found");
+	}
+
+	private async Task<ChatEntity> FindByExternalIdWithAgentAsync(string externalId, CancellationToken ct) {
+		ChatEntity? chat = await db.Chats
+			.Include(c => c.Agent)
+			.Include(c => c.Project)
+			.FirstOrDefaultAsync(c => c.ExternalId == externalId, ct);
 		return chat ?? throw new KeyNotFoundException($"Chat '{externalId}' not found");
 	}
 }

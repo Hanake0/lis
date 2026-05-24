@@ -71,3 +71,24 @@ public sealed record GenerateResponseDto(
 	[property: JsonPropertyName("input_tokens")]  int    InputTokens,
 	[property: JsonPropertyName("output_tokens")] int    OutputTokens
 );
+
+/// <summary>
+/// Reassign a chat's bound agent. The agent must exist (404 otherwise) and the
+/// chat must exist (404 otherwise). Effective agent for new messages becomes
+/// this one immediately.
+/// </summary>
+public sealed record SetChatAgentRequest(
+	[property: JsonPropertyName("agent_name"), Required, MaxLength(64)] string AgentName
+);
+
+/// <summary>
+/// Save runtime overrides onto the chat's bound agent (or the system default
+/// when the chat has no explicit agent — same fallback the legacy WS frame
+/// applied). Null fields are left unchanged; empty strings are not accepted
+/// (use the agents-CRUD endpoint to clear an optional field to null).
+/// </summary>
+public sealed record SaveChatOverridesRequest(
+	[property: JsonPropertyName("model"), MaxLength(128)]        string? Model,
+	[property: JsonPropertyName("effort"), MaxLength(16)]        string? Effort,
+	[property: JsonPropertyName("tool_profile"), MaxLength(32)]  string? ToolProfile
+);

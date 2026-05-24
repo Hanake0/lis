@@ -1,5 +1,6 @@
 using Lis.Agent;
 using Lis.Api.Controllers;
+using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
 using Lis.Core.Events;
@@ -311,6 +312,134 @@ public class ChatsControllerTests :IDisposable {
 		Assert.Equal(ChatEventNames.Deleted, this.bus.Captured[0].Name);
 	}
 
+	// ── Agent: get/set/overrides ──────────────────────────────────
+
+	[Fact]
+	public async Task GetAgent_Returns_Bound_Agent_When_Chat_Has_One() {
+		AgentEntity bound = await this.SeedAgentAsync("opus",   model: "anthropic/claude-opus-4");
+		await this.SeedAgentAsync("default", model: "anthropic/claude-sonnet-4", isDefault: true);
+		await this.SeedChatAsync("c1", updatedHoursAgo: 0, agentId: bound.Id);
+
+		ActionResult<AgentDto> result = await this.sut.GetAgent("c1", default);
+		AgentDto dto = Assert.IsType<AgentDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("opus", dto.Name);
+	}
+
+	[Fact]
+	public async Task GetAgent_Falls_Back_To_System_Default_When_Chat_Has_No_Agent() {
+		await this.SeedAgentAsync("default", model: "anthropic/claude-sonnet-4", isDefault: true);
+		await this.SeedChatAsync("c1", updatedHoursAgo: 0);
+
+		ActionResult<AgentDto> result = await this.sut.GetAgent("c1", default);
+		AgentDto dto = Assert.IsType<AgentDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("default", dto.Name);
+	}
+
+	[Fact]
+	public async Task GetAgent_Throws_KeyNotFound_When_Chat_Missing() {
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.GetAgent("ghost", default));
+	}
+
+	[Fact]
+	public async Task GetAgent_Throws_KeyNotFound_When_Chat_Has_No_Agent_And_No_Default_Exists() {
+		await this.SeedChatAsync("c1", updatedHoursAgo: 0);
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.GetAgent("c1", default));
+	}
+
+	[Fact]
+	public async Task SetAgent_Persists_The_Binding_And_Emits_ChatUpdated() {
+		await this.SeedAgentAsync("opus", model: "anthropic/claude-opus-4");
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1);
+		this.bus.Captured.Clear();
+
+		ActionResult<AgentDto> result = await this.sut.SetAgent("c1", new SetChatAgentRequest("opus"), default);
+
+		AgentDto dto = Assert.IsType<AgentDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("opus", dto.Name);
+
+		ChatEntity persisted = Assert.Single(this.db.Chats);
+		AgentEntity persistedAgent = Assert.Single(this.db.Agents);
+		Assert.Equal(persistedAgent.Id, persisted.AgentId);
+
+		Assert.Single(this.bus.Captured);
+		Assert.Equal(ChatEventNames.Updated, this.bus.Captured[0].Name);
+	}
+
+	[Fact]
+	public async Task SetAgent_Rejects_Missing_Agent_With_KeyNotFoundException() {
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1);
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.SetAgent("c1", new SetChatAgentRequest("nope"), default));
+	}
+
+	[Fact]
+	public async Task SetAgent_Rejects_Empty_Agent_Name_With_ArgumentException() {
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1);
+		await Assert.ThrowsAsync<ArgumentException>(() => this.sut.SetAgent("c1", new SetChatAgentRequest("   "), default));
+	}
+
+	[Fact]
+	public async Task SetAgent_Missing_Chat_Throws_KeyNotFoundException() {
+		await this.SeedAgentAsync("opus", model: "x");
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.SetAgent("ghost", new SetChatAgentRequest("opus"), default));
+	}
+
+	[Fact]
+	public async Task SaveOverrides_Mutates_The_Bound_Agent_When_Chat_Has_One_And_Emits_AgentUpdated() {
+		AgentEntity bound = await this.SeedAgentAsync("opus", model: "anthropic/claude-opus-4", effort: "low", toolProfile: "default");
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1, agentId: bound.Id);
+		this.bus.Captured.Clear();
+
+		ActionResult<AgentDto> result = await this.sut.SaveOverrides("c1", new SaveChatOverridesRequest(
+			Model: "  anthropic/claude-sonnet-4  ", Effort: "high", ToolProfile: "  read-only  "
+		), default);
+
+		AgentDto dto = Assert.IsType<AgentDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("anthropic/claude-sonnet-4", dto.Model);
+		Assert.Equal("high",                      dto.ThinkingEffort);
+		Assert.Equal("read-only",                 dto.ToolProfile);
+
+		Assert.Single(this.bus.Captured);
+		Assert.Equal(AgentEventNames.Updated, this.bus.Captured[0].Name);
+		Assert.IsType<AgentUpdatedPayload>(this.bus.Captured[0].Data);
+	}
+
+	[Fact]
+	public async Task SaveOverrides_Falls_Back_To_System_Default_When_Chat_Has_No_Bound_Agent() {
+		await this.SeedAgentAsync("default", model: "anthropic/claude-sonnet-4", isDefault: true);
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1);
+
+		ActionResult<AgentDto> result = await this.sut.SaveOverrides("c1", new SaveChatOverridesRequest(
+			Model: "anthropic/claude-opus-4", Effort: null, ToolProfile: null
+		), default);
+		AgentDto dto = Assert.IsType<AgentDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("default",                 dto.Name);
+		Assert.Equal("anthropic/claude-opus-4", dto.Model);
+	}
+
+	[Fact]
+	public async Task SaveOverrides_Null_Fields_Leave_Agent_Unchanged() {
+		await this.SeedAgentAsync("default", model: "anthropic/claude-sonnet-4", effort: "med", toolProfile: "default", isDefault: true);
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1);
+
+		ActionResult<AgentDto> result = await this.sut.SaveOverrides("c1", new SaveChatOverridesRequest(null, null, null), default);
+		AgentDto dto = Assert.IsType<AgentDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Equal("anthropic/claude-sonnet-4", dto.Model);
+		Assert.Equal("med",                       dto.ThinkingEffort);
+		Assert.Equal("default",                   dto.ToolProfile);
+	}
+
+	[Fact]
+	public async Task SaveOverrides_Missing_Chat_Throws_KeyNotFoundException() {
+		await this.SeedAgentAsync("default", model: "x", isDefault: true);
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.SaveOverrides("ghost", new SaveChatOverridesRequest(null, null, null), default));
+	}
+
+	[Fact]
+	public async Task SaveOverrides_Chat_Without_Agent_And_No_Default_Throws_KeyNotFoundException() {
+		await this.SeedChatAsync("c1", updatedHoursAgo: 1);
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.SaveOverrides("c1", new SaveChatOverridesRequest(null, null, null), default));
+	}
+
 	// ── Generate ──────────────────────────────────────────────────
 
 	[Fact]
@@ -380,7 +509,8 @@ public class ChatsControllerTests :IDisposable {
 		string  externalId,
 		double  updatedHoursAgo,
 		double? archivedHoursAgo = null,
-		long?   projectId        = null
+		long?   projectId        = null,
+		long?   agentId          = null
 	) {
 		DateTimeOffset now = this.time.GetUtcNow();
 		this.db.Chats.Add(new ChatEntity {
@@ -388,12 +518,37 @@ public class ChatsControllerTests :IDisposable {
 			Name       = externalId,
 			Channel    = "web",
 			ProjectId  = projectId,
+			AgentId    = agentId,
 			CreatedAt  = now.AddHours(-updatedHoursAgo - 1),
 			UpdatedAt  = now.AddHours(-updatedHoursAgo),
 			ArchivedAt = archivedHoursAgo is null ? null : now.AddHours(-archivedHoursAgo.Value),
 			Enabled    = true,
 		});
 		await this.db.SaveChangesAsync();
+	}
+
+	private async Task<AgentEntity> SeedAgentAsync(
+		string  name,
+		string  model,
+		bool    isDefault   = false,
+		string? effort      = null,
+		string? toolProfile = null
+	) {
+		DateTimeOffset now = this.time.GetUtcNow();
+		AgentEntity agent = new() {
+			Name           = name,
+			Model          = model,
+			IsDefault      = isDefault,
+			ThinkingEffort = effort,
+			ToolProfile    = toolProfile,
+			MaxTokens      = 4096,
+			ContextBudget  = 12000,
+			CreatedAt      = now,
+			UpdatedAt      = now,
+		};
+		this.db.Agents.Add(agent);
+		await this.db.SaveChangesAsync();
+		return agent;
 	}
 
 	private async Task<ProjectEntity> SeedProjectAsync(string externalId, string path) {
