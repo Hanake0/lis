@@ -123,10 +123,39 @@ export interface GitRemote {
 	url:  string;
 }
 
+/**
+ * One entry in `git stash list`. Mirrors OC's GitStashEntry shape so byte-identical
+ * StashesDialog renders it directly. `ref` is the stash-style ref (`stash@{0}`),
+ * `relativeTime` is server-formatted ("5m ago"), `hash` is the stash commit SHA.
+ */
 export interface GitStashEntry {
-	index:   number;
-	message: string;
-	at:      string;
+	ref:          string;
+	message:      string;
+	relativeTime: string;
+	hash:         string;
+}
+
+/**
+ * Snapshot of a mid-merge / mid-rebase conflict, exactly the way OC's ConflictDialog
+ * expects it. All free-form strings are pre-formatted server-side so the dialog
+ * doesn't have to glue them together itself.
+ */
+export interface MergeConflictDetails {
+	operation:       'merge' | 'rebase';
+	statusPorcelain: string;
+	unmergedFiles:   string[];
+	diff:            string;
+	headInfo:        string;
+}
+
+/**
+ * Bootstrap progress of a freshly-created worktree (running setup commands like
+ * `bun install`). Backed by a `.lis-bootstrap.json` sidecar at the worktree root.
+ */
+export interface GitWorktreeBootstrapStatus {
+	status:    'pending' | 'ready' | 'failed';
+	error:     string | null;
+	updatedAt: number;
 }
 
 export interface GitWorktreeInfo {

@@ -137,6 +137,74 @@ export class LisRpcClient {
 	listAgents():                Promise<unknown[]> { return this.get('/agents'); }
 	getAgent(name: string):      Promise<unknown>   { return this.get(`/agents/${encodeURIComponent(name)}`); }
 
+	// ── Git: branches (CRUD) ──────────────────────────────────────
+
+	createGitBranch(path: string, name: string, startPoint?: string): Promise<{ name: string; tip: string }> {
+		return this.post('/git/branches', { path, name, start_point: startPoint });
+	}
+	renameGitBranch(path: string, oldName: string, newName: string): Promise<{ name: string; tip: string }> {
+		return this.patch(`/git/branches/${encodeURIComponent(oldName)}`, { path, new_name: newName });
+	}
+	deleteGitBranch(path: string, name: string, force: boolean): Promise<void> {
+		return this.delete(`/git/branches/${encodeURIComponent(name)}`, { path, force: force ? 'true' : 'false' });
+	}
+
+	// ── Git: stashes ──────────────────────────────────────────────
+
+	listGitStashes(path: string): Promise<{ stashes: { index: number; ref: string; hash: string; message: string; at: string; relative_time: string }[] }> {
+		return this.get('/git/stashes', { path });
+	}
+	saveGitStash(path: string, message: string | undefined, includeUntracked: boolean): Promise<{ success: boolean; created: boolean; ref: string | null; message: string; output: string }> {
+		return this.post('/git/stashes', { path, message, include_untracked: includeUntracked });
+	}
+	countGitStashFiles(path: string, refs: string[]): Promise<{ counts: Record<string, number> }> {
+		return this.post('/git/stashes/file-counts', { path, refs });
+	}
+	applyGitStash(path: string, stashRef: string): Promise<{ success: boolean; ref: string }> {
+		return this.request('POST', `/git/stashes/${encodeURIComponent(stashRef)}/apply`, undefined, { path });
+	}
+	popGitStash(path: string, stashRef: string): Promise<{ success: boolean; ref: string }> {
+		return this.request('POST', `/git/stashes/${encodeURIComponent(stashRef)}/pop`, undefined, { path });
+	}
+	dropGitStash(path: string, stashRef: string): Promise<{ success: boolean; ref: string }> {
+		return this.delete(`/git/stashes/${encodeURIComponent(stashRef)}`, { path });
+	}
+
+	// ── Git: commit diff / conflict ───────────────────────────────
+
+	getCommitFileDiff(path: string, commitSha: string, file: string): Promise<{ original: string; modified: string; is_binary: boolean }> {
+		return this.get(`/git/commits/${encodeURIComponent(commitSha)}/file-diff`, { path, file });
+	}
+	getGitConflictDetails(path: string): Promise<{ operation: string; status_porcelain: string; unmerged_files: string[]; diff: string; head_info: string | null } | null> {
+		return this.requestNullable('GET', '/git/conflicts', undefined, { path });
+	}
+
+	// ── Git: worktree bootstrap sidecar ───────────────────────────
+
+	getWorktreeBootstrapStatus(worktreePath: string): Promise<{ status: 'pending' | 'ready' | 'failed' | string; error: string | null; updated_at: string }> {
+		return this.get('/git/worktree-bootstrap', { path: worktreePath });
+	}
+	setWorktreeBootstrapStatus(worktreePath: string, status: 'pending' | 'ready' | 'failed', error?: string | null): Promise<unknown> {
+		return this.put('/git/worktree-bootstrap', { worktree_path: worktreePath, status, error });
+	}
+
+	// ── Chat AI generation ─────────────────────────────────────────
+
+	generateChat(chatId: string, body: { visible_prompt: string; hidden_prompt?: string; kind?: string; model?: string }): Promise<{ text: string; input_tokens: number; output_tokens: number }> {
+		return this.post(`/chats/${encodeURIComponent(chatId)}/generate`, body);
+	}
+
+	/**
+	 * Variant of <c>request</c> that converts 204 No Content into a Promise that resolves to null.
+	 * Used by endpoints like <c>GET /api/git/conflicts</c> where "no conflict" is a valid empty response.
+	 */
+	private async requestNullable<T>(method: HttpMethod, path: string, body?: unknown, query?: HttpRequest['query']): Promise<T | null> {
+		const res = await this.http.request({ method, path, body, query });
+		if (res.status === 204) return null;
+		if (res.status >= 200 && res.status < 300) return res.body as T;
+		throw new LisRpcError(res.status, res.body);
+	}
+
 	// ── Chats ──────────────────────────────────────────────────────
 
 	/**
