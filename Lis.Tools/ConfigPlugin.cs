@@ -167,7 +167,13 @@ public sealed class ConfigPlugin(IServiceScopeFactory scopeFactory, IOptions<Lis
 				agentEntity.ToolsDeny = string.IsNullOrWhiteSpace(value) ? null : value;
 				break;
 			case "workspace_path":
-				agentEntity.WorkspacePath = string.IsNullOrWhiteSpace(value) ? null : value;
+				if (string.IsNullOrWhiteSpace(value)) {
+					agentEntity.WorkspacePath = null;
+				} else {
+					if (!Directory.Exists(value))
+						return $"Invalid value for workspace_path: directory '{value}' does not exist on this host.";
+					agentEntity.WorkspacePath = value;
+				}
 				break;
 			case "exec_security":
 				if (value is not ("deny" or "allowlist" or "full")) return "Invalid value for exec_security. Valid: deny, allowlist, full.";

@@ -29,6 +29,9 @@ public sealed class ExecPlugin(IServiceScopeFactory scopeFactory) {
 
 		string workspacePath = await this.ResolveWorkspacePathAsync();
 		string workingDirectory = ResolveWorkingDirectory(workspacePath, cwd);
+		if (!Directory.Exists(workingDirectory))
+			return $"Exit: -1\n--- stderr ---\nWorking directory '{workingDirectory}' does not exist. "
+			     + $"Check the agent's WorkspacePath (currently '{workspacePath}') — it may be a Linux path on a Windows host.";
 		timeoutSeconds = Math.Clamp(timeoutSeconds, 1, 300);
 
 		ProcessStartInfo psi = new() {
