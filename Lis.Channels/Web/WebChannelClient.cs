@@ -1,0 +1,122 @@
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text.Json;
+
+using Lis.Channels.Web.Schemas;
+using Lis.Core.Channel;
+using Lis.Core.Util;
+
+using Microsoft.Extensions.Logging;
+
+namespace Lis.Channels.Web;
+
+/// <summary>
+/// Web channel publisher AND subscriber registry. Singleton.
+///
+/// Every connected WebSocket registers itself; every published frame is broadcast to
+/// all connections. Clients filter by <c>chat_id</c> on the frame. The per-socket
+/// <see cref="SemaphoreSlim"/> exists because <see cref="WebSocket.SendAsync"/> is not
+/// concurrent-safe — multiple publishes to the same socket must serialize.
+/// </summary>
+public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChannelClient {
+
+	private readonly ConcurrentDictionary<Guid, Connection> _connections = new();
+
+	// ── Connection registry (called by WebChannelController) ────────
+
+	public Guid Register(WebSocket socket) {
+		Guid id = Guid.NewGuid();
+		this._connections[id] = new Connection(socket);
+		return id;
+	}
+
+	public void Unregister(Guid id) {
+		if (this._connections.TryRemove(id, out Connection? conn))
+			conn.SendLock.Dispose();
+	}
+
+	// ── IChannelClient (called by ConversationService) ──────────────
+
+	[Trace("WebChannelClient > SendMessageAsync")]
+	public async Task<string?> SendMessageAsync(
+		string chatId, string message, string? replyToId = null, CancellationToken ct = default) {
+		string id = Guid.NewGuid().ToString("N");
+		await this.PublishAsync(
+			ServerFrame.Message(chatId, id, message, role: "assistant", timestamp: DateTimeOffset.UtcNow),
+			ct);
+		return id;
+	}
+
+	[Trace("WebChannelClient > SetTypingAsync")]
+	public Task SetTypingAsync(string chatId, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.Typing(chatId), ct);
+
+	[Trace("WebChannelClient > StopTypingAsync")]
+	public Task StopTypingAsync(string chatId, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.TypingStopped(chatId), ct);
+
+	public Task MarkReadAsync(string messageId, string chatId, CancellationToken ct = default) =>
+		Task.CompletedTask;
+
+	[Trace("WebChannelClient > ReactAsync")]
+	public Task ReactAsync(string messageId, string chatId, string emoji, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.Reaction(chatId, messageId, emoji), ct);
+
+	public Task<MediaDownload?> DownloadMediaAsync(
+		string messageId, string chatId, string? mediaPath = null, CancellationToken ct = default) =>
+		Task.FromResult<MediaDownload?>(null);
+
+	// ── Publishing ──────────────────────────────────────────────────
+
+	public async Task PublishAsync(ServerFrame frame, CancellationToken ct = default) {
+		if (this._connections.IsEmpty) return;
+
+		byte[] payload = JsonSerializer.SerializeToUtf8Bytes(frame, JsonOpt.Default);
+		List<Guid> dead = new();
+
+		foreach ((Guid id, Connection conn) in this._connections) {
+			if (conn.Socket.State != WebSocketState.Open) {
+				dead.Add(id);
+				continue;
+			}
+
+			try {
+				await conn.SendLock.WaitAsync(ct);
+				try {
+					await conn.Socket.SendAsync(
+						new ArraySegment<byte>(payload), WebSocketMessageType.Text, endOfMessage: true, ct);
+				} finally {
+					conn.SendLock.Release();
+				}
+			} catch (Exception ex) {
+				if (logger.IsEnabled(LogLevel.Debug))
+					logger.LogDebug(ex, "Failed to publish frame to web socket {ConnectionId}", id);
+				dead.Add(id);
+			}
+		}
+
+		foreach (Guid id in dead) this.Unregister(id);
+	}
+
+	/// <summary>
+	/// Send a single frame to a specific connection. Used by the controller for the
+	/// initial handshake before any broadcasts can target this socket.
+	/// </summary>
+	public async Task SendDirectAsync(Guid connectionId, ServerFrame frame, CancellationToken ct) {
+		if (!this._connections.TryGetValue(connectionId, out Connection? conn)) return;
+
+		byte[] payload = JsonSerializer.SerializeToUtf8Bytes(frame, JsonOpt.Default);
+		await conn.SendLock.WaitAsync(ct);
+		try {
+			await conn.Socket.SendAsync(
+				new ArraySegment<byte>(payload), WebSocketMessageType.Text, endOfMessage: true, ct);
+		} finally {
+			conn.SendLock.Release();
+		}
+	}
+
+	private sealed class Connection(WebSocket socket) {
+		public readonly WebSocket     Socket   = socket;
+		public readonly SemaphoreSlim SendLock = new(1, 1);
+	}
+}
