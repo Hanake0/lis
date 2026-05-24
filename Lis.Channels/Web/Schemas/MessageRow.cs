@@ -29,4 +29,7 @@ public sealed class MessageRow {
 
 	[JsonPropertyName("thinking_tokens")]
 	public int? ThinkingTokens { get; init; }
+
+	[JsonPropertyName("tool_name")]
+	public string? ToolName { get; init; }
 }

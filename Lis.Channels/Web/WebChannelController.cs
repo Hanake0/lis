@@ -162,23 +162,37 @@ public sealed class WebChannelController(
 		using IServiceScope scope = scopeFactory.CreateScope();
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
-		List<MessageRow> rows = await db.Messages
+		var rawRows = await db.Messages
 			.Where(m => m.Chat.ExternalId == frame.ChatId && !m.Queued)
 			.OrderByDescending(m => m.Id)
 			.Take(limit)
 			.OrderBy(m => m.Id)
-			.Select(m => new MessageRow {
+			.Select(m => new {
 				Id                  = m.ExternalId ?? m.Id.ToString(),
 				Role                = m.Role ?? (m.IsFromMe ? "assistant" : "user"),
 				Text                = m.Body,
-				Timestamp           = m.Timestamp,
-				InputTokens         = m.InputTokens,
-				OutputTokens        = m.OutputTokens,
-				CacheReadTokens     = m.CacheReadTokens,
-				CacheCreationTokens = m.CacheCreationTokens,
-				ThinkingTokens      = m.ThinkingTokens,
+				m.Timestamp,
+				m.InputTokens,
+				m.OutputTokens,
+				m.CacheReadTokens,
+				m.CacheCreationTokens,
+				m.ThinkingTokens,
+				m.SkContent,
 			})
 			.ToListAsync(ct);
+
+		List<MessageRow> rows = rawRows.Select(m => new MessageRow {
+			Id                  = m.Id,
+			Role                = m.Role,
+			Text                = m.Text,
+			Timestamp           = m.Timestamp,
+			InputTokens         = m.InputTokens,
+			OutputTokens        = m.OutputTokens,
+			CacheReadTokens     = m.CacheReadTokens,
+			CacheCreationTokens = m.CacheCreationTokens,
+			ThinkingTokens      = m.ThinkingTokens,
+			ToolName            = m.Role == "tool" ? ExtractToolName(m.SkContent) : null,
+		}).ToList();
 
 		await client.PublishAsync(ServerFrame.ChatHistory(frame.ChatId, rows), ct);
 	}
@@ -310,4 +324,22 @@ public sealed class WebChannelController(
 		"interrupt"  => MessageDispatchMode.Interrupt,
 		_            => MessageDispatchMode.Immediate,
 	};
+
+	private static string? ExtractToolName(string? skContent) {
+		if (string.IsNullOrEmpty(skContent)) return null;
+		try {
+			using JsonDocument doc = JsonDocument.Parse(skContent);
+			// FunctionResultContent serializes with FunctionName
+			if (doc.RootElement.TryGetProperty("FunctionName", out JsonElement fn))
+				return fn.GetString();
+			// Fallback: look in Items array
+			if (doc.RootElement.TryGetProperty("Items", out JsonElement items) && items.ValueKind == JsonValueKind.Array) {
+				foreach (JsonElement item in items.EnumerateArray()) {
+					if (item.TryGetProperty("FunctionName", out JsonElement itemFn))
+						return itemFn.GetString();
+				}
+			}
+		} catch { /* malformed JSON — return null */ }
+		return null;
+	}
 }

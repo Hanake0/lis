@@ -16,6 +16,7 @@ interface Message {
 	cache_read_tokens?:    number;
 	cache_creation_tokens?: number;
 	thinking_tokens?:      number;
+	tool_name?:            string;
 }
 
 let chatId: string | null = null;
@@ -97,8 +98,19 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 
 function appendMessage(msg: Message): void {
 	if (knownMessageIds.has(msg.id)) return;
-	if (!hasText(msg)) return;
 	knownMessageIds.add(msg.id);
+
+	// Tool-role messages render as collapsed tool blocks, not chat bubbles
+	if (msg.role === 'tool') {
+		if (msg.tool_name || msg.text) {
+			handleToolStart(msg.id, msg.tool_name ?? 'tool', '');
+			handleToolResult(msg.id, msg.tool_name ?? 'tool', msg.text, undefined);
+		}
+		messages.push(msg);
+		return;
+	}
+
+	if (!hasText(msg)) return;
 	messages.push(msg);
 	const el = renderMessage(msg);
 
