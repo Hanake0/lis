@@ -1,50 +1,6 @@
-// Webview entry point — one chat per panel.
-// The host announces our chat_id via the 'init' message.
-
+import { h, render } from 'preact';
+import { App } from './app';
 import { vscode } from './vscodeApi';
-import { handleHostMessage, getChatId } from './dispatcher';
-import { showTyping } from './renderer';
-import { initControls, getOverrides } from './composer';
 
-const form  = document.getElementById('composer') as HTMLFormElement;
-const input = document.getElementById('input') as HTMLTextAreaElement;
-
-// ── UI wiring ──────────────────────────────────────────────────
-
-form.addEventListener('submit', e => {
-	e.preventDefault();
-	send();
-});
-
-input.addEventListener('keydown', e => {
-	if (e.key === 'Enter' && !e.shiftKey) {
-		e.preventDefault();
-		send();
-	}
-});
-
-input.addEventListener('input', autoResize);
-
-function send(): void {
-	const text = input.value.trim();
-	if (!text || !getChatId()) return;
-	const overrides = getOverrides();
-	vscode.postMessage({ type: 'send', text, ...overrides });
-	input.value = '';
-	autoResize();
-	showTyping();
-}
-
-function autoResize(): void {
-	input.style.height = 'auto';
-	input.style.height = Math.min(120, input.scrollHeight) + 'px';
-}
-
-// ── Host → webview ─────────────────────────────────────────────
-
-window.addEventListener('message', ev => {
-	handleHostMessage(ev.data);
-});
-
-initControls();
+render(h(App, null), document.getElementById('app')!);
 vscode.postMessage({ type: 'ready' });

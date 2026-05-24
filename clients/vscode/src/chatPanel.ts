@@ -152,15 +152,7 @@ const BUNDLED_HTML = `<!DOCTYPE html>
 	<title>Lis Chat</title>
 </head>
 <body>
-	<div class="status" id="status">connecting…</div>
-
-	<div class="messages" id="messages"></div>
-
-	<form class="composer" id="composer">
-		<textarea id="input" rows="1" placeholder="Message Lis (Enter to send, Shift+Enter for newline)" autofocus></textarea>
-		<button type="submit" id="send" aria-label="Send">Send</button>
-	</form>
-
+	<div id="app"></div>
 	<script nonce="\${nonce}" src="\${jsUri}"></script>
 </body>
 </html>`;

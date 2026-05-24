@@ -106,5 +106,11 @@
     "@types/vscode": "^1.100.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.9.0",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.4",
+    "preact": "^10.29.2"
   }
 }

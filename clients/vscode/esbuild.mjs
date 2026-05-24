@@ -25,6 +25,8 @@ const webviewConfig = {
 	sourcemap: true,
 	minify: !watch,
 	logLevel: 'info',
+	jsx: 'automatic',
+	jsxImportSource: 'preact',
 };
 
 if (watch) {
