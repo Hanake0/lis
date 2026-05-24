@@ -166,6 +166,54 @@ public class ChatsControllerTests :IDisposable {
 		Assert.Single(this.db.Chats);     // no duplicate row
 	}
 
+	// ── List ──────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task List_Empty_Returns_Ok_With_Empty_Array() {
+		ActionResult<ChatDto[]> result = await this.sut.List(default);
+		OkObjectResult ok = Assert.IsType<OkObjectResult>(result.Result);
+		Assert.Empty(Assert.IsType<ChatDto[]>(ok.Value));
+	}
+
+	[Fact]
+	public async Task List_Returns_All_Chats_Newest_Updated_First() {
+		await this.SeedChatAsync("oldest", updatedHoursAgo: 5);
+		await this.SeedChatAsync("middle", updatedHoursAgo: 2);
+		await this.SeedChatAsync("newest", updatedHoursAgo: 0);
+
+		ActionResult<ChatDto[]> result = await this.sut.List(default);
+		ChatDto[] dtos = Assert.IsType<ChatDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+
+		Assert.Equal(["newest", "middle", "oldest"], dtos.Select(d => d.ChatId));
+	}
+
+	[Fact]
+	public async Task List_Includes_Archived_Chats_With_Archived_At_Populated() {
+		await this.SeedChatAsync("active",   updatedHoursAgo: 1);
+		await this.SeedChatAsync("archived", updatedHoursAgo: 2, archivedHoursAgo: 1);
+
+		ActionResult<ChatDto[]> result = await this.sut.List(default);
+		ChatDto[] dtos = Assert.IsType<ChatDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+
+		Assert.Equal(2, dtos.Length);
+		ChatDto archived = dtos.Single(d => d.ChatId == "archived");
+		Assert.NotNull(archived.ArchivedAt);
+		Assert.Null(dtos.Single(d => d.ChatId == "active").ArchivedAt);
+	}
+
+	[Fact]
+	public async Task List_Includes_Project_External_Id_When_The_Chat_Is_Bound_To_One() {
+		ProjectEntity project = await this.SeedProjectAsync("proj-x", "/repo");
+		await this.SeedChatAsync("bound",   updatedHoursAgo: 0, projectId: project.Id);
+		await this.SeedChatAsync("orphan",  updatedHoursAgo: 1);
+
+		ActionResult<ChatDto[]> result = await this.sut.List(default);
+		ChatDto[] dtos = Assert.IsType<ChatDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+
+		Assert.Equal("proj-x", dtos.Single(d => d.ChatId == "bound").ProjectExternalId);
+		Assert.Null(dtos.Single(d => d.ChatId == "orphan").ProjectExternalId);
+	}
+
 	// ── Generate ──────────────────────────────────────────────────
 
 	[Fact]
@@ -230,6 +278,26 @@ public class ChatsControllerTests :IDisposable {
 	}
 
 	// ── Helpers ────────────────────────────────────────────────────
+
+	private async Task SeedChatAsync(
+		string  externalId,
+		double  updatedHoursAgo,
+		double? archivedHoursAgo = null,
+		long?   projectId        = null
+	) {
+		DateTimeOffset now = this.time.GetUtcNow();
+		this.db.Chats.Add(new ChatEntity {
+			ExternalId = externalId,
+			Name       = externalId,
+			Channel    = "web",
+			ProjectId  = projectId,
+			CreatedAt  = now.AddHours(-updatedHoursAgo - 1),
+			UpdatedAt  = now.AddHours(-updatedHoursAgo),
+			ArchivedAt = archivedHoursAgo is null ? null : now.AddHours(-archivedHoursAgo.Value),
+			Enabled    = true,
+		});
+		await this.db.SaveChangesAsync();
+	}
 
 	private async Task<ProjectEntity> SeedProjectAsync(string externalId, string path) {
 		ProjectEntity project = new() {

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { Session } from '@/lib/opencode-sdk-stub';
+import { LisRpcClient, type LisChatSummary } from '@/lib/lis/rpc-client';
 
 /**
  * Aggregate view of every chat Lis knows about, regardless of project.
@@ -8,15 +9,15 @@ import type { Session } from '@/lib/opencode-sdk-stub';
  * The store works in OC-shaped `Session` objects so the byte-identical
  * `components/session/`, `CommandPalette`, `Header` and `SessionSwitcher`
  * surfaces (ported from OC) keep compiling. Lis converts its native
- * `ChatSummary` to this shape at the seam (`sidebarOC.tsx#toOCSession`).
+ * `ChatSummary` to this shape via `chatSummaryToSession` (below).
  *
  * Data flow:
- *  - Bootstrap (and live updates) populate the store via `applySnapshot` /
- *    `upsertSession` from the chat sync layer (today: WS frames from the
- *    extension host; after Stage 13: REST + SSE).
- *  - `loadSessions` is a placeholder that returns the current snapshot
- *    (merging an optional fallback). It will be wired to `GET /api/chats`
- *    when Stage 13 lands; callers can already invoke it without breaking.
+ *  - `loadSessions` pulls the canonical snapshot from `GET /api/chats` and
+ *    seeds the store. Optional `fallbackActive` from the caller (the sync
+ *    layer's local buffer) is merged on top — useful for the brief window
+ *    where a newly-created chat exists locally before the SSE event lands.
+ *  - Live updates arrive through SSE on `/api/events` and call
+ *    `upsertSession` / `removeSessions` / `archiveSessions` directly.
  *
  * The list manipulation logic (signature-based dedup, archive bucket move,
  * scope-by-directory map) is ported verbatim from OC's
@@ -105,6 +106,28 @@ function upsertSessionIntoList(list: Session[], session: Session): Session[] {
 	return next;
 }
 
+/**
+ * Map the Lis chat-summary wire shape into the OC `Session` the sidebar expects.
+ * Time fields stay numeric (epoch ms) so the same byte-identical group/sort code
+ * in OC's `SessionSidebar` works unchanged.
+ */
+export function chatSummaryToSession(row: LisChatSummary): Session {
+	const createdMs  = row.created_at  ? Date.parse(row.created_at)  : undefined;
+	const updatedMs  = row.updated_at  ? Date.parse(row.updated_at)  : undefined;
+	const archivedMs = row.archived_at ? Date.parse(row.archived_at) : undefined;
+	return {
+		id:        row.chat_id,
+		title:     row.name ?? undefined,
+		// Lis currently has no per-chat directory concept — leave null and the
+		// sidebar falls back to its "Other" bucket. Stage 5+ may surface a per-chat
+		// directory once projects expose worktree paths through the chat wire.
+		directory: null,
+		createdAt: createdMs,
+		updatedAt: updatedMs,
+		time:      { created: createdMs, updated: updatedMs, archived: archivedMs },
+	};
+}
+
 function mergeSessionLists(existing: Session[], incoming?: Session[]): Session[] {
 	if (!incoming || incoming.length === 0) return existing;
 	if (existing.length === 0)               return incoming;
@@ -175,24 +198,34 @@ export const useGlobalSessionsStore = create<GlobalSessionsState>((set, get) => 
 
 		set(state => state.status === 'loading' ? state : { status: 'loading' });
 
-		// Stage 13 will wire this to LisRpcClient.listChats(). Until then the
-		// sidebar bootstrap pushes snapshots via applySnapshot, and this just
-		// merges any caller-supplied fallback into the current snapshot.
+		// Pull from `GET /api/chats`, bucket by `archived_at`, and merge any
+		// caller-supplied fallback into the active bucket on top — `mergeSessionLists`
+		// preserves server order while letting the fallback override matched rows and
+		// append fallback-only rows (the local sync layer's newer-than-the-server view).
 		//
-		// NOTE on the cleanup pattern: we clear `inflightLoad` in the OUTER async
-		// function's finally rather than the IIFE's. The body of this load is
-		// synchronous (no awaits), so an IIFE finally would null inflightLoad
-		// during the IIFE invocation itself — leaving `inflightLoad` reassigned
-		// to a stale resolved Promise after this function returns. Clearing via
-		// the outer `try/finally` around `await` correctly defers cleanup until
-		// after the result is observed.
+		// On RPC failure (server unreachable, client not yet installed) we keep the
+		// existing in-memory snapshot intact and merge the fallback into THAT, so the
+		// sidebar degrades gracefully rather than blanking.
 		const myLoad = (async (): Promise<LoadResult> => {
-			const current = get();
-			const merged  = mergeSessionLists(current.activeSessions, fallbackActive);
-			set(state => applySnapshotInternal(state, merged, current.archivedSessions, 'ready'));
-			return { activeSessions: merged, archivedSessions: current.archivedSessions };
+			try {
+				const rows = await LisRpcClient.instance().listChats();
+				const mapped = rows.map(chatSummaryToSession);
+				const serverActive   = mapped.filter(s => !s.time?.archived);
+				const serverArchived = mapped.filter(s =>  s.time?.archived);
+				const mergedActive   = mergeSessionLists(serverActive, fallbackActive);
+				set(state => applySnapshotInternal(state, mergedActive, serverArchived, 'ready'));
+				return { activeSessions: mergedActive, archivedSessions: serverArchived };
+			} catch {
+				const current = get();
+				const merged  = mergeSessionLists(current.activeSessions, fallbackActive);
+				set(state => applySnapshotInternal(state, merged, current.archivedSessions, 'error'));
+				return { activeSessions: merged, archivedSessions: current.archivedSessions };
+			}
 		})();
 		inflightLoad = myLoad;
+		// Outer try/finally so the latch outlives the await and clears only after the
+		// promise is observed (avoids the IIFE-finally race where the latch is reset
+		// to a stale resolved Promise mid-call).
 		try     { return await myLoad; }
 		finally { if (inflightLoad === myLoad) inflightLoad = null; }
 	},

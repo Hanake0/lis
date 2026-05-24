@@ -31,6 +31,23 @@ public sealed class ChatsController(
 	IChatGenerationService  generation
 ) :ControllerBase {
 
+	/// <summary>
+	/// Lists every chat the server knows about, newest-first by <c>updated_at</c>.
+	/// Includes archived rows — the caller (sidebar) buckets them by <c>archived_at</c>.
+	/// Project relation is eager-loaded so the DTO's <c>project_id</c> is the project's
+	/// external id, not the FK.
+	/// </summary>
+	[HttpGet]
+	[ProducesResponseType(typeof(ChatDto[]), StatusCodes.Status200OK)]
+	public async Task<ActionResult<ChatDto[]>> List(CancellationToken ct) {
+		ChatDto[] chats = await db.Chats
+			.Include(c => c.Project)
+			.OrderByDescending(c => c.UpdatedAt)
+			.Select(c => ChatDto.From(c))
+			.ToArrayAsync(ct);
+		return this.Ok(chats);
+	}
+
 	[HttpPost]
 	[ProducesResponseType(typeof(ChatDto), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ChatDto), StatusCodes.Status200OK)]

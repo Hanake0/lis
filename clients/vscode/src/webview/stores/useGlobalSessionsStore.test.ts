@@ -1,12 +1,49 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import type { EventSourceLike } from '@/lib/lis/event-channel';
 import type { Session } from '@/lib/opencode-sdk-stub';
+import { LisRpcClient, type MessageSource } from '@/lib/lis/rpc-client';
 import {
+	chatSummaryToSession,
 	ensureGlobalSessionsLoaded,
 	refreshGlobalSessions,
 	resolveGlobalSessionDirectory,
 	useGlobalSessionsStore,
 } from './useGlobalSessionsStore';
+
+class FakeMessageSource implements MessageSource {
+	private handlers: ((e: { data: unknown }) => void)[] = [];
+	addEventListener(_t: 'message', h: (e: { data: unknown }) => void): void { this.handlers.push(h); }
+	fire(data: unknown): void { for (const h of this.handlers) h({ data }); }
+}
+
+class FakeEventSource implements EventSourceLike {
+	onopen:  ((ev: Event) => void) | null = null;
+	onerror: ((ev: Event) => void) | null = null;
+	constructor(_url: string) { /* noop */ }
+	close(): void { /* noop */ }
+	addEventListener(): void { /* noop */ }
+}
+
+interface RecordedCall { url: string; init?: RequestInit }
+
+class FakeFetch {
+	calls: RecordedCall[] = [];
+	respond: (req: { url: string; init?: RequestInit }) => Response = () =>
+		new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+
+	asFetch(): typeof globalThis.fetch {
+		return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+			const url = typeof input === 'string' ? input : input.toString();
+			this.calls.push({ url, init });
+			return this.respond({ url, init });
+		};
+	}
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+	return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+}
 
 function makeSession(over: Partial<Session> = {}): Session {
 	return {
@@ -18,7 +55,17 @@ function makeSession(over: Partial<Session> = {}): Session {
 }
 
 describe('useGlobalSessionsStore', () => {
+	const originalFetch = globalThis.fetch;
+	let source: FakeMessageSource;
+	let fake:   FakeFetch;
+
 	beforeEach(() => {
+		(LisRpcClient as unknown as { singleton: LisRpcClient | null }).singleton = null;
+		source = new FakeMessageSource();
+		fake   = new FakeFetch();
+		globalThis.fetch = fake.asFetch();
+		LisRpcClient.install(source, { eventSourceFactory: (url) => new FakeEventSource(url) });
+		source.fire({ type: 'lis.init', baseOrigin: 'http://localhost:3010', token: 'tok' });
 		useGlobalSessionsStore.setState({
 			activeSessions:      [],
 			archivedSessions:    [],
@@ -27,6 +74,8 @@ describe('useGlobalSessionsStore', () => {
 			status:              'idle',
 		});
 	});
+
+	afterEach(() => { globalThis.fetch = originalFetch; });
 
 	test('applySnapshot installs active + archived lists and rebuilds the directory map', () => {
 		const s1 = makeSession({ id: 'a', directory: '/repo' });
@@ -126,50 +175,110 @@ describe('useGlobalSessionsStore', () => {
 		expect(s.archivedSessions[0].time?.archived).toBe(2);
 	});
 
-	test('loadSessions returns current snapshot when no fallback is provided', async () => {
-		useGlobalSessionsStore.getState().applySnapshot([makeSession({ id: 'a' })], []);
+	test('loadSessions GETs /api/chats and buckets server rows by archived_at', async () => {
+		fake.respond = () => jsonResponse([
+			{ chat_id: 'a', name: 'A', project_id: null, pinned_at: null, archived_at: null,                       created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-03T00:00:00Z' },
+			{ chat_id: 'b', name: 'B', project_id: null, pinned_at: null, archived_at: '2026-01-02T00:00:00Z',     created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z' },
+		]);
 		const result = await useGlobalSessionsStore.getState().loadSessions();
-		expect(result.activeSessions.map(x => x.id)).toEqual(['a']);
+		expect(fake.calls[0].url).toBe('http://localhost:3010/api/chats');
+		expect(result.activeSessions.map(s => s.id)).toEqual(['a']);
+		expect(result.archivedSessions.map(s => s.id)).toEqual(['b']);
 		expect(useGlobalSessionsStore.getState().status).toBe('ready');
 	});
 
-	test('loadSessions merges a fallback list into the active bucket', async () => {
+	test('loadSessions merges fallback ON TOP of the server rows (fallback overrides, server preserves order)', async () => {
+		fake.respond = () => jsonResponse([
+			{ chat_id: 'a', name: 'A',         project_id: null, pinned_at: null, archived_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-03T00:00:00Z' },
+			{ chat_id: 'b', name: 'B-server',  project_id: null, pinned_at: null, archived_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z' },
+		]);
+		const fallback = [
+			makeSession({ id: 'b', title: 'B-fresher' }),  // overrides server's B
+			makeSession({ id: 'c', title: 'C-local'   }),  // appended (server doesn't have it)
+		];
+		const result = await useGlobalSessionsStore.getState().loadSessions(fallback);
+		expect(result.activeSessions.map(s => s.id)).toEqual(['a', 'b', 'c']);
+		expect(result.activeSessions.find(s => s.id === 'b')?.title).toBe('B-fresher');
+	});
+
+	test('loadSessions falls back to the in-memory snapshot when the server fails, marking status=error', async () => {
 		useGlobalSessionsStore.getState().applySnapshot([makeSession({ id: 'a' })], []);
-		await useGlobalSessionsStore.getState().loadSessions([makeSession({ id: 'b' })]);
-		const ids = useGlobalSessionsStore.getState().activeSessions.map(s => s.id).sort();
-		expect(ids).toEqual(['a', 'b']);
+		fake.respond = () => jsonResponse({ error: 'kaboom' }, 500);
+		const result = await useGlobalSessionsStore.getState().loadSessions([makeSession({ id: 'b' })]);
+		expect(result.activeSessions.map(s => s.id).sort()).toEqual(['a', 'b']);
+		expect(useGlobalSessionsStore.getState().status).toBe('error');
 	});
 
 	test('loadSessions de-dups concurrent calls via the inflight latch', async () => {
-		useGlobalSessionsStore.getState().applySnapshot([makeSession({ id: 'a' })], []);
+		let resolveFetch!: (r: Response) => void;
+		fake.respond = () => new Promise<Response>(r => { resolveFetch = r; });
+
 		const p1 = useGlobalSessionsStore.getState().loadSessions([makeSession({ id: 'b' })]);
-		// Second call while the first is still inflight: should share the underlying
-		// latch so neither runs the merge twice. The outer async wrappers are
-		// separate Promises but they unwrap to the same shared result.
+		// Second call while the first is still inflight — should share the underlying
+		// latch so the second invocation does NOT make its own /api/chats request.
 		const p2 = useGlobalSessionsStore.getState().loadSessions([makeSession({ id: 'c' })]);
+		resolveFetch(jsonResponse([
+			{ chat_id: 'a', name: 'A', project_id: null, pinned_at: null, archived_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+		]));
 		const [r1, r2] = await Promise.all([p1, p2]);
 		expect(r1).toEqual(r2);
-		// Only the first fallback was merged in — proves the second call short-circuited.
+		// Only the FIRST fallback ('b') was merged in — the second call short-circuited.
 		expect(r1.activeSessions.map(s => s.id).sort()).toEqual(['a', 'b']);
+		expect(fake.calls.length).toBe(1);
 	});
 
-	test('ensureGlobalSessionsLoaded short-circuits when already ready', async () => {
-		useGlobalSessionsStore.getState().applySnapshot([makeSession({ id: 'a' })], []);
+	test('ensureGlobalSessionsLoaded short-circuits when already ready (no network hit)', async () => {
+		useGlobalSessionsStore.setState({ hasLoaded: true, status: 'ready', activeSessions: [makeSession({ id: 'a' })] });
 		const result = await ensureGlobalSessionsLoaded();
 		expect(result.activeSessions.map(x => x.id)).toEqual(['a']);
+		expect(fake.calls.length).toBe(0);
 	});
 
 	test('ensureGlobalSessionsLoaded triggers a load when not yet loaded', async () => {
-		const result = await ensureGlobalSessionsLoaded([makeSession({ id: 'new' })]);
-		expect(result.activeSessions.map(x => x.id)).toEqual(['new']);
+		fake.respond = () => jsonResponse([
+			{ chat_id: 'srv', name: 'Server Row', project_id: null, pinned_at: null, archived_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+		]);
+		const result = await ensureGlobalSessionsLoaded([makeSession({ id: 'fb' })]);
+		expect(result.activeSessions.map(x => x.id).sort()).toEqual(['fb', 'srv']);
 		expect(useGlobalSessionsStore.getState().hasLoaded).toBe(true);
 	});
 
-	test('refreshGlobalSessions always invokes loadSessions', async () => {
-		useGlobalSessionsStore.getState().applySnapshot([makeSession({ id: 'a' })], []);
-		const result = await refreshGlobalSessions([makeSession({ id: 'b' })]);
-		const ids = result.activeSessions.map(s => s.id).sort();
-		expect(ids).toEqual(['a', 'b']);
+	test('refreshGlobalSessions always invokes loadSessions (re-fetches even when already ready)', async () => {
+		useGlobalSessionsStore.setState({ hasLoaded: true, status: 'ready', activeSessions: [makeSession({ id: 'stale' })] });
+		fake.respond = () => jsonResponse([
+			{ chat_id: 'fresh', name: null, project_id: null, pinned_at: null, archived_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+		]);
+		const result = await refreshGlobalSessions();
+		expect(result.activeSessions.map(s => s.id)).toEqual(['fresh']);
+		expect(fake.calls.length).toBe(1);
+	});
+
+	// ── chatSummaryToSession ──────────────────────────────────────
+
+	test('chatSummaryToSession maps the wire row to the OC Session shape with epoch-ms times', () => {
+		const sess = chatSummaryToSession({
+			chat_id:     'c1',
+			name:        'Chat One',
+			project_id:  null,
+			pinned_at:   null,
+			archived_at: '2026-01-05T00:00:00Z',
+			created_at:  '2026-01-01T00:00:00Z',
+			updated_at:  '2026-01-04T00:00:00Z',
+		});
+		expect(sess.id).toBe('c1');
+		expect(sess.title).toBe('Chat One');
+		expect(sess.directory).toBeNull();
+		expect(sess.time?.created).toBe(Date.UTC(2026, 0, 1));
+		expect(sess.time?.updated).toBe(Date.UTC(2026, 0, 4));
+		expect(sess.time?.archived).toBe(Date.UTC(2026, 0, 5));
+	});
+
+	test('chatSummaryToSession leaves title undefined when name is null', () => {
+		const sess = chatSummaryToSession({
+			chat_id: 'c2', name: null, project_id: null, pinned_at: null, archived_at: null,
+			created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+		});
+		expect(sess.title).toBeUndefined();
 	});
 
 	test('resolveGlobalSessionDirectory falls back through directory then project.worktree', () => {

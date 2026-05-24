@@ -213,6 +213,14 @@ export class LisRpcClient {
 	// ── Chats ──────────────────────────────────────────────────────
 
 	/**
+	 * Lists every chat the server knows about. Newest <c>updated_at</c> first; archived
+	 * rows are included with <c>archived_at</c> populated so the caller can bucket them.
+	 * The sidebar pulls this on bootstrap (via <c>useGlobalSessionsStore.loadSessions</c>);
+	 * subsequent live updates arrive through SSE on <c>/api/events</c>.
+	 */
+	listChats(): Promise<LisChatSummary[]> { return this.get('/chats'); }
+
+	/**
 	 * Create (or idempotently fetch) a chat. Pass `chatId` to use a deterministic id;
 	 * omit it and the server mints one in the `web:{guid}` shape. Re-POSTing the same
 	 * id returns the existing row with a 200 — the server treats it as idempotent.
@@ -220,13 +228,7 @@ export class LisRpcClient {
 	 * `projectExternalId` binds the chat under a project (404 if the project doesn't exist).
 	 * `channel` defaults to `"web"` on the server when omitted.
 	 */
-	createChat(input: { chatId?: string; name?: string; projectExternalId?: string | null; channel?: string }): Promise<{
-		chat_id:     string;
-		name:        string | null;
-		project_id:  string | null;
-		created_at:  string;
-		updated_at:  string;
-	}> {
+	createChat(input: { chatId?: string; name?: string; projectExternalId?: string | null; channel?: string }): Promise<LisChatSummary> {
 		return this.post('/chats', {
 			chat_id:    input.chatId,
 			name:       input.name,
@@ -327,6 +329,23 @@ export class LisRpcClient {
 			return;
 		}
 	}
+}
+
+// ── Chats: snake_case wire shape ─────────────────────────────────────────────
+
+/**
+ * Mirror of <c>Lis.Api.Schemas.Chats.ChatDto</c>. <c>pinned_at</c>/<c>archived_at</c>
+ * are ISO-8601 strings when set, <c>null</c> otherwise. <c>project_id</c> is the
+ * project's external id (not the FK).
+ */
+export interface LisChatSummary {
+	chat_id:      string;
+	name:         string | null;
+	project_id:   string | null;
+	pinned_at:    string | null;
+	archived_at:  string | null;
+	created_at:   string;
+	updated_at:   string;
 }
 
 // ── GitHub status: snake_case wire ↔ camelCase response ──────────────────────
