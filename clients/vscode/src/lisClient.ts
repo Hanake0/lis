@@ -2,28 +2,7 @@
 // Web-extension compatible: uses the global WebSocket, no Node APIs.
 
 import type { Logger } from './logger';
-
-export type ServerFrame =
-	| { type: 'connected' }
-	| { type: 'message';        chat_id: string; id: string; text: string; role: 'user' | 'assistant'; timestamp: string }
-	| { type: 'typing';         chat_id: string }
-	| { type: 'typing_stopped'; chat_id: string }
-	| { type: 'reaction';       chat_id: string; id: string; emoji: string }
-	| { type: 'error';          error: string; chat_id?: string }
-	| { type: 'chat_list';      chats:    ChatSummary[] }
-	| { type: 'chat_history';   chat_id: string; messages: MessageRow[] };
-
-export interface ChatSummary  { chat_id: string; name?: string;   updated_at: string }
-export interface MessageRow   { id: string; role: string; text?: string; timestamp: string }
-
-export type DispatchMode = 'default' | 'immediate' | 'queue_only' | 'interrupt';
-
-export type ClientFrame =
-	| { type: 'message';    chat_id: string; text: string; dispatch?: DispatchMode }
-	| { type: 'history';    chat_id: string; limit?: number }
-	| { type: 'list_chats' };
-
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+import type { ClientFrame, ConnectionState, ServerFrame } from './types';
 
 type Listener<T> = (event: T) => void;
 

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 
-import { ConnectionState, LisClient, ServerFrame } from './lisClient';
+import { LisClient } from './lisClient';
+import type { ConnectionState, ServerFrame } from './types';
+import { generateNonce } from './util';
 
 interface WebviewInbound {
 	type:   'ready' | 'send';
@@ -139,8 +141,3 @@ const BUNDLED_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-function generateNonce(): string {
-	const bytes = new Uint8Array(16);
-	crypto.getRandomValues(bytes);
-	return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-}

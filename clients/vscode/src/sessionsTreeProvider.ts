@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 
-import { ChatSummary, LisClient, ServerFrame } from './lisClient';
+import { LisClient } from './lisClient';
+import type { ChatSummary, ServerFrame } from './types';
+import { relativeTime } from './util';
 
 export class SessionItem extends vscode.TreeItem {
 	constructor(
@@ -97,15 +99,4 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionItem
 				break;
 		}
 	}
-}
-
-function relativeTime(iso: string): string {
-	const then = Date.parse(iso);
-	if (Number.isNaN(then)) return '';
-	const seconds = Math.round((Date.now() - then) / 1000);
-	if (seconds < 60)     return `${seconds}s`;
-	if (seconds < 3600)   return `${Math.round(seconds / 60)}m`;
-	if (seconds < 86400)  return `${Math.round(seconds / 3600)}h`;
-	if (seconds < 604800) return `${Math.round(seconds / 86400)}d`;
-	return new Date(then).toLocaleDateString();
 }
