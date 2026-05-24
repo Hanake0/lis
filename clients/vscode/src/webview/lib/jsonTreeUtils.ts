@@ -7,8 +7,9 @@ export interface JsonTreeNode {
 	children?: JsonTreeNode[];
 }
 
-export function buildJsonTree(_data: unknown): JsonTreeNode[] { return []; }
-export function flattenJsonTree(_nodes: JsonTreeNode[]): JsonTreeNode[] { return []; }
+const EMPTY: JsonTreeNode[] = [];
+export function buildJsonTree(_data: unknown): JsonTreeNode[] { return EMPTY; }
+export function flattenJsonTree(_nodes: JsonTreeNode[]): JsonTreeNode[] { return EMPTY; }
 export function flattenTree(..._args: any[]): any { return null; }
 export function getAllExpandableIds(..._args: any[]): any { return null; }
 export function getExpandableIdsAboveDepth(..._args: any[]): any { return null; }

@@ -1,4 +1,5 @@
-export function getProjectActions(): unknown[] { return []; }
+const EMPTY: unknown[] = [];
+export function getProjectActions(): unknown[] { return EMPTY; }
 export function normalizeProjectActionDirectory(..._a: any[]): any { return null; }
 export function resolveProjectActionDesktopForwardUrl(..._a: any[]): any { return null; }
 export function toProjectActionRunKey(..._a: any[]): any { return ''; }

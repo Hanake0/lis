@@ -112,7 +112,12 @@ export function useSessionStatus(_sessionId: string): { type: string } | null {
 	return (isTyping || hasStreaming) ? BUSY_STATUS : IDLE_STATUS;
 }
 
-export function useUserMessageHistory(): unknown[] { return []; }
+const EMPTY_HISTORY: unknown[] = [];
+const EMPTY_SESSIONS: any[] = [];
+const EMPTY_STATUSES: Record<string, never> = {};
+const EMPTY_PERMS: any[] = [];
+
+export function useUserMessageHistory(): unknown[] { return EMPTY_HISTORY; }
 
 export function setActiveSession(_sessionId: string): void {}
 
@@ -120,11 +125,11 @@ export class SyncProvider {
 	static defaultProps = {};
 }
 
-export function buildSessionMessageRecordsSnapshot(..._args: any[]): any { return []; }
-export function useAllLiveSessions(): any[] { return []; }
-export function useAllSessionStatuses(): any { return {}; }
+export function buildSessionMessageRecordsSnapshot(..._args: any[]): any { return EMPTY_SESSIONS; }
+export function useAllLiveSessions(): any[] { return EMPTY_SESSIONS; }
+export function useAllSessionStatuses(): any { return EMPTY_STATUSES; }
 export function useDirectoryStore(..._args: any[]): any { return null; }
 export function useEnsureSessionMessages(..._args: any[]): any { return null; }
 export function useGlobalSessionStatus(..._args: any[]): any { return null; }
 export function useSession(..._args: any[]): any { return null; }
-export function useSessionPermissions(..._args: any[]): any[] { return []; }
+export function useSessionPermissions(..._args: any[]): any[] { return EMPTY_PERMS; }

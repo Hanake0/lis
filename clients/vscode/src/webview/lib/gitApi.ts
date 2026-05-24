@@ -1,4 +1,5 @@
-export function getGitApi(): unknown { return {}; }
+const EMPTY: Record<string, never> = {};
+export function getGitApi(): unknown { return EMPTY; }
 export function applyGitStash(..._args: any[]): any { return null; }
 export function checkIsGitRepository(..._args: any[]): any { return null; }
 export function countGitStashFiles(..._args: any[]): any { return null; }

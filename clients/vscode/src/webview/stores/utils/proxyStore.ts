@@ -2,7 +2,14 @@ import { create, type StateCreator } from 'zustand';
 
 const noop: any = () => {};
 
+const EMPTY_ARR: any[] = [];
+const defaultCache = new Map<string, any>();
+
 const safeDefault = (key: string): any => {
+	const cached = defaultCache.get(key);
+	if (cached !== undefined) return cached;
+
+	let val: any;
 	if (key.startsWith('set') || key.startsWith('toggle') || key.startsWith('add') ||
 		key.startsWith('remove') || key.startsWith('clear') || key.startsWith('reset') ||
 		key.startsWith('update') || key.startsWith('load') || key.startsWith('fetch') ||
@@ -23,15 +30,16 @@ const safeDefault = (key: string): any => {
 		key.startsWith('handle') || key.startsWith('fork') || key.startsWith('revert') ||
 		key.startsWith('share') || key.startsWith('unshare') || key.startsWith('archive') ||
 		key.startsWith('schedule')) {
-		return noop;
+		val = noop;
+	} else if (key.startsWith('get') || key.startsWith('find') || key.startsWith('resolve')) {
+		val = () => null;
+	} else if (key.startsWith('is') || key.startsWith('has') || key.startsWith('show') || key.startsWith('enabled')) {
+		val = false;
+	} else {
+		val = EMPTY_ARR;
 	}
-	if (key.startsWith('get') || key.startsWith('find') || key.startsWith('resolve')) {
-		return () => null;
-	}
-	if (key.startsWith('is') || key.startsWith('has') || key.startsWith('show') || key.startsWith('enabled')) {
-		return false;
-	}
-	return [];
+	defaultCache.set(key, val);
+	return val;
 };
 
 const ZUSTAND_INTERNALS = new Set([
