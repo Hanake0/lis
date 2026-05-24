@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
+using Lis.Agent;
 using Lis.Channels.Web.Schemas;
 using Lis.Core.Channel;
 using Lis.Core.Util;
@@ -23,6 +24,7 @@ namespace Lis.Channels.Web;
 public sealed class WebChannelController(
 	WebChannelClient                client,
 	IConversationService            conversationService,
+	ContextBreakdownService         contextBreakdown,
 	IOptions<WebChannelOptions>     options,
 	IServiceScopeFactory            scopeFactory,
 	IHostApplicationLifetime        lifetime,
@@ -115,6 +117,7 @@ public sealed class WebChannelController(
 			case "get_agent":      await this.HandleGetAgentAsync(frame, ct);        break;
 			case "list_agents":    await this.HandleListAgentsAsync(ct);             break;
 			case "save_overrides": await this.HandleSaveOverridesAsync(frame, ct);   break;
+			case "get_context":    await this.HandleGetContextAsync(frame, ct);      break;
 			default:
 				await client.PublishAsync(ServerFrame.Error($"unknown frame type: {frame.Type}"), ct);
 				break;
@@ -325,6 +328,36 @@ public sealed class WebChannelController(
 
 		await client.PublishAsync(
 			ServerFrame.AgentInfo(frame.ChatId, agent.Name, agent.DisplayName, agent.Model, agent.ThinkingEffort, agent.ToolProfile), ct);
+	}
+
+	// ── Context breakdown ───────────────────────────────────────────
+
+	private async Task HandleGetContextAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("get_context requires chat_id"), ct);
+			return;
+		}
+
+		ContextBreakdownService.Breakdown? breakdown;
+		try {
+			breakdown = await contextBreakdown.ComputeAsync(frame.ChatId, ct);
+		} catch (Exception ex) {
+			logger.LogError(ex, "Failed to compute context breakdown for {ChatId}", frame.ChatId);
+			await client.PublishAsync(ServerFrame.Error($"context breakdown failed: {ex.Message}", frame.ChatId), ct);
+			return;
+		}
+
+		if (breakdown is null) {
+			await client.PublishAsync(ServerFrame.Error("chat has no active session yet", frame.ChatId), ct);
+			return;
+		}
+
+		List<ContextSegment> segments = breakdown.Segments
+			.Select(s => new ContextSegment { Name = s.Name, Tokens = s.Tokens })
+			.ToList();
+
+		await client.PublishAsync(
+			ServerFrame.Context(frame.ChatId, breakdown.Total, breakdown.Budget, segments), ct);
 	}
 
 	private static MessageDispatchMode ParseDispatch(string? value) => value switch {

@@ -88,6 +88,16 @@ public sealed class ServerFrame {
 	[JsonPropertyName("thinking_tokens")]
 	public int? ThinkingTokens { get; init; }
 
+	// Context breakdown (response to client's get_context)
+	[JsonPropertyName("total")]
+	public int? Total { get; init; }
+
+	[JsonPropertyName("budget")]
+	public int? Budget { get; init; }
+
+	[JsonPropertyName("segments")]
+	public IReadOnlyList<ContextSegment>? Segments { get; init; }
+
 	public static ServerFrame Connected() =>
 		new() { Type = "connected" };
 
@@ -133,6 +143,9 @@ public sealed class ServerFrame {
 
 	public static ServerFrame ChatHistory(string chatId, IReadOnlyList<MessageRow> messages) =>
 		new() { Type = "chat_history", ChatId = chatId, Messages = messages };
+
+	public static ServerFrame Context(string chatId, int total, int budget, IReadOnlyList<ContextSegment> segments) =>
+		new() { Type = "context", ChatId = chatId, Total = total, Budget = budget, Segments = segments };
 
 	// Streaming factories
 	public static ServerFrame Chunk(string chatId, string messageId, string delta, bool done) =>

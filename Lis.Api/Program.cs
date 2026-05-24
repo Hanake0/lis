@@ -120,6 +120,7 @@ if (Env("WEB_CHANNEL_ENABLED") == "true") builder.Services.AddWebChannel();
 builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
 builder.Services.AddSingleton<ToolRunner>();
+builder.Services.AddSingleton<ContextBreakdownService>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
