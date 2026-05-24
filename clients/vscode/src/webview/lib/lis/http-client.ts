@@ -1,10 +1,11 @@
 /**
- * REST client used by the extension host. Webviews never call fetch directly —
- * they post a `http_request` envelope to the host (see SidebarWebviewProvider
- * and ChatPanelManager) and the host proxies through here.
+ * REST client used by the webview. Runs in the webview's browser context — the
+ * webview's CSP `connect-src` is configured to include the user's `lis.serverUrl`
+ * by the providers, so `fetch()` works directly. No extension-host proxying.
  *
- * Configuration (`baseOrigin` + `token`) is mutable: callers swap them at
- * runtime via `updateConfig` when `lis.serverUrl` / `lis.authToken` change.
+ * Configuration (`baseOrigin` + `token`) flows in from the extension host via
+ * the initial `init` postMessage; subsequent config changes arrive as
+ * `config_update`. Callers swap the values via `updateConfig`.
  */
 
 export interface HttpRequest {
@@ -24,7 +25,7 @@ export class LisHttpClient {
 	private baseOrigin: string;
 	private token: string;
 
-	constructor(baseOrigin: string, token: string) {
+	constructor(baseOrigin = '', token = '') {
 		this.baseOrigin = stripTrailingSlash(baseOrigin);
 		this.token = token;
 	}
@@ -34,9 +35,8 @@ export class LisHttpClient {
 		this.token = token;
 	}
 
-	get configuredOrigin(): string {
-		return this.baseOrigin;
-	}
+	get configuredOrigin(): string { return this.baseOrigin; }
+	get configuredToken():  string { return this.token; }
 
 	async request(req: HttpRequest): Promise<HttpResponse> {
 		if (!this.baseOrigin) {
@@ -44,9 +44,7 @@ export class LisHttpClient {
 		}
 
 		const url = this.buildUrl(req.path, req.query);
-		const headers: Record<string, string> = {
-			Accept: 'application/json',
-		};
+		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (this.token) headers.Authorization = `Bearer ${this.token}`;
 		if (req.body !== undefined) headers['Content-Type'] = 'application/json';
 
@@ -59,25 +57,17 @@ export class LisHttpClient {
 				signal: req.signal,
 			});
 		} catch (err) {
-			// Network-level failure (DNS, refused, aborted). Surface as status 0 so the webview
-			// can show a connection error rather than crashing on undefined.status.
-			return {
-				status: 0,
-				body: { error: err instanceof Error ? err.message : String(err) },
-			};
+			return { status: 0, body: { error: err instanceof Error ? err.message : String(err) } };
 		}
 
 		const text = await response.text();
 		let body: unknown = text;
-		// Empty body = no JSON to parse (common for 204 No Content).
 		if (text.length > 0) {
 			const contentType = response.headers.get('content-type') ?? '';
 			if (contentType.includes('json')) {
-				try { body = JSON.parse(text); }
-				catch { /* leave as raw text */ }
+				try { body = JSON.parse(text); } catch { /* leave as raw text */ }
 			}
 		}
-
 		return { status: response.status, body };
 	}
 
@@ -97,6 +87,4 @@ export class LisHttpClient {
 	}
 }
 
-function stripTrailingSlash(s: string): string {
-	return s.replace(/\/+$/, '');
-}
+function stripTrailingSlash(s: string): string { return s.replace(/\/+$/, ''); }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { LisHttpClient } from './lisHttpClient';
+import { LisHttpClient } from './http-client';
 
 interface RecordedCall {
 	url:     string;
@@ -34,7 +34,7 @@ describe('LisHttpClient', () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	test('returns body=null + status=0 when not configured', async () => {
+	test('returns status=0 when not configured', async () => {
 		const client = new LisHttpClient('', '');
 		const res = await client.request({ method: 'GET', path: '/projects' });
 		expect(res.status).toBe(0);

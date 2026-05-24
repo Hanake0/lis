@@ -1,110 +1,106 @@
 /**
- * Webview-side RPC adapter for the Lis backend. The webview is sandboxed (CSP),
- * so it can't fetch URLs directly. Instead we post an `http_request` envelope
- * to the extension host and await the matching `http_response`.
+ * Webview-side RPC client for the Lis backend.
+ *
+ * Composes {@link LisHttpClient} (REST via direct `fetch`) and
+ * {@link LisEventChannel} (SSE via native `EventSource`). The webview's
+ * `connect-src` CSP must include the configured `baseOrigin` — the providers
+ * splice that in at HTML render time.
+ *
+ * Config (origin + token) arrives from the extension host via the initial
+ * `init` postMessage and is refreshed via `config_update`.
  *
  * Method signatures intentionally mirror the slice of OC's `OpencodeService`
- * surface we actually use, so existing OC stores can drop in without changes.
- * Each backend wire DTO is snake_case; the methods here pass-through unchanged.
+ * surface we actually use, so existing OC stores can drop in unchanged.
  */
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+import { LisHttpClient, type HttpRequest } from './http-client';
+import { LisEventChannel, type ChannelEventListener, type ChannelStateListener, type EventSourceFactory } from './event-channel';
 
-interface HostMessage {
-	type:        'http_request';
-	request_id:  string;
-	method:      HttpMethod;
-	path:        string;
-	query?:      Record<string, string | number | boolean | null | undefined>;
-	body?:       unknown;
-}
-
-interface HostResponse {
-	type:       'http_response';
-	request_id: string;
-	status:     number;
-	body:       unknown;
-}
-
-interface SseMessage {
-	type:    'sse_event';
-	source:  'events' | 'chat';
-	chat_id?: string;
-	event:   string;
-	data:    unknown;
-	id?:     string;
-}
-
-interface ConnectionStateMessage {
-	type:   'connection_state';
-	events: 'connecting' | 'connected' | 'disconnected';
-}
+type HttpMethod = HttpRequest['method'];
 
 interface VsCodeApi {
 	postMessage(msg: unknown): void;
 }
 
-/** Minimal subset of EventTarget that LisRpcClient needs to subscribe to messages.
- *  In the real webview this is `window`; in tests a small fake can stand in. */
+/** Minimal subset of EventTarget that LisRpcClient needs. In the webview this is `window`. */
 export interface MessageSource {
 	addEventListener(type: 'message', handler: (e: { data: unknown }) => void): void;
 	removeEventListener?(type: 'message', handler: (e: { data: unknown }) => void): void;
 }
 
-type SseListener = (event: string, data: unknown, meta: { source: 'events' | 'chat'; chat_id?: string; id?: string }) => void;
-type StateListener = (state: 'connecting' | 'connected' | 'disconnected') => void;
+interface InitMessage {
+	type:       'lis.init';
+	baseOrigin: string;
+	token:      string;
+}
+
+interface ConfigUpdateMessage {
+	type:       'lis.config_update';
+	baseOrigin: string;
+	token:      string;
+}
 
 export class LisRpcError extends Error {
 	constructor(public readonly status: number, public readonly body: unknown) {
-		super(typeof body === 'object' && body !== null && 'error' in body ? String((body as { error: unknown }).error) : `request failed (${status})`);
+		super(typeof body === 'object' && body !== null && 'error' in body
+			? String((body as { error: unknown }).error)
+			: `request failed (${status})`);
 		this.name = 'LisRpcError';
 	}
 }
 
 export class LisRpcClient {
 	private static singleton: LisRpcClient | null = null;
-	private readonly pending = new Map<string, { resolve: (body: unknown) => void; reject: (err: Error) => void }>();
-	private readonly sseListeners = new Set<SseListener>();
-	private readonly stateListeners = new Set<StateListener>();
+	private readonly http:    LisHttpClient;
+	private readonly channel: LisEventChannel;
 
-	private constructor(private readonly vscode: VsCodeApi, source: MessageSource) {
-		source.addEventListener('message', (e) => this.onMessage(e.data));
+	private constructor(source: MessageSource, eventSourceFactory?: EventSourceFactory) {
+		this.http    = new LisHttpClient();
+		this.channel = new LisEventChannel('', '', eventSourceFactory);
+
+		source.addEventListener('message', (e) => this.onHostMessage(e.data));
 	}
 
-	/** Wire the singleton once, near app boot. Subsequent calls return the existing instance.
-	 *  `source` defaults to the global `window` (real webview); tests can pass a mock. */
-	static install(vscode: VsCodeApi, source?: MessageSource): LisRpcClient {
+	/** Wire the singleton once near webview boot. Subsequent calls return the existing instance.
+	 *  Pass `vscode` only if you also want the client to signal readiness back to the host
+	 *  (e.g. for a "request initial config" handshake). */
+	static install(source?: MessageSource, opts?: { vscode?: VsCodeApi; eventSourceFactory?: EventSourceFactory }): LisRpcClient {
 		const target = source ?? (typeof window !== 'undefined' ? window : undefined);
 		if (!target) throw new Error('LisRpcClient.install: no MessageSource available (pass one explicitly in non-browser environments)');
-		LisRpcClient.singleton ??= new LisRpcClient(vscode, target);
+		LisRpcClient.singleton ??= new LisRpcClient(target, opts?.eventSourceFactory);
+		// Ask the host for current config — the host responds with `lis.init`. Safe to spam:
+		// the host just re-sends the same init.
+		if (opts?.vscode) opts.vscode.postMessage({ type: 'lis.ready' });
 		return LisRpcClient.singleton;
 	}
 
-	/** Get the installed client, or throw if `install` was never called. */
 	static instance(): LisRpcClient {
 		if (!LisRpcClient.singleton) throw new Error('LisRpcClient.install() must be called before use');
 		return LisRpcClient.singleton;
 	}
 
 	/** Subscribe to all SSE events. Returns an unsubscribe function. */
-	onSse(fn: SseListener): () => void {
-		this.sseListeners.add(fn);
-		return () => this.sseListeners.delete(fn);
-	}
+	onSse(fn: ChannelEventListener): () => void { return this.channel.onEvent(fn); }
 
 	/** Subscribe to connection-state transitions on the global event stream. */
-	onState(fn: StateListener): () => void {
-		this.stateListeners.add(fn);
-		return () => this.stateListeners.delete(fn);
+	onState(fn: ChannelStateListener): () => void { return this.channel.onState(fn); }
+
+	/** Internals — exposed for tests; production code goes through `install` + postMessage. */
+	setConfig(baseOrigin: string, token: string): void {
+		this.http.updateConfig(baseOrigin, token);
+		this.channel.updateConfig(baseOrigin, token);
+		// Open (or reopen if config changed) the SSE channel.
+		if (baseOrigin) this.channel.open();
+		else            this.channel.close();
 	}
 
 	// ── Generic helpers ────────────────────────────────────────────
 
-	get<T>   (path: string, query?: HostMessage['query']):   Promise<T> { return this.request<T>('GET',    path, undefined, query); }
-	delete<T>(path: string, query?: HostMessage['query']):   Promise<T> { return this.request<T>('DELETE', path, undefined, query); }
-	post<T>  (path: string, body?: unknown):                 Promise<T> { return this.request<T>('POST',   path, body); }
-	put<T>   (path: string, body?: unknown):                 Promise<T> { return this.request<T>('PUT',    path, body); }
-	patch<T> (path: string, body?: unknown):                 Promise<T> { return this.request<T>('PATCH',  path, body); }
+	get<T>   (path: string, query?: HttpRequest['query']): Promise<T> { return this.request<T>('GET',    path, undefined, query); }
+	delete<T>(path: string, query?: HttpRequest['query']): Promise<T> { return this.request<T>('DELETE', path, undefined, query); }
+	post<T>  (path: string, body?: unknown):               Promise<T> { return this.request<T>('POST',   path, body); }
+	put<T>   (path: string, body?: unknown):               Promise<T> { return this.request<T>('PUT',    path, body); }
+	patch<T> (path: string, body?: unknown):               Promise<T> { return this.request<T>('PATCH',  path, body); }
 
 	// ── Projects ───────────────────────────────────────────────────
 
@@ -144,7 +140,6 @@ export class LisRpcClient {
 		return this.post('/worktrees', { project_path: projectPath, new_path: newPath, branch });
 	}
 	removeWorktree(projectPath: string, worktreePath: string, force = false): Promise<void> {
-		// DELETE with a JSON body; LisHttpClient handles the body serialisation.
 		return this.request<void>('DELETE', '/worktrees', { project_path: projectPath, worktree_path: worktreePath, force });
 	}
 
@@ -172,46 +167,24 @@ export class LisRpcClient {
 
 	// ── Internals ──────────────────────────────────────────────────
 
-	private request<T>(method: HttpMethod, path: string, body?: unknown, query?: HostMessage['query']): Promise<T> {
-		return new Promise<T>((resolve, reject) => {
-			const requestId = crypto.randomUUID();
-			this.pending.set(requestId, {
-				resolve: (b) => resolve(b as T),
-				reject,
-			});
-
-			const envelope: HostMessage = { type: 'http_request', request_id: requestId, method, path, body, query };
-			this.vscode.postMessage(envelope);
-		});
+	private async request<T>(method: HttpMethod, path: string, body?: unknown, query?: HttpRequest['query']): Promise<T> {
+		const res = await this.http.request({ method, path, body, query });
+		if (res.status >= 200 && res.status < 300) return res.body as T;
+		throw new LisRpcError(res.status, res.body);
 	}
 
-	private onMessage(msg: unknown): void {
+	private onHostMessage(msg: unknown): void {
 		if (!msg || typeof msg !== 'object') return;
 		const m = msg as { type?: unknown };
 
-		if (m.type === 'http_response') {
-			const r = msg as HostResponse;
-			const pending = this.pending.get(r.request_id);
-			if (!pending) return;
-			this.pending.delete(r.request_id);
-			if (r.status >= 200 && r.status < 300) pending.resolve(r.body);
-			else                                    pending.reject(new LisRpcError(r.status, r.body));
+		if (m.type === 'lis.init') {
+			const init = msg as InitMessage;
+			this.setConfig(init.baseOrigin, init.token);
 			return;
 		}
-
-		if (m.type === 'sse_event') {
-			const e = msg as SseMessage;
-			for (const fn of this.sseListeners) {
-				try { fn(e.event, e.data, { source: e.source, chat_id: e.chat_id, id: e.id }); } catch { /* ignore */ }
-			}
-			return;
-		}
-
-		if (m.type === 'connection_state') {
-			const c = msg as ConnectionStateMessage;
-			for (const fn of this.stateListeners) {
-				try { fn(c.events); } catch { /* ignore */ }
-			}
+		if (m.type === 'lis.config_update') {
+			const upd = msg as ConfigUpdateMessage;
+			this.setConfig(upd.baseOrigin, upd.token);
 			return;
 		}
 	}

@@ -1,27 +1,35 @@
 import * as vscode from 'vscode';
+
+import type { LisConfig } from './config';
 import type { LisClient } from './lisClient';
-import type { LisEventStream } from './lisEventStream';
-import type { LisHttpClient } from './lisHttpClient';
-import { LisWebviewBridge } from './lisWebviewBridge';
 import type { ServerFrame } from './types';
 import { generateNonce } from './util';
 
+/**
+ * Provides the activity-bar sidebar webview. The webview talks REST + SSE
+ * directly to the Lis backend — the extension host only ships config and
+ * legacy WS frames through postMessage.
+ */
 export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	private view: vscode.WebviewView | null = null;
-	private bridge: LisWebviewBridge | null = null;
 	private onOpenSession: ((chatId: string, title?: string) => void) | null = null;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly client:       LisClient,
-		private readonly httpClient:   LisHttpClient,
-		private readonly eventStream:  LisEventStream,
+		private          getConfig:    () => LisConfig,
 	) {
 		client.onFrame((frame: ServerFrame) => this.onFrame(frame));
 	}
 
 	setOpenSessionHandler(handler: (chatId: string, title?: string) => void): void {
 		this.onOpenSession = handler;
+	}
+
+	/** Called from extension.ts when `lis.serverUrl` / `lis.authToken` change at runtime. */
+	notifyConfigChange(): void {
+		const cfg = this.getConfig();
+		this.post({ type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token });
 	}
 
 	resolveWebviewView(
@@ -32,20 +40,21 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 		this.view = webviewView;
 
 		webviewView.webview.options = {
-			enableScripts: true,
+			enableScripts:       true,
 			localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
 		};
 
 		webviewView.webview.html = this.getHtml(webviewView.webview);
 
-		// REST + SSE proxy. Bridge runs independently of the legacy WS handler below;
-		// HTTP envelopes go through here, WS frames continue via this.client until Stage 13.
-		this.bridge?.disposeAll();
-		this.bridge = new LisWebviewBridge(webviewView.webview, this.httpClient, this.eventStream);
-		webviewView.onDidDispose(() => { this.bridge?.disposeAll(); this.bridge = null; });
-
 		webviewView.webview.onDidReceiveMessage((msg) => {
 			switch (msg.type) {
+				case 'lis.ready': {
+					// New webview booted; push the current config so the LisRpcClient can wire up.
+					const cfg = this.getConfig();
+					this.post({ type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
+					return;
+				}
+
 				case 'ready':
 					if (this.client.currentState === 'connected') {
 						this.post({ type: 'state', state: 'connected' });
@@ -103,17 +112,21 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getHtml(webview: vscode.Webview): string {
-		const nonce = generateNonce();
-		const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.css'));
-		const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.js'));
+		const nonce     = generateNonce();
+		const cssUri    = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.css'));
+		const jsUri     = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.js'));
 		const cspSource = webview.cspSource;
+		const apiOrigin = this.getConfig().baseOrigin;
+		// CSP connect-src must include the user-configured backend so fetch() + EventSource
+		// can reach /api/* directly. If empty, only the extension's own resources are allowed.
+		const connectSrc = apiOrigin ? `${cspSource} ${apiOrigin}` : cspSource;
 
 		return `<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy"
-		content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src data: ${cspSource}; img-src data: ${cspSource} https:;">
+		content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src data: ${cspSource}; img-src data: ${cspSource} https:; connect-src ${connectSrc};">
 	<link rel="stylesheet" href="${cssUri}">
 	<style>html,body,#app{height:100%;width:100%;margin:0;padding:0;overflow:hidden;}</style>
 </head>

@@ -1,9 +1,7 @@
 import * as vscode from 'vscode';
 
+import type { LisConfig } from './config';
 import type { LisClient } from './lisClient';
-import type { LisEventStream } from './lisEventStream';
-import type { LisHttpClient } from './lisHttpClient';
-import { LisWebviewBridge } from './lisWebviewBridge';
 import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
@@ -14,7 +12,7 @@ interface ImageAttachment {
 }
 
 interface WebviewInbound {
-	type:           'ready' | 'send' | 'send_frame' | 'create_session' | 'delete_session' | 'rename_session' | 'archive_session';
+	type:           'ready' | 'send' | 'send_frame' | 'create_session' | 'delete_session' | 'rename_session' | 'archive_session' | 'lis.ready';
 	text?:          string;
 	model?:         string;
 	effort?:        string;
@@ -34,30 +32,35 @@ interface ChatPanel {
 }
 
 /**
- * Owns one editor WebviewPanel per chat_id. Open or focus by chat_id; the panel
- * stays alive until the user closes it. Frames from the shared LisClient are
- * filtered by chat_id and forwarded only to the matching panel.
+ * Owns one editor WebviewPanel per chat_id. The webview talks REST + SSE directly
+ * to the Lis backend; the extension host only ships config (lis.init /
+ * lis.config_update) and legacy WS frames through postMessage.
  */
 export class ChatPanelManager {
 	private static readonly viewType = 'lis.chatPanel';
-	private readonly panels  = new Map<string, ChatPanel>();
-	private readonly bridges = new Map<string, LisWebviewBridge>();
+	private readonly panels = new Map<string, ChatPanel>();
 
 	constructor(
-		private readonly context:     vscode.ExtensionContext,
-		private readonly client:      LisClient,
-		private readonly httpClient:  LisHttpClient,
-		private readonly eventStream: LisEventStream,
+		private readonly context:   vscode.ExtensionContext,
+		private readonly client:    LisClient,
+		private          getConfig: () => LisConfig,
 	) {
 		client.onFrame(frame => this.onFrame(frame));
 		client.onState(state => this.broadcastState(state));
+	}
+
+	/** Push the current config to every open panel — called when settings change. */
+	notifyConfigChange(): void {
+		const cfg = this.getConfig();
+		const msg = { type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token };
+		for (const entry of this.panels.values()) entry.panel.webview.postMessage(msg);
 	}
 
 	openOrFocus(chatId: string, title?: string): void {
 		const existing = this.panels.get(chatId);
 		if (existing) {
 			if (title && title !== existing.title) {
-				existing.title = title;
+				existing.title       = title;
 				existing.panel.title = title;
 			}
 			existing.panel.reveal(undefined, true);
@@ -70,37 +73,33 @@ export class ChatPanelManager {
 			resolvedTitle,
 			{ viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
 			{
-				enableScripts:   true,
+				enableScripts:           true,
 				retainContextWhenHidden: true,
 				localResourceRoots: [
-						vscode.Uri.joinPath(this.context.extensionUri, 'media'),
-						vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-					],
+					vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+					vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+				],
 			},
 		);
-		panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'lis-noturna.svg');
+		panel.iconPath     = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'lis-noturna.svg');
 		panel.webview.html = this.buildHtml(panel.webview);
 
 		const entry: ChatPanel = { chatId, title: resolvedTitle, panel, ready: false };
 		this.panels.set(chatId, entry);
 
 		panel.webview.onDidReceiveMessage((msg: WebviewInbound) => this.onWebviewMessage(entry, msg));
-
-		// REST + SSE bridge per panel. Bridge runs alongside the legacy WS message handler;
-		// they don't share state — the bridge ignores everything except http_request envelopes.
-		const bridge = new LisWebviewBridge(panel.webview, this.httpClient, this.eventStream);
-		this.bridges.set(chatId, bridge);
-
-		panel.onDidDispose(() => {
-			this.panels.delete(chatId);
-			const b = this.bridges.get(chatId);
-			b?.disposeAll();
-			this.bridges.delete(chatId);
-		});
+		panel.onDidDispose(() => { this.panels.delete(chatId); });
 	}
 
 	private onWebviewMessage(entry: ChatPanel, msg: WebviewInbound & { type: string }): void {
 		switch (msg.type) {
+			case 'lis.ready': {
+				// Webview booted; send the current REST/SSE config.
+				const cfg = this.getConfig();
+				this.post(entry, { type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
+				return;
+			}
+
 			case 'toggle_sidebar':
 				void vscode.commands.executeCommand('workbench.view.extension.lis-sidebar');
 				return;
@@ -108,8 +107,8 @@ export class ChatPanelManager {
 				entry.ready = true;
 				this.post(entry, { type: 'init', chatId: entry.chatId });
 				this.post(entry, { type: 'state', state: this.client.currentState });
-				this.client.send({ type: 'history', chat_id: entry.chatId });
-				this.client.send({ type: 'get_agent', chat_id: entry.chatId });
+				this.client.send({ type: 'history',     chat_id: entry.chatId });
+				this.client.send({ type: 'get_agent',   chat_id: entry.chatId });
 				this.client.send({ type: 'list_agents' });
 				this.client.send({ type: 'list_chats' });
 				break;
@@ -169,37 +168,32 @@ export class ChatPanelManager {
 	}
 
 	private post(entry: ChatPanel, msg: unknown): void {
-		if (!entry.ready && (msg as { type?: string }).type !== 'init') {
-			// Queue a small grace window? In practice 'ready' fires within a few ms; drop is fine.
-		}
 		entry.panel.webview.postMessage(msg);
 	}
 
 	private buildHtml(webview: vscode.Webview): string {
-		const distRoot = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
-		const cssUri   = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.css'));
-		const jsUri    = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.js'));
-		const nonce    = generateNonce();
+		const distRoot   = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
+		const cssUri     = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.css'));
+		const jsUri      = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.js'));
+		const nonce      = generateNonce();
+		const cspSource  = webview.cspSource;
+		const apiOrigin  = this.getConfig().baseOrigin;
+		// CSP connect-src includes the user-configured backend so fetch() + EventSource
+		// can reach /api/* directly. If empty, only the extension's own resources are allowed.
+		const connectSrc = apiOrigin ? `${cspSource} ${apiOrigin}` : cspSource;
 
-		return BUNDLED_HTML
-			.replace(/\$\{nonce\}/g,     nonce)
-			.replace(/\$\{cspSource\}/g, webview.cspSource)
-			.replace(/\$\{cssUri\}/g,    cssUri.toString())
-			.replace(/\$\{jsUri\}/g,     jsUri.toString());
-	}
-}
-
-const BUNDLED_HTML = `<!DOCTYPE html>
+		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src \${cspSource} 'unsafe-inline'; script-src 'nonce-\${nonce}'; font-src data: \${cspSource}; img-src data: \${cspSource} https:; connect-src \${cspSource};">
-	<link rel="stylesheet" href="\${cssUri}">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src data: ${cspSource}; img-src data: ${cspSource} https:; connect-src ${connectSrc};">
+	<link rel="stylesheet" href="${cssUri}">
 	<title>Lis Chat</title>
 </head>
 <body>
 	<div id="app"></div>
-	<script nonce="\${nonce}" src="\${jsUri}"></script>
+	<script nonce="${nonce}" src="${jsUri}"></script>
 </body>
 </html>`;
-
+	}
+}
