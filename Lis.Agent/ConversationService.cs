@@ -219,7 +219,8 @@ public sealed class ConversationService(
 					"medium" => 4096,
 					"high"   => 16384,
 					_ => int.TryParse(effort, out int t) ? t : 4096
-				}
+				},
+				["display"] = "summarized"
 			};
 
 		// Clone kernel and strip plugins not in the agent's tool policy.

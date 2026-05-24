@@ -38,6 +38,9 @@ public static class AnthropicProvider {
 		if (opts.CacheEnabled)
 			innerHandler = new CacheControlHandler(opts.CacheTtl) { InnerHandler = innerHandler };
 
+		// Ensure thinking.display = "summarized" so thinking content streams
+		innerHandler = new ThinkingDisplayHandler { InnerHandler = innerHandler };
+
 		// OAuth: inject required system prompt prefix + URL rewrite
 		if (useBearer)
 			innerHandler = new OAuthSystemPromptHandler { InnerHandler = innerHandler };
@@ -242,6 +245,29 @@ public static class AnthropicProvider {
 						["cache_control"] = cacheControl.DeepClone()
 					});
 			}
+		}
+	}
+
+	/// <summary>
+	/// Ensures <c>thinking.display</c> is set to <c>"summarized"</c> on messages API requests
+	/// so thinking content is streamed rather than omitted (default since Opus 4.7).
+	/// </summary>
+	private sealed class ThinkingDisplayHandler : DelegatingHandler {
+		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+			if (request.Content is null || request.RequestUri?.AbsolutePath.Contains("/messages") != true)
+				return await base.SendAsync(request, ct);
+
+			string json = await request.Content.ReadAsStringAsync(ct);
+			JsonNode? root = JsonNode.Parse(json);
+			if (root is JsonObject obj && obj["thinking"] is JsonObject thinking && thinking["display"] is null)
+				thinking["display"] = "summarized";
+
+			if (root is not null) {
+				string modified = root.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+				request.Content = new StringContent(modified, Encoding.UTF8, "application/json");
+			}
+
+			return await base.SendAsync(request, ct);
 		}
 	}
 }

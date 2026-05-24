@@ -27,15 +27,16 @@ public sealed class AnthropicUsageExtractor : IUsageExtractor {
 
 		int cacheReadTokens     = 0;
 		int cacheCreationTokens = 0;
+		int thinkingTokens      = 0;
 		if (details.AdditionalCounts is not null) {
 			if (details.AdditionalCounts.TryGetValue("CacheReadInputTokens", out long cacheRead))
 				cacheReadTokens = (int)cacheRead;
 			if (details.AdditionalCounts.TryGetValue("CacheCreationInputTokens", out long cacheCreation))
 				cacheCreationTokens = (int)cacheCreation;
+			if (details.AdditionalCounts.TryGetValue("ThinkingTokens", out long thinking))
+				thinkingTokens = (int)thinking;
 		}
 
-		// Anthropic SDK 5.10 does not expose thinking tokens separately —
-		// they are included in OutputTokenCount.
-		return new TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ThinkingTokens: 0);
+		return new TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens);
 	}
 }
