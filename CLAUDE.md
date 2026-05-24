@@ -94,14 +94,51 @@ Schemas are DTOs for external API payloads. Located in `{channel}/Schemas/`.
 
 ### Controller Conventions
 
-- Use `[ApiController]`, `[Route("resource")]`, `[Tags("TagName")]`
-- Use `[ProducesResponseType]` attributes for all response types
-- Primary constructors for dependency injection
-- Return `IActionResult` using `this.Ok()`, `this.Unauthorized()`, `this.BadRequest()`, etc.
-- Use `[FromRoute]` and `[FromBody]` attributes explicitly
-- Snake_case JSON serialization via `JsonOpt.Configure()`
-- ProblemDetails for error responses
-- Controllers in class libraries need `.AddApplicationPart()` in Program.cs
+Pattern lifted from [RickAi/Api](file:///C:/bkp/Dev/Hanake0/RickAi/Api) (sibling project); see [Filters/ApiExceptionFilter.cs](file:///C:/bkp/Dev/Hanake0/RickAi/Api/Filters/ApiExceptionFilter.cs) for the exception filter.
+
+**Class shape**:
+- `[ApiController]`, `[Route("api/resource/{param}")]`, `[Tags("Name")]`. Resource name plural, lowercase, kebab-case for multi-word (`api/session-folders`, `api/scheduled-tasks`).
+- Primary-constructor DI: `public class ProjectsController(IProjectService projects) : ControllerBase`.
+- Controllers in class libraries need `.AddApplicationPart()` in `Program.cs`.
+
+**Method shape**:
+- One method per HTTP verb with `[HttpGet/Post/Patch/Delete("…")]`, `[Produces("application/json")]`.
+- Explicit `[ProducesResponseType(StatusCodes.Status…)]` for every status the action can return — including 4xx and `typeof(ProblemDetails)` for 500.
+- Return type: `Task<ActionResult<T>>` with a concrete `T`. Use `this.Ok(dto)`, `this.NotFound("message")`, `this.BadRequest("message")`, `this.NoContent()`.
+- Binding: always explicit — `[FromRoute]`, `[FromQuery]`, `[FromHeader]`, `[FromBody]`. Never rely on default model binding.
+
+**Error handling — no try/catch in controllers**:
+- Throw typed exceptions and let `Lis.Api/Filters/ApiExceptionFilter.cs` map them:
+  - `KeyNotFoundException` → 404
+  - `ArgumentException` / `BadHttpRequestException` → 400
+  - `UnauthorizedAccessException` → 403
+  - `OperationCanceledException` → 499 (ClientClosedRequest)
+  - default → 500
+- The filter produces `ProblemDetails` with the current trace id in `Extensions["traceId"]`.
+- Logs 5xx as Error, 4xx as Warning.
+
+**JSON / DTOs**:
+- snake_case via `JsonOpt.Configure()` — this is the Lis convention across every channel and we keep it for REST.
+- DTOs live in `Lis.Api/Schemas/{Resource}/` (matches RickAi's `Schemas/{Domain}/` layout, scoped per resource).
+- Annotate DTOs with `[JsonPropertyName("snake_case")]`, `[Required]`, `[MaxLength]`.
+
+**Transport**:
+- All client→server traffic is REST under `/api/*`. Auth: `Authorization: Bearer ${WEB_CHANNEL_TOKEN}` enforced by a single middleware on the `api` route group.
+- All server→client live updates are SSE — see **SSE Conventions** below.
+- CORS: allow `vscode-webview://*` plus any explicit origin from settings (see `Lis.Api/Program.cs`).
+
+### SSE Conventions
+
+Two SSE endpoints, both server→client only, content-type `text/event-stream`:
+
+1. **`GET /api/chats/{id}/stream`** — token stream for one chat's active turn. Closes after `done` or client disconnect.
+2. **`GET /api/events`** — global push channel for cross-client change notifications (project/folder/chat/git/scheduled-task changes).
+
+**Implementation**:
+- Each event line is `event: <name>\ndata: <snake_case JSON>\nid: <monotonic id>\n\n`. Always set `event:` and `data:`, set `id:` for events that participate in replay.
+- Controllers expose SSE via `IAsyncEnumerable<ServerSentEvent>` (.NET's built-in) or by writing directly to `Response.Body`. Always set `Content-Type: text/event-stream` and `X-Accel-Buffering: no` so reverse proxies don't buffer.
+- `Last-Event-ID` header from the client is honoured by `EventsController` — server replays missed events from an in-memory ring buffer (last N seconds, configurable).
+- Services publish via `IEventBus.PublishAsync(event)` after the state mutation; the SSE controllers subscribe for the lifetime of the request.
 
 ### Agent Rules
 
