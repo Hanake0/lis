@@ -60,9 +60,15 @@ public static class AnthropicProvider {
 
 		// Token counter (free endpoint for accurate post-compaction counts, with a
 		// real messages.create fallback on the small/fast model if it fails).
-		HttpClient tokenHttp = useBearer
-			? new(new BearerAuthHandler(opts.ApiKey) { InnerHandler = new HttpClientHandler() })
-			: new();
+		// OAuth (sk-ant-oat) requires the "You are Claude Code" system prefix in
+		// EVERY /messages* request — both count_tokens and the fallback. Without
+		// it, Anthropic returns 400. Chain the same handlers the main chat path uses.
+		HttpMessageHandler tokenInner = new HttpClientHandler();
+		if (useBearer) {
+			tokenInner = new OAuthSystemPromptHandler { InnerHandler = tokenInner };
+			tokenInner = new BearerAuthHandler(opts.ApiKey) { InnerHandler = tokenInner };
+		}
+		HttpClient tokenHttp = new(tokenInner);
 		if (!useBearer)
 			tokenHttp.DefaultRequestHeaders.Add("x-api-key", opts.ApiKey);
 		tokenHttp.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
