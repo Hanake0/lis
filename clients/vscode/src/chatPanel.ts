@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
 import type { LisClient } from './lisClient';
-import { buildWorkspaceMessage } from './sidebarWebviewProvider';
+import { buildWorkspaceMessage, openExternalPath } from './sidebarWebviewProvider';
 import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
@@ -13,7 +13,7 @@ interface ImageAttachment {
 }
 
 interface WebviewInbound {
-	type:           'ready' | 'send' | 'send_frame' | 'create_session' | 'delete_session' | 'rename_session' | 'archive_session' | 'lis.ready';
+	type:           'ready' | 'send' | 'send_frame' | 'create_session' | 'delete_session' | 'rename_session' | 'archive_session' | 'lis.ready' | 'host_open_external';
 	text?:          string;
 	model?:         string;
 	effort?:        string;
@@ -23,6 +23,7 @@ interface WebviewInbound {
 	frame?:         Record<string, unknown>;
 	chat_id?:       string;
 	name?:          string;
+	path?:          string;
 }
 
 interface ChatPanel {
@@ -107,6 +108,10 @@ export class ChatPanelManager {
 				this.post(entry, buildWorkspaceMessage());
 				return;
 			}
+
+			case 'host_open_external':
+				if (typeof msg.path === 'string' && msg.path.length > 0) void openExternalPath(msg.path);
+				return;
 
 			case 'toggle_sidebar':
 				void vscode.commands.executeCommand('workbench.view.extension.lis-sidebar');

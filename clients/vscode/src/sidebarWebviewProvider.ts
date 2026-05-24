@@ -61,6 +61,10 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					return;
 				}
 
+				case 'host_open_external':
+					if (typeof msg.path === 'string' && msg.path.length > 0) void openExternalPath(msg.path);
+					return;
+
 				case 'ready':
 					if (this.client.currentState === 'connected') {
 						this.post({ type: 'state', state: 'connected' });
@@ -162,4 +166,40 @@ export function buildWorkspaceMessage(): { type: 'lis.workspace'; workspaceRoot?
 		workspaceRoot: folder,
 		homeDirectory: home,
 	};
+}
+
+/**
+ * Resolve a path or URL into a VS Code action. Webview dispatch from
+ * `openDesktopPath` / `openDesktopFileInApp` in lib/desktop.ts.
+ *
+ * - `http(s)://` / `vscode://` / `mailto:` etc. → `vscode.env.openExternal`
+ * - Local file/folder paths → open the parent in the OS file explorer via
+ *   `revealFileInOS` if it's a file, or open the folder in a new window if
+ *   it's a directory.
+ */
+export async function openExternalPath(target: string): Promise<void> {
+	const trimmed = target.trim();
+	if (!trimmed) return;
+
+	// Try URI schemes first — http(s), vscode://, mailto:, etc.
+	try {
+		const uri = vscode.Uri.parse(trimmed, true);
+		if (uri.scheme && uri.scheme !== 'file' && uri.scheme !== '') {
+			await vscode.env.openExternal(uri);
+			return;
+		}
+	} catch { /* not a URI — fall through to file handling */ }
+
+	// Path on disk — try to reveal it; if it's a directory, open in a new window.
+	try {
+		const uri  = vscode.Uri.file(trimmed);
+		const stat = await vscode.workspace.fs.stat(uri);
+		if (stat.type === vscode.FileType.Directory) {
+			await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: true });
+		} else {
+			await vscode.commands.executeCommand('revealFileInOS', uri);
+		}
+	} catch (err) {
+		console.warn('[lis] openExternalPath failed:', trimmed, err);
+	}
 }
