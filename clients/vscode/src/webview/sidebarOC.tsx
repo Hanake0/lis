@@ -24,7 +24,7 @@ function ensureLisProject(): void {
 }
 
 export function installSidebarFrameHandler(): void {
-	document.documentElement.classList.add('dark');
+	document.documentElement.classList.add('dark', 'lis-sidebar');
 	ensureLisProject();
 
 	window.addEventListener('message', (ev: MessageEvent<{ type: string; [k: string]: unknown }>) => {

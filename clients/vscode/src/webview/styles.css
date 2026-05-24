@@ -94,6 +94,14 @@ html, body, #app {
   overscroll-behavior: none;
 }
 
+/*
+ * Sidebar mode: OC tokens are rem-based against a 16px design base. The chat
+ * panel inherits VS Code's 13px which shrinks them to ~11px. The sidebar
+ * webview sets html.lis-sidebar so rem resolves against 16px; body text
+ * stays at vscode-font-size (13px) because the body rule wins for body.
+ */
+html.lis-sidebar { font-size: 16px; }
+
 body {
   overflow: hidden;
 }
