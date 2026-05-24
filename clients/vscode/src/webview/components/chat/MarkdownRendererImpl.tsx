@@ -1,5 +1,5 @@
 import React from 'react';
-import 'katex/dist/katex.min.css';
+// katex CSS is imported via styles.css (Tailwind entry point)
 import { renderMermaidASCII, renderMermaidSVG } from 'beautiful-mermaid';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
