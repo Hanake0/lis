@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f5f0e8"/>
+      <stop offset="100%" stop-color="#e8dfd3"/>
+    </linearGradient>
+    <linearGradient id="fleur-grad" x1="256" y1="57" x2="256" y2="455" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a08060"/>
+      <stop offset="100%" stop-color="#6b5040"/>
+    </linearGradient>
+    <clipPath id="circle">
+      <circle cx="256" cy="256" r="256"/>
+    </clipPath>
+  </defs>
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <g clip-path="url(#circle)">
+    <path d="M256 57 C256 57 239 142 199 182 C159 222 114 216 114 216 C114 216 159 273 199 273 C216 273 228 261 228 250 L228 312 C228 312 216 329 188 341 L188 369 L239 352 L256 455 L273 352 L324 369 L324 341 C296 329 284 312 284 312 L284 250 C284 261 296 273 313 273 C353 273 398 216 398 216 C398 216 353 222 313 182 C273 142 256 57 256 57Z"
+          fill="#8B7355"/>
+    <path d="M256 57 C256 57 239 142 199 182 C159 222 114 216 114 216 C114 216 159 273 199 273 C216 273 228 261 228 250 L228 312 C228 312 216 329 188 341 L188 369 L239 352 L256 455 L273 352 L324 369 L324 341 C296 329 284 312 284 312 L284 250 C284 261 296 273 313 273 C353 273 398 216 398 216 C398 216 353 222 313 182 C273 142 256 57 256 57Z"
+          fill="url(#fleur-grad)" opacity="0.3"/>
+  </g>
+</svg>
