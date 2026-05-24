@@ -63,9 +63,7 @@ export function ContextPanel() {
 									</td>
 									<td class="context-name">{seg.name}</td>
 									<td class="context-tokens">{fmtTok(seg.tokens)}</td>
-									<td class="context-pct-cell">
-										{data.budget > 0 ? ((seg.tokens / data.budget) * 100).toFixed(1) : '0'}%
-									</td>
+									<td class="context-pct-cell">{fmtPct(seg.tokens, data.budget)}</td>
 								</tr>
 							))}
 						</tbody>
@@ -83,7 +81,16 @@ export function ContextPanel() {
 }
 
 function fmtTok(n: number): string {
+	// Backend emits -1 when count_tokens failed for that segment — never substitute a
+	// local estimate; render an explicit em-dash so the user sees the gap.
+	if (n < 0)          return '—';
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
 	if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
 	return `${n}`;
+}
+
+function fmtPct(tokens: number, budget: number): string {
+	if (tokens < 0)   return '—';
+	if (budget <= 0) return '0%';
+	return `${((tokens / budget) * 100).toFixed(1)}%`;
 }
