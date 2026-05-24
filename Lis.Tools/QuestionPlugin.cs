@@ -44,32 +44,9 @@ public sealed class QuestionPlugin(IQuestionService questionService) {
 		return FormatAnswers(items, result.Answers);
 	}
 
-	private static List<QuestionItem> ParseQuestions(string json) {
-		using JsonDocument doc = JsonDocument.Parse(json);
-		List<QuestionItem> items = [];
-
-		foreach (JsonElement el in doc.RootElement.EnumerateArray()) {
-			string question = el.GetProperty("question").GetString()
-				?? throw new InvalidOperationException("question is required");
-
-			string? header = el.TryGetProperty("header", out JsonElement h) ? h.GetString() : null;
-			bool multiple = el.TryGetProperty("multiple", out JsonElement m) && m.GetBoolean();
-
-			List<QuestionOption>? options = null;
-			if (el.TryGetProperty("options", out JsonElement opts) && opts.ValueKind == JsonValueKind.Array) {
-				options = [];
-				foreach (JsonElement opt in opts.EnumerateArray()) {
-					string label = opt.GetProperty("label").GetString() ?? "";
-					string? desc = opt.TryGetProperty("description", out JsonElement d) ? d.GetString() : null;
-					options.Add(new QuestionOption(label, desc));
-				}
-			}
-
-			items.Add(new QuestionItem(question, header, options, multiple));
-		}
-
-		return items;
-	}
+	private static List<QuestionItem> ParseQuestions(string json) =>
+		JsonSerializer.Deserialize<List<QuestionItem>>(json, JsonOpt.Default)
+		?? throw new InvalidOperationException("Failed to deserialize questions");
 
 	private static string FormatAnswers(List<QuestionItem> items, IReadOnlyList<IReadOnlyList<string>> answers) {
 		if (items.Count == 1 && answers.Count == 1)
