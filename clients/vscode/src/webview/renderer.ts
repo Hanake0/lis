@@ -42,6 +42,11 @@ export function renderAll(messages: Array<{ role?: string; text?: string }>): vo
 	scrollToBottom();
 }
 
+export function clearMessagesDom(): void {
+	messagesEl.innerHTML = '';
+	typingEl = null;
+}
+
 export function showTyping(): void {
 	if (typingEl && typingEl.parentNode === messagesEl) {
 		scrollToBottom();

@@ -1,6 +1,6 @@
 // Frame dispatch — routes incoming frames to the appropriate handler.
 
-import { appendSystem, hideTyping, renderMessage, renderAll, showTyping, setStatus } from './renderer';
+import { appendSystem, hideTyping, renderMessage, showTyping, setStatus, clearMessagesDom } from './renderer';
 import { handleChunk, handleThinkingChunk, finalizeStreamedMessage } from './streaming';
 import { handleToolStart, handleToolResult } from './toolBlocks';
 import { storeMetadata, attachMetadataBadge } from './metadata';
@@ -130,12 +130,10 @@ function replaceHistory(list: Message[]): void {
 	messages.length = 0;
 	knownMessageIds.clear();
 	hideTyping();
-	for (const m of list) {
-		if (!hasText(m)) continue;
-		messages.push(m);
-		knownMessageIds.add(m.id);
-	}
-	renderAll(messages);
+	// Render through appendMessage so tool-role rows produce tool blocks (not bubbles)
+	// and assistant rows attach metadata badges, instead of bypassing to a flat renderAll.
+	clearMessagesDom();
+	for (const m of list) appendMessage(m);
 }
 
 function hasText(msg: { text?: string }): boolean {
