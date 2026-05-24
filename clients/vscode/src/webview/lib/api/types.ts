@@ -72,3 +72,192 @@ export interface GitHubPullRequestStatus {
 	defaultBranch?:      string | null;
 	resolvedRemoteName?: string | null;
 }
+
+// ── ProjectEntry — what the Lis backend serves under /api/projects ─────────
+
+export interface ProjectEntry {
+	id:                     string;
+	path:                   string;
+	label:                  string | null;
+	icon?:                  string | null;
+	icon_image_mime?:       string | null;
+	icon_image_source?:     string | null;
+	icon_image_updated_at?: string | null;
+	icon_background?:       string | null;
+	color?:                 string | null;
+	added_at:               string;
+	last_opened_at?:        string | null;
+	created_at:             string;
+	updated_at:             string;
+	sidebar_collapsed:      boolean;
+	sort_index:             number;
+	iconImage?: { updatedAt?: number; mime?: string };  // OC-shaped fallback for byte-identical components
+}
+
+// ── Git ────────────────────────────────────────────────────────────────────
+
+export interface GitBranch {
+	name:      string;
+	isCurrent?: boolean;
+	isRemote?: boolean;
+	upstream?: string | null;
+	ahead?:    number;
+	behind?:   number;
+	lastCommitDate?: string;
+}
+
+export interface GitStatus {
+	branch?:      string | null;
+	ahead?:       number;
+	behind?:      number;
+	dirty?:       boolean;
+	files?:       Array<{ path: string; status: string }>;
+	isGitRepo?:   boolean;
+}
+
+export interface GitRemote {
+	name: string;
+	url:  string;
+}
+
+export interface GitStashEntry {
+	index:   number;
+	message: string;
+	at:      string;
+}
+
+export interface GitWorktreeInfo {
+	path:       string;
+	branch?:    string | null;
+	head?:      string | null;
+	isLocked?:  boolean;
+}
+
+export interface GitLogEntry {
+	sha:      string;
+	message:  string;
+	author:   string;
+	date:     string;
+	parents?: string[];
+}
+
+export interface CommitFileEntry {
+	path:      string;
+	status:    'added' | 'modified' | 'deleted' | 'renamed' | string;
+	additions: number;
+	deletions: number;
+	oldPath?:  string;
+}
+
+export interface GitMergeInProgress {
+	heads:    string[];
+	message?: string;
+}
+
+export interface GitRebaseInProgress {
+	onto:    string;
+	current: string;
+	step:    number;
+	total:   number;
+}
+
+export interface GitIdentityProfile {
+	id:           string;
+	name:         string;
+	userName:     string;
+	userEmail:    string;
+	authType?:    'ssh' | 'token' | 'password';
+	sshKey?:      string;
+	host?:        string;
+	color?:       string;
+	icon?:        string;
+}
+
+// ── GitHub — issues + PR list + repo selector ───────────────────────────────
+
+export interface GitHubIssue {
+	number:    number;
+	title:     string;
+	body?:     string;
+	state:     'open' | 'closed';
+	url:       string;
+	labels?:   string[];
+	assignees?: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface GitHubIssueComment {
+	id:        number;
+	body:      string;
+	author:    string;
+	createdAt: string;
+}
+
+export interface GitHubIssueSummary {
+	number: number;
+	title:  string;
+	state:  'open' | 'closed';
+	url:    string;
+}
+
+export interface GitHubIssuesListResult {
+	connected:  boolean;
+	repo?:      { owner: string; repo: string };
+	issues:     GitHubIssueSummary[];
+	hasMore?:   boolean;
+	error?:     string;
+}
+
+export interface GitHubPullRequestSummary {
+	number: number;
+	title:  string;
+	state:  'open' | 'closed' | 'merged';
+	url:    string;
+	head:   string;
+	base:   string;
+}
+
+export interface GitHubPullRequestsListResult {
+	connected:  boolean;
+	repo?:      { owner: string; repo: string };
+	pulls:      GitHubPullRequestSummary[];
+	hasMore?:   boolean;
+	error?:     string;
+}
+
+export interface GitHubPullRequestContextResult {
+	connected: boolean;
+	pr?:       GitHubPullRequest | null;
+	commits?:  GitLogEntry[];
+	files?:    CommitFileEntry[];
+	error?:    string;
+}
+
+export interface GitHubRepoSelector {
+	owner: string;
+	repo:  string;
+}
+
+// ── Editor + terminal + skills ─────────────────────────────────────────────
+
+export interface EditorAPI {
+	openFile?: (path: string, options?: { line?: number; column?: number }) => Promise<void>;
+	revealRange?: (path: string, range: { start: number; end: number }) => Promise<void>;
+}
+
+export interface TerminalStreamEvent {
+	type:        'data' | 'exit' | 'error';
+	data?:       string;
+	exitCode?:   number;
+	signal?:     string;
+}
+
+export interface SkillsCatalogItem {
+	id:           string;
+	name:         string;
+	description?: string;
+	repo?:        string;
+	stars?:       number;
+	updatedAt?:   string;
+}
