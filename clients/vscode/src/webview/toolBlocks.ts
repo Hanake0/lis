@@ -3,9 +3,11 @@
 import { scrollToBottom } from './renderer';
 
 const messagesEl = document.getElementById('messages')!;
-const toolElements = new Map<string, HTMLDivElement>();
+// Track by id so tool_result + message_tokens can update an existing block — even
+// after the call completes (the backfilled token count arrives after the next turn).
+const toolBlocks = new Map<string, HTMLDivElement>();
 
-export function handleToolStart(id: string, toolName: string, toolArgs?: string): void {
+export function handleToolStart(id: string, toolName: string, toolArgs?: string, tokens?: number): void {
 	const el = document.createElement('div');
 	el.className = 'tool-block';
 	el.dataset.toolId = id;
@@ -13,7 +15,7 @@ export function handleToolStart(id: string, toolName: string, toolArgs?: string)
 	const displayName = formatToolName(toolName);
 	const header = document.createElement('div');
 	header.className = 'tool-header';
-	header.innerHTML = `<span class="tool-icon">⚙</span> <span class="tool-name">${escapeHtml(displayName)}</span> <span class="tool-status running">running</span>`;
+	header.innerHTML = `<span class="tool-icon">⚙</span> <span class="tool-name">${escapeHtml(displayName)}</span> <span class="tool-tokens"></span> <span class="tool-status running">running</span>`;
 	header.addEventListener('click', () => el.classList.toggle('collapsed'));
 	el.appendChild(header);
 
@@ -26,12 +28,13 @@ export function handleToolStart(id: string, toolName: string, toolArgs?: string)
 	}
 
 	messagesEl.appendChild(el);
-	toolElements.set(id, el);
+	toolBlocks.set(id, el);
+	if (tokens) setToolTokens(el, tokens);
 	scrollToBottom();
 }
 
 export function handleToolResult(id: string, _toolName: string, result?: string, error?: string): void {
-	const el = toolElements.get(id);
+	const el = toolBlocks.get(id);
 	if (!el) return;
 
 	const statusEl = el.querySelector('.tool-status');
@@ -46,8 +49,31 @@ export function handleToolResult(id: string, _toolName: string, result?: string,
 	el.appendChild(resultEl);
 
 	el.classList.add('collapsed');
-	toolElements.delete(id);
+	// NOTE: don't remove from toolBlocks — a backfilled message_tokens frame may
+	// arrive after the next assistant turn returns, and we want to attach it here.
 	scrollToBottom();
+}
+
+/**
+ * Late-arriving token count for an existing tool block (backfilled from the API
+ * input delta after the subsequent assistant turn). Updates the header pill.
+ */
+export function handleToolTokens(id: string, tokens: number): void {
+	const el = toolBlocks.get(id);
+	if (!el) return;
+	setToolTokens(el, tokens);
+}
+
+function setToolTokens(el: HTMLDivElement, tokens: number): void {
+	const pill = el.querySelector('.tool-tokens') as HTMLSpanElement | null;
+	if (!pill) return;
+	pill.textContent = formatTokens(tokens);
+	pill.title = `${tokens} tokens`;
+}
+
+function formatTokens(n: number): string {
+	if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+	return `${n}`;
 }
 
 function formatToolName(name: string): string {

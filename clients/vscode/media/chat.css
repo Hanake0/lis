@@ -149,6 +149,15 @@ body { display: flex; flex-direction: column; }
 	cursor: pointer;
 	user-select: none;
 	font-style: italic;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.thinking-tokens {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	margin-left: auto;
+	font-style: normal;
 }
 .thinking-label::before { content: '▼ '; font-size: 10px; }
 .thinking-block.collapsed .thinking-label::before { content: '▶ '; }
@@ -184,7 +193,14 @@ body { display: flex; flex-direction: column; }
 }
 .tool-icon { font-size: 13px; }
 .tool-name { font-family: var(--vscode-editor-font-family, monospace); }
-.tool-status { font-size: 10px; margin-left: auto; }
+.tool-tokens {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	margin-left: auto;
+}
+.tool-tokens:empty { display: none; }
+.tool-status { font-size: 10px; margin-left: 6px; }
+.tool-tokens:empty + .tool-status { margin-left: auto; }
 .tool-status.running { color: var(--vscode-charts-yellow); }
 .tool-status.done    { color: var(--vscode-charts-green); }
 .tool-status.error   { color: var(--vscode-errorForeground); }

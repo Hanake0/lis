@@ -62,6 +62,31 @@ export function handleThinkingChunk(id: string, delta: string, done: boolean): v
 	scrollToBottom();
 }
 
+/**
+ * Annotates the most recent thinking block (i.e. the one for the assistant turn
+ * that just finished) with the total thinking token count from the final message
+ * frame. The message frame's id is unrelated to the streaming-chunk id so we
+ * target by recency rather than by id, mirroring finalizeStreamedMessage.
+ */
+export function setThinkingTokens(tokens: number): void {
+	const blocks = messagesEl.querySelectorAll<HTMLDivElement>('.thinking-block');
+	const el = blocks[blocks.length - 1];
+	if (!el) return;
+	let pill = el.querySelector<HTMLSpanElement>('.thinking-tokens');
+	if (!pill) {
+		pill = document.createElement('span');
+		pill.className = 'thinking-tokens';
+		el.querySelector('.thinking-label')?.appendChild(pill);
+	}
+	pill.textContent = formatTokens(tokens);
+	pill.title = `${tokens} thinking tokens`;
+}
+
+function formatTokens(n: number): string {
+	if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+	return `${n}`;
+}
+
 export function finalizeStreamedMessage(_id: string, _text: string): void {
 	// Remove ALL active streaming elements — the final message frame may have
 	// a different ID than the streaming chunks (backend generates IDs separately).

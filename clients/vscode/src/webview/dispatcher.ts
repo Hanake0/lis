@@ -1,8 +1,8 @@
 // Frame dispatch — routes incoming frames to the appropriate handler.
 
 import { appendError, hideTyping, renderMessage, showTyping, setStatus, clearMessagesDom } from './renderer';
-import { handleChunk, handleThinkingChunk, finalizeStreamedMessage } from './streaming';
-import { handleToolStart, handleToolResult } from './toolBlocks';
+import { handleChunk, handleThinkingChunk, finalizeStreamedMessage, setThinkingTokens } from './streaming';
+import { handleToolStart, handleToolResult, handleToolTokens } from './toolBlocks';
 import { storeMetadata, attachMetadataBadge } from './metadata';
 import { handleAgentInfo, handleAgentList } from './composer';
 
@@ -40,6 +40,8 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 			if (frame.role === 'assistant') {
 				hideTyping();
 				finalizeStreamedMessage(frame.id as string, frame.text as string);
+				const thinkTokens = frame.thinking_tokens as number | undefined;
+				if (thinkTokens && thinkTokens > 0) setThinkingTokens(thinkTokens);
 			}
 			appendMessage({
 				id:                    frame.id as string,
@@ -69,6 +71,12 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 		case 'tool_result':
 			handleToolResult(frame.id as string, frame.tool_name as string, frame.result as string | undefined, frame.error as string | undefined);
 			break;
+
+		case 'message_tokens': {
+			const out = frame.output_tokens as number | undefined;
+			if (typeof out === 'number') handleToolTokens(frame.id as string, out);
+			break;
+		}
 
 		case 'typing':         showTyping(); break;
 		case 'typing_stopped': hideTyping(); break;
@@ -104,7 +112,7 @@ function appendMessage(msg: Message): void {
 	// Tool-role messages render as collapsed tool blocks, not chat bubbles
 	if (msg.role === 'tool') {
 		if (msg.tool_name || msg.text) {
-			handleToolStart(msg.id, msg.tool_name ?? 'tool', msg.tool_args);
+			handleToolStart(msg.id, msg.tool_name ?? 'tool', msg.tool_args, msg.output_tokens);
 			handleToolResult(msg.id, msg.tool_name ?? 'tool', msg.text, undefined);
 		}
 		messages.push(msg);
