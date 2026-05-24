@@ -61,8 +61,14 @@ export class LisHttpClient {
 		}
 
 		const text = await response.text();
-		let body: unknown = text;
-		if (text.length > 0) {
+		let body: unknown;
+		if (text.length === 0) {
+			// 204 No Content (or any genuinely empty body) → null. Callers should
+			// treat null as "no payload" rather than an empty string they have to
+			// guard against.
+			body = null;
+		} else {
+			body = text;
 			const contentType = response.headers.get('content-type') ?? '';
 			if (contentType.includes('json')) {
 				try { body = JSON.parse(text); } catch { /* leave as raw text */ }

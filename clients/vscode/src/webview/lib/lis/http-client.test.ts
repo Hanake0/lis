@@ -103,12 +103,14 @@ describe('LisHttpClient', () => {
 		expect(res.body).toBe('plain');
 	});
 
-	test('handles 204 No Content (empty body)', async () => {
+	test('handles 204 No Content by returning a null body (not empty string)', async () => {
 		fake.respond = () => new Response(null, { status: 204 });
 		const client = new LisHttpClient('http://localhost:3010', 'tok');
 		const res = await client.request({ method: 'DELETE', path: '/x' });
 		expect(res.status).toBe(204);
-		expect(res.body).toBe('');
+		// null lets callers test `if (body)` without false-positives from "" — and
+		// matches the GET-by-id semantics for "row absent" used by /api/git/identities/global.
+		expect(res.body).toBeNull();
 	});
 
 	test('returns status 0 with error message on network failure', async () => {

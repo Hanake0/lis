@@ -143,6 +143,17 @@ export class LisRpcClient {
 		return this.request<void>('DELETE', '/worktrees', { project_path: projectPath, worktree_path: worktreePath, force });
 	}
 
+	// ── Git identities (Stage 10 backend) ──────────────────────────
+
+	listGitIdentities():                                              Promise<unknown[]> { return this.get('/git/identities'); }
+	getGitIdentity(id: string):                                       Promise<unknown>   { return this.get(`/git/identities/${encodeURIComponent(id)}`); }
+	createGitIdentity(input: Record<string, unknown>):                Promise<unknown>   { return this.post('/git/identities', input); }
+	updateGitIdentity(id: string, input: Record<string, unknown>):    Promise<unknown>   { return this.patch(`/git/identities/${encodeURIComponent(id)}`, input); }
+	deleteGitIdentity(id: string):                                    Promise<void>      { return this.delete(`/git/identities/${encodeURIComponent(id)}`); }
+	getGlobalGitIdentity():                                           Promise<unknown>   { return this.get('/git/identities/global'); }
+	getDefaultGitIdentity():                                          Promise<unknown>   { return this.get('/git/identities/default'); }
+	setDefaultGitIdentity(externalId: string | null):                 Promise<void>      { return this.put('/git/identities/default', { external_id: externalId }); }
+
 	// ── Scheduled tasks ────────────────────────────────────────────
 
 	listScheduledTasksForProject(projectId: string):                  Promise<unknown[]> { return this.get(`/projects/${encodeURIComponent(projectId)}/scheduled-tasks`); }
