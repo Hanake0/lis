@@ -1,0 +1,77 @@
+{
+  "name": "lis-vscode",
+  "displayName": "Lis",
+  "description": "Personal AI assistant — chat with Lis from inside VS Code.",
+  "version": "0.1.0",
+  "publisher": "lis",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "browser": "./dist/extension.js",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:lis.chat"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lis-sidebar",
+          "title": "Lis",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "lis-sidebar": [
+        {
+          "type": "webview",
+          "id": "lis.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "lis.connect",
+        "title": "Lis: Connect"
+      },
+      {
+        "command": "lis.disconnect",
+        "title": "Lis: Disconnect"
+      },
+      {
+        "command": "lis.newChat",
+        "title": "Lis: New Chat"
+      }
+    ],
+    "configuration": {
+      "title": "Lis",
+      "properties": {
+        "lis.serverUrl": {
+          "type": "string",
+          "default": "ws://localhost:3010/web/ws",
+          "description": "WebSocket URL of the Lis server."
+        },
+        "lis.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Shared secret matching WEB_CHANNEL_TOKEN on the server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.100.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.0"
+  }
+}
