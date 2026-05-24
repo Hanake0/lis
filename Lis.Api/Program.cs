@@ -1,12 +1,15 @@
 using Grafana.OpenTelemetry;
 
 using Lis.Agent;
+using Lis.Api.Filters;
 using Lis.Channels.Web;
 using Lis.Channels.WhatsApp;
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
+using Lis.Core.Events;
 using Lis.Core.Util;
 using Lis.Persistence;
+using Lis.Persistence.Services;
 using Lis.Providers.Anthropic;
 using Lis.Providers.Embedding;
 using Lis.Providers.OpenAi;
@@ -30,13 +33,17 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // The WebSocket controller links ApplicationStopping into its CT, so this is a safety net.
 builder.Services.Configure<HostOptions>(opt => opt.ShutdownTimeout = TimeSpan.FromSeconds(5));
 
-// Controllers + JSON serialization
-builder.Services.AddControllers()
+// Controllers + JSON serialization + typed-exception → ProblemDetails mapping
+builder.Services.AddControllers(o => o.Filters.Add<ApiExceptionFilter>())
 	   .AddApplicationPart(typeof(GowaWebhookController).Assembly)
 	   .AddJsonOptions(opt => JsonOpt.Configure(opt.JsonSerializerOptions));
 
 // Error handling
 builder.Services.AddProblemDetails();
+
+// Time + event bus (singletons — the bus holds in-memory subscriber state and a replay ring)
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IEventBus, EventBus>();
 
 // Observability
 builder.Services.AddOpenTelemetry()
@@ -121,6 +128,7 @@ builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
 builder.Services.AddSingleton<ToolRunner>();
 builder.Services.AddSingleton<ContextBreakdownService>();
+builder.Services.AddScoped<IProjectService, ProjectService>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
