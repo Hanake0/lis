@@ -32,4 +32,7 @@ public sealed class MessageRow {
 
 	[JsonPropertyName("tool_name")]
 	public string? ToolName { get; init; }
+
+	[JsonPropertyName("tool_args")]
+	public string? ToolArgs { get; init; }
 }

@@ -193,6 +193,7 @@ public sealed class WebChannelController(
 			CacheCreationTokens = m.CacheCreationTokens,
 			ThinkingTokens      = m.ThinkingTokens,
 			ToolName            = m.Role == "tool" ? ExtractToolName(m.SkContent) : null,
+			ToolArgs            = m.Role == "tool" ? ExtractToolArgs(m.SkContent) : null,
 		}).ToList();
 
 		await client.PublishAsync(ServerFrame.ChatHistory(frame.ChatId, rows), ct);
@@ -340,6 +341,21 @@ public sealed class WebChannelController(
 						return itemFn.GetString();
 				}
 			}
+		} catch { /* malformed JSON — return null */ }
+		return null;
+	}
+
+	/// <summary>
+	/// Reads <c>Metadata.ToolArgs</c> from a persisted tool message's SkContent — populated
+	/// by ToolRunner so history can show the args the agent passed to the function.
+	/// </summary>
+	private static string? ExtractToolArgs(string? skContent) {
+		if (string.IsNullOrEmpty(skContent)) return null;
+		try {
+			using JsonDocument doc = JsonDocument.Parse(skContent);
+			if (doc.RootElement.TryGetProperty("Metadata", out JsonElement meta)
+			 && meta.TryGetProperty("ToolArgs", out JsonElement args))
+				return args.GetString();
 		} catch { /* malformed JSON — return null */ }
 		return null;
 	}

@@ -17,6 +17,7 @@ interface Message {
 	cache_creation_tokens?: number;
 	thinking_tokens?:      number;
 	tool_name?:            string;
+	tool_args?:            string;
 }
 
 let chatId: string | null = null;
@@ -103,7 +104,7 @@ function appendMessage(msg: Message): void {
 	// Tool-role messages render as collapsed tool blocks, not chat bubbles
 	if (msg.role === 'tool') {
 		if (msg.tool_name || msg.text) {
-			handleToolStart(msg.id, msg.tool_name ?? 'tool', '');
+			handleToolStart(msg.id, msg.tool_name ?? 'tool', msg.tool_args);
 			handleToolResult(msg.id, msg.tool_name ?? 'tool', msg.text, undefined);
 		}
 		messages.push(msg);
