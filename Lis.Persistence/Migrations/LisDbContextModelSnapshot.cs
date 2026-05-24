@@ -525,6 +525,57 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("exec_approval");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.GitHubIdentityEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at")
+                        .HasJsonPropertyName("added_at");
+
+                    b.Property<string>("Login")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("login")
+                        .HasJsonPropertyName("login");
+
+                    b.Property<string>("Scopes")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)")
+                        .HasColumnName("scopes")
+                        .HasJsonPropertyName("scopes");
+
+                    b.Property<string>("TokenProtected")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("token_protected");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.Property<long?>("UserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("user_id")
+                        .HasJsonPropertyName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("github_identity");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.MemoryEntity", b =>
                 {
                     b.Property<long>("Id")
