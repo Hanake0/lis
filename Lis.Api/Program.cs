@@ -146,6 +146,9 @@ builder.Services.AddHostedService<ScheduledTaskRunner>();
 // scoped services like IConversationService once a real dispatcher is wired).
 builder.Services.AddSingleton<IMultiRunCoordinator, MultiRunCoordinator>();
 builder.Services.AddScoped<IMultiRunDispatcher, NoOpMultiRunDispatcher>();
+// GitHub integration: scoped service that talks to Octokit + persists encrypted PATs via DataProtection.
+builder.Services.AddDataProtection();
+builder.Services.AddScoped<IGitHubService, GitHubService>();
 
 // Conversation + Agent require AI and at least one channel
 bool hasChannel = Env("GOWA_ENABLED") == "true" || Env("WEB_CHANNEL_ENABLED") == "true";
