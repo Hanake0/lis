@@ -44,8 +44,6 @@ export const useUIStore = create<any>((set: any) => ({
 	isScheduledTasksDialogOpen: false,
 	isSessionDropdownOpen: false,
 	isMobileSessionStatusBarCollapsed: false,
-	isFavoriteModel: noop,
-
 	mermaidRenderingMode: 'svg',
 	userMessageRenderingMode: 'markdown',
 	chatRenderMode: 'standard',
@@ -126,6 +124,36 @@ export const useUIStore = create<any>((set: any) => ({
 	setShowDeletionDialog: (v: boolean) => set({ showDeletionDialog: v }),
 	setShowOpenCodeUpdateNotifications: (v: boolean) => set({ showOpenCodeUpdateNotifications: v }),
 
+	// Panel-height tracking actually consumed by ProjectNotesTodoPanel — must persist
+	// the height across re-renders or the drag handle resets to the default on every mount.
+	setNotesPanelHeight: (h: number) => set({ notesPanelHeight: h }),
+	setTodoPanelHeight:  (h: number) => set({ todoPanelHeight:  h }),
+
+	// Settings navigation: GitHubIntegrationDialog + GitHubIssuePickerDialog + GitHubPrPickerDialog
+	// all open the settings dialog onto a specific page (`github`). Without this, the dialog
+	// opens but the panel doesn't focus.
+	setSettingsPage: (page: string | null) => set({ settingsPage: page }),
+	setSettingsProjectsSelectedId:        (id: string | null) => set({ settingsProjectsSelectedId:        id }),
+	setSettingsRemoteInstancesSelectedId: (id: string | null) => set({ settingsRemoteInstancesSelectedId: id }),
+
+	// Help dialog toggle — bound to the sidebar's `?` button.
+	toggleHelpDialog: () => set((s: { isHelpDialogOpen: boolean }) => ({ isHelpDialogOpen: !s.isHelpDialogOpen })),
+
+	// Multi-run launcher entry points — the sidebar dispatches these when the user clicks the launcher button.
+	openMultiRunLauncher: () => set({ isMultiRunLauncherOpen: true, multiRunLauncherPrefillPrompt: null }),
+	openMultiRunLauncherWithPrompt: (prompt: string | null) => set({
+		isMultiRunLauncherOpen:         true,
+		multiRunLauncherPrefillPrompt:  prompt,
+	}),
+
+	// Favorite-model predicate. Returns false until the favorites feature ships;
+	// keeps the type as a boolean-returning function so consumers don't crash on `.call()`.
+	isFavoriteModel: () => false,
+
+	// ── Below this line: features that don't exist in the Lis sidebar today. ──
+	// Diff/git-change view modes (chat-panel features), context panel (OC desktop),
+	// remote shortcuts, recent-model tracking, etc. Kept as noops so any byte-identical
+	// OC component that imports them still compiles; consumers see graceful "no change".
 	setDiffViewMode: noop,
 	setDiffFileLayout: noop,
 	setDiffWrapLines: noop,
@@ -133,11 +161,6 @@ export const useUIStore = create<any>((set: any) => ({
 	setSessionRetentionAction: noop,
 	setAutoDeleteEnabled: noop,
 	setAutoDeleteAfterDays: noop,
-	setNotesPanelHeight: noop,
-	setTodoPanelHeight: noop,
-	setSettingsPage: noop,
-	setSettingsProjectsSelectedId: noop,
-	setSettingsRemoteInstancesSelectedId: noop,
 	setPendingDiffFile: noop,
 	setPendingFileFocusPath: noop,
 	setPendingFileNavigation: noop,
@@ -149,7 +172,6 @@ export const useUIStore = create<any>((set: any) => ({
 	setContextPanelTabTargetPath: noop,
 	setContextPanelWidth: noop,
 
-	toggleHelpDialog: noop,
 	toggleSidebar2: noop,
 	toggleFavoriteModel: noop,
 	toggleHiddenModel: noop,
@@ -163,8 +185,6 @@ export const useUIStore = create<any>((set: any) => ({
 	openContextBrowser: noop,
 	openContextOverview: noop,
 	openContextPanelTab: noop,
-	openMultiRunLauncher: noop,
-	openMultiRunLauncherWithPrompt: noop,
 	closeContextPanel: noop,
 	closeContextPanelTab: noop,
 	reorderContextPanelTabs: noop,
