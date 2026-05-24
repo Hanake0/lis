@@ -2,6 +2,14 @@ namespace Lis.Core.Channel;
 
 public interface IChannelClient {
 	Task<string?> SendMessageAsync(string chatId, string message, string? replyToId = null, CancellationToken ct = default);
+
+	/// <summary>
+	/// Variant that carries the assistant message's token usage so streaming-capable
+	/// channels can surface a metadata badge. Defaults to ignoring the usage —
+	/// channels without UI metadata (e.g. WhatsApp) just send the text.
+	/// </summary>
+	Task<string?> SendMessageAsync(string chatId, string message, TokenUsage? usage, string? replyToId = null, CancellationToken ct = default)
+		=> this.SendMessageAsync(chatId, message, replyToId, ct);
 	Task SetTypingAsync(string chatId, CancellationToken ct = default);
 	Task StopTypingAsync(string chatId, CancellationToken ct = default);
 	Task MarkReadAsync(string messageId, string chatId, CancellationToken ct = default);

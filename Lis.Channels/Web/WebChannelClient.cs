@@ -38,11 +38,22 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 	// ── IChannelClient (called by ConversationService) ──────────────
 
 	[Trace("WebChannelClient > SendMessageAsync")]
+	public Task<string?> SendMessageAsync(
+		string chatId, string message, string? replyToId = null, CancellationToken ct = default) =>
+		this.SendMessageAsync(chatId, message, usage: null, replyToId, ct);
+
+	[Trace("WebChannelClient > SendMessageAsync (with usage)")]
 	public async Task<string?> SendMessageAsync(
-		string chatId, string message, string? replyToId = null, CancellationToken ct = default) {
+		string chatId, string message, TokenUsage? usage, string? replyToId = null, CancellationToken ct = default) {
 		string id = Guid.NewGuid().ToString("N");
 		await this.PublishAsync(
-			ServerFrame.Message(chatId, id, message, role: "assistant", timestamp: DateTimeOffset.UtcNow),
+			ServerFrame.Message(
+				chatId, id, message, role: "assistant", timestamp: DateTimeOffset.UtcNow,
+				inputTokens:         usage?.InputTokens,
+				outputTokens:        usage?.OutputTokens,
+				cacheReadTokens:     usage?.CacheReadTokens,
+				cacheCreationTokens: usage?.CacheCreationTokens,
+				thinkingTokens:      usage?.ThinkingTokens),
 			ct);
 		return id;
 	}

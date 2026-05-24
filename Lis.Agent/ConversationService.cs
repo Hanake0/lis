@@ -263,19 +263,20 @@ public sealed class ConversationService(
 		await foreach (ChatMessageContent msg in toolRunner.RunAsync(
 			chatService, chatHistory, agentKernel, settings,
 			channelClient, message.ChatId, streamMessageId, ct)) {
+			// Usage is attached per-message by ToolRunner (only on assistant messages).
+			// Extract it BEFORE sending so the message frame carries token metadata.
+			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
+
 			string? externalId = null;
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content)) {
 				(string? content, bool shouldQuote) = ResponseDirectives.Parse(msg.Content);
 				if (content is not null) {
 					content = await this.DenormalizeMentionsAsync(content, message.ChatId, message.SenderId, ct);
 					externalId = await channelClient.SendMessageAsync(
-						message.ChatId, content, shouldQuote ? message.ExternalId : null, ct);
+						message.ChatId, content, msgUsage, shouldQuote ? message.ExternalId : null, ct);
 					sentAnyMessage = true;
 				}
 			}
-
-			// Usage is attached per-message by ToolRunner (only on assistant messages)
-			TokenUsage? msgUsage = ToolRunner.GetUsage(msg);
 
 			// Back-fill tool result token counts from the API input delta
 			if (msgUsage is not null && prevUsage is not null && pendingToolMsgIds.Count > 0) {

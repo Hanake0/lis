@@ -91,8 +91,15 @@ public sealed class ServerFrame {
 	public static ServerFrame Connected() =>
 		new() { Type = "connected" };
 
-	public static ServerFrame Message(string chatId, string id, string text, string role, DateTimeOffset timestamp) =>
-		new() { Type = "message", ChatId = chatId, Id = id, Text = text, Role = role, Timestamp = timestamp };
+	public static ServerFrame Message(string chatId, string id, string text, string role, DateTimeOffset timestamp,
+		int? inputTokens = null, int? outputTokens = null, int? cacheReadTokens = null,
+		int? cacheCreationTokens = null, int? thinkingTokens = null) =>
+		new() {
+			Type = "message", ChatId = chatId, Id = id, Text = text, Role = role, Timestamp = timestamp,
+			InputTokens = inputTokens, OutputTokens = outputTokens,
+			CacheReadTokens = cacheReadTokens, CacheCreationTokens = cacheCreationTokens,
+			ThinkingTokens = thinkingTokens
+		};
 
 	public static ServerFrame Typing(string chatId) =>
 		new() { Type = "typing", ChatId = chatId };
