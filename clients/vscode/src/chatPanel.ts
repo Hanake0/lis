@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 
-import { LisClient } from './lisClient';
+import type { LisClient } from './lisClient';
+import type { LisEventStream } from './lisEventStream';
+import type { LisHttpClient } from './lisHttpClient';
+import { LisWebviewBridge } from './lisWebviewBridge';
 import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
@@ -37,11 +40,14 @@ interface ChatPanel {
  */
 export class ChatPanelManager {
 	private static readonly viewType = 'lis.chatPanel';
-	private readonly panels = new Map<string, ChatPanel>();
+	private readonly panels  = new Map<string, ChatPanel>();
+	private readonly bridges = new Map<string, LisWebviewBridge>();
 
 	constructor(
-		private readonly context: vscode.ExtensionContext,
-		private readonly client:  LisClient,
+		private readonly context:     vscode.ExtensionContext,
+		private readonly client:      LisClient,
+		private readonly httpClient:  LisHttpClient,
+		private readonly eventStream: LisEventStream,
 	) {
 		client.onFrame(frame => this.onFrame(frame));
 		client.onState(state => this.broadcastState(state));
@@ -79,8 +85,17 @@ export class ChatPanelManager {
 		this.panels.set(chatId, entry);
 
 		panel.webview.onDidReceiveMessage((msg: WebviewInbound) => this.onWebviewMessage(entry, msg));
+
+		// REST + SSE bridge per panel. Bridge runs alongside the legacy WS message handler;
+		// they don't share state — the bridge ignores everything except http_request envelopes.
+		const bridge = new LisWebviewBridge(panel.webview, this.httpClient, this.eventStream);
+		this.bridges.set(chatId, bridge);
+
 		panel.onDidDispose(() => {
 			this.panels.delete(chatId);
+			const b = this.bridges.get(chatId);
+			b?.disposeAll();
+			this.bridges.delete(chatId);
 		});
 	}
 

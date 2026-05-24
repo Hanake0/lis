@@ -1,15 +1,21 @@
 import * as vscode from 'vscode';
-import { LisClient } from './lisClient';
+import type { LisClient } from './lisClient';
+import type { LisEventStream } from './lisEventStream';
+import type { LisHttpClient } from './lisHttpClient';
+import { LisWebviewBridge } from './lisWebviewBridge';
 import type { ServerFrame } from './types';
 import { generateNonce } from './util';
 
 export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	private view: vscode.WebviewView | null = null;
+	private bridge: LisWebviewBridge | null = null;
 	private onOpenSession: ((chatId: string, title?: string) => void) | null = null;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
-		private readonly client: LisClient,
+		private readonly client:       LisClient,
+		private readonly httpClient:   LisHttpClient,
+		private readonly eventStream:  LisEventStream,
 	) {
 		client.onFrame((frame: ServerFrame) => this.onFrame(frame));
 	}
@@ -31,6 +37,12 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 		};
 
 		webviewView.webview.html = this.getHtml(webviewView.webview);
+
+		// REST + SSE proxy. Bridge runs independently of the legacy WS handler below;
+		// HTTP envelopes go through here, WS frames continue via this.client until Stage 13.
+		this.bridge?.disposeAll();
+		this.bridge = new LisWebviewBridge(webviewView.webview, this.httpClient, this.eventStream);
+		webviewView.onDidDispose(() => { this.bridge?.disposeAll(); this.bridge = null; });
 
 		webviewView.webview.onDidReceiveMessage((msg) => {
 			switch (msg.type) {

@@ -3,17 +3,21 @@ import * as vscode from 'vscode';
 import { ChatPanelManager } from './chatPanel';
 import { DEFAULT_SERVER_URL, deriveWsUrl, readConfigFrom } from './config';
 import { LisClient } from './lisClient';
+import { LisEventStream } from './lisEventStream';
+import { LisHttpClient } from './lisHttpClient';
 import { Logger } from './logger';
 import { LisStatusBar } from './statusBar';
 import { SidebarWebviewProvider } from './sidebarWebviewProvider';
 
 const FIRST_RUN_KEY = 'lis.firstRunNotificationDismissed';
 
-let client:    LisClient | null = null;
-let sidebar:   SidebarWebviewProvider | null = null;
-let panels:    ChatPanelManager | null = null;
-let logger:    Logger | null = null;
-let statusBar: LisStatusBar | null = null;
+let client:      LisClient | null = null;
+let sidebar:     SidebarWebviewProvider | null = null;
+let panels:      ChatPanelManager | null = null;
+let logger:      Logger | null = null;
+let statusBar:   LisStatusBar | null = null;
+let httpClient:  LisHttpClient | null = null;
+let eventStream: LisEventStream | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
 	const cfg = readConfigFrom(vscode.workspace.getConfiguration('lis'));
@@ -35,10 +39,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	}
 
 	const wsUrl = deriveWsUrl(cfg.baseOrigin);
-	client    = new LisClient(wsUrl, cfg.token, logger);
-	sidebar   = new SidebarWebviewProvider(context.extensionUri, client);
-	panels    = new ChatPanelManager(context, client);
-	statusBar = new LisStatusBar();
+	client      = new LisClient(wsUrl, cfg.token, logger);
+	httpClient  = new LisHttpClient(cfg.baseOrigin, cfg.token);
+	eventStream = new LisEventStream(cfg.baseOrigin, cfg.token);
+	sidebar     = new SidebarWebviewProvider(context.extensionUri, client, httpClient, eventStream);
+	panels      = new ChatPanelManager(context, client, httpClient, eventStream);
+	statusBar   = new LisStatusBar();
+
+	eventStream.start();
 
 	statusBar.update(client.currentState, cfg.baseOrigin);
 	client.onState((state) => {
@@ -77,6 +85,8 @@ export function activate(context: vscode.ExtensionContext): void {
 			const next = readConfigFrom(vscode.workspace.getConfiguration('lis'));
 			logger?.setVerbose(next.verbose);
 			client?.updateConfig(deriveWsUrl(next.baseOrigin), next.token);
+			httpClient?.updateConfig(next.baseOrigin, next.token);
+			eventStream?.updateConfig(next.baseOrigin, next.token);
 			statusBar?.update(client?.currentState ?? 'disconnected', next.baseOrigin);
 		}),
 	);
@@ -96,13 +106,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
 	client?.disconnect();
+	eventStream?.stop();
 	statusBar?.dispose();
 	logger?.dispose();
-	client    = null;
-	sidebar   = null;
-	panels    = null;
-	statusBar = null;
-	logger    = null;
+	client      = null;
+	sidebar     = null;
+	panels      = null;
+	statusBar   = null;
+	logger      = null;
+	httpClient  = null;
+	eventStream = null;
 }
 
 async function promptFirstRun(context: vscode.ExtensionContext, serverUrl: string): Promise<void> {
