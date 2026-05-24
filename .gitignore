@@ -377,3 +377,9 @@ FodyWeavers.xsd
 # Claude Code
 .claude/plans/
 .claude/settings.local.json
+
+# Playwright MCP snapshots (transient, per-session)
+.playwright-mcp/
+
+# VS Code extension packaged artifacts
+clients/vscode/*.vsix
