@@ -221,15 +221,20 @@ public sealed class ConversationService(
 
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 
-		Dictionary<string, object> extensionData = new() { ["max_tokens"] = agentModelSettings.MaxTokens };
+		int maxTokens = agentModelSettings.MaxTokens;
 
 		// SK→M.E.AI does not forward ExtensionData["thinking"] to the wire — flow it via
 		// AsyncLocal so the provider's HTTP handler can inject it directly into the request body.
 		JsonNode? thinkingNode = null;
 		if (agentModelSettings.ThinkingEffort is { Length: > 0 } effort) {
-			thinkingNode = BuildThinkingNode(message.ThinkingModeOverride, agentModelSettings.Model, effort, logger);
+			(thinkingNode, int minMaxTokens) = BuildThinkingNode(message.ThinkingModeOverride, agentModelSettings.Model, effort, logger);
+			// Anthropic requires max_tokens > thinking.budget_tokens; for adaptive xhigh/max,
+			// the docs additionally require max_tokens ≥ 64000.
+			if (minMaxTokens > maxTokens) maxTokens = minMaxTokens;
 		}
 		ThinkingContext.Pending.Value = thinkingNode;
+
+		Dictionary<string, object> extensionData = new() { ["max_tokens"] = maxTokens };
 
 		// Clone kernel and strip plugins not in the agent's tool policy.
 		// FunctionChoiceBehavior.Auto(functions:) breaks Anthropic SDK serialization,
@@ -544,18 +549,19 @@ public sealed class ConversationService(
 		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
 
 	/// <summary>
-	/// Builds the <c>thinking</c> JSON node injected into the Anthropic request body.
-	/// Returns null when thinking should be disabled for this turn (e.g. xhigh requested
-	/// on a non-Opus-4.7 model — xhigh is exclusive to that model family).
+	/// Builds the <c>thinking</c> JSON node injected into the Anthropic request body and
+	/// reports the minimum <c>max_tokens</c> the API requires alongside it. Returns
+	/// <c>(null, 0)</c> when thinking should be disabled (e.g. xhigh on a non-Opus-4.7
+	/// model — xhigh is exclusive to that family).
 	/// </summary>
-	internal static JsonNode? BuildThinkingNode(string? overrideMode, string model, string effort, ILogger logger) {
+	internal static (JsonNode? Node, int MinMaxTokens) BuildThinkingNode(string? overrideMode, string model, string effort, ILogger logger) {
 		bool requiresAdaptive = ModelRequiresAdaptive(model);
 		bool isXhigh          = effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase);
 
 		// xhigh is only valid on Opus 4.7+ (per user requirement). Drop thinking on older models.
 		if (isXhigh && !requiresAdaptive) {
 			logger.LogWarning("xhigh effort requested on model '{Model}' but it is exclusive to Opus 4.7+ — disabling thinking", model);
-			return null;
+			return (null, 0);
 		}
 
 		string mode = overrideMode?.ToLowerInvariant() switch {
@@ -567,9 +573,18 @@ public sealed class ConversationService(
 		// Opus 4.7+ does not support fixed-budget — force adaptive regardless of override.
 		if (requiresAdaptive) mode = "adaptive";
 
-		return mode == "adaptive"
-			? BuildAdaptiveThinking(effort)
-			: BuildBudgetThinking(effort, model);
+		if (mode == "adaptive") {
+			JsonObject node = BuildAdaptiveThinking(effort);
+			// Docs: "max_tokens ≥ 64000" when output_config.effort is xhigh or max.
+			int adaptiveMin = effort.ToLowerInvariant() is "xhigh" or "max" ? 64000 : 0;
+			return (node, adaptiveMin);
+		} else {
+			JsonObject node = BuildBudgetThinking(effort, model);
+			// API constraint: max_tokens MUST be > budget_tokens. Leave headroom for the
+			// non-thinking response: budget + 4096 keeps the visible answer ≥ 4096 tokens.
+			int budget = node["budget_tokens"]?.GetValue<int>() ?? 0;
+			return (node, budget + 4096);
+		}
 	}
 
 	private static bool ModelRequiresAdaptive(string model) {
