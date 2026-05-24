@@ -21,4 +21,4 @@ export interface SessionWorktreeAttachment {
 	worktreeRoot: string;
 	branch: string;
 }
-export function getMemoryLimits(..._args: any[]): any { return null; }
+export function getMemoryLimits(): { HISTORICAL_MESSAGES: number } { return { HISTORICAL_MESSAGES: 100 }; }

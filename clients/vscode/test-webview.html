@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="dist/chat.css">
+	<style>html,body,#app{height:100%;width:100%;margin:0;padding:0;}</style>
+	<title>Test Webview</title>
+</head>
+<body>
+	<div id="app"></div>
+	<script>
+		// Simulate VS Code webview API
+		window.acquireVsCodeApi = () => ({
+			postMessage: (msg) => console.log('[postMessage]', JSON.stringify(msg)),
+			getState: () => ({}),
+			setState: () => {},
+		});
+	</script>
+	<script src="dist/chat.js"></script>
+	<script>
+		// Simulate init message after a short delay
+		setTimeout(() => {
+			window.postMessage({ type: 'init', chatId: 'test-chat-1' }, '*');
+			setTimeout(() => {
+				window.postMessage({ type: 'state', state: 'connected' }, '*');
+			}, 100);
+		}, 500);
+	</script>
+</body>
+</html>

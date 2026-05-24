@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import { useState } from 'react';
+import { RiSave3Line, RiCheckLine } from '@remixicon/react';
 
 interface Props {
 	dirty: boolean;
@@ -18,13 +19,14 @@ export function SaveButton({ dirty, onClick }: Props) {
 	return (
 		<button
 			type="button"
-			class={`save-btn${dirty ? ' save-btn--dirty' : ''}${saved ? ' save-btn--saved' : ''}`}
 			onClick={handle}
 			disabled={!dirty && !saved}
 			title="Save overrides to agent"
 			aria-label="Save overrides"
+			className="flex items-center justify-center w-7 h-7 rounded-md transition-colors disabled:opacity-30"
+			style={{ color: saved ? 'var(--status-success)' : dirty ? 'var(--primary)' : 'var(--muted-foreground)' }}
 		>
-			<i class={`codicon ${saved ? 'codicon-check' : 'codicon-save'}`} aria-hidden="true" />
+			{saved ? <RiCheckLine className="w-3.5 h-3.5" /> : <RiSave3Line className="w-3.5 h-3.5" />}
 		</button>
 	);
 }

@@ -1,9 +1,9 @@
 import { create } from 'zustand';
+const noop: any = () => {};
 
-interface SessionWorktreeStore {
-	attachments: Map<string, unknown>;
-}
-
-export const useSessionWorktreeStore = create<SessionWorktreeStore>(() => ({
+export const useSessionWorktreeStore = create<any>(() => ({
 	attachments: new Map(),
+	getAttachment: (_sessionId: string) => null,
+	setAttachment: noop,
+	removeAttachment: noop,
 }));

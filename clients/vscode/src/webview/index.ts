@@ -1,6 +1,7 @@
-import { h, render } from 'preact';
+import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { App } from './app';
 import { vscode } from './vscodeApi';
 
-render(h(App, null), document.getElementById('app')!);
+createRoot(document.getElementById('app')!).render(createElement(App, null));
 vscode.postMessage({ type: 'ready' });

@@ -1,14 +1,14 @@
-import { useRef, useEffect, useMemo } from 'preact/hooks';
+import { useRef, useEffect, useMemo } from 'react';
 import { renderMarkdown } from '../../markdownRenderer';
 import { TokenBadge } from './TokenBadge';
-import type { ChatMessage } from '../../state';
+import { MessageActions } from './MessageActions';
+import type { ChatMessage } from '../../store';
 
 type AssistantMsg = Extract<ChatMessage, { kind: 'assistant' }>;
 
 export function AssistantMessage({ msg }: { msg: AssistantMsg }) {
 	const bodyRef = useRef<HTMLDivElement>(null);
 
-	// Copy button handler via event delegation
 	useEffect(() => {
 		const el = bodyRef.current;
 		if (!el) return;
@@ -29,14 +29,24 @@ export function AssistantMessage({ msg }: { msg: AssistantMsg }) {
 	const html = useMemo(() => renderMarkdown(msg.text), [msg.text]);
 
 	return (
-		<div class={`msg msg--assistant${msg.streaming ? ' msg--streaming' : ''}`}>
+		<div className="chat-column my-2 group/assistant">
 			<div
-				class="msg-content prose"
 				ref={bodyRef}
-				// eslint-disable-next-line react/no-danger
+				className="prose"
+				style={{ opacity: msg.streaming ? 0.95 : 1 }}
 				dangerouslySetInnerHTML={{ __html: html }}
 			/>
-			{!msg.streaming && msg.tokens && <TokenBadge tokens={msg.tokens} />}
+			{!msg.streaming && (
+				<div className="flex items-center gap-1 mt-1">
+					<MessageActions text={msg.text} />
+					{msg.tokens && (
+						<>
+							<span className="flex-1" />
+							<TokenBadge tokens={msg.tokens} />
+						</>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

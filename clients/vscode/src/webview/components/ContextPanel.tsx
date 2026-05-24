@@ -1,6 +1,7 @@
-import { useEffect } from 'preact/hooks';
-import { contextOpen, contextData, chatId } from '../state';
+import { useEffect } from 'react';
+import { useChatStore } from '../store';
 import { vscode } from '../vscodeApi';
+import { Icon } from './icon/Icon';
 
 const SEGMENT_COLORS: Record<string, string> = {
 	'Messages':          '#569cd6',
@@ -11,9 +12,7 @@ const SEGMENT_COLORS: Record<string, string> = {
 	'Compaction buffer': '#888',
 	'Free space':        'transparent',
 };
-// Per-section system rows (names come from PromptSectionEntity.Name in the DB)
-// get a deterministic color derived from the name hash so colors stay stable
-// across renders without needing a lookup table.
+
 function colorForSegment(name: string): string {
 	if (SEGMENT_COLORS[name] !== undefined) return SEGMENT_COLORS[name];
 	let h = 0;
@@ -23,30 +22,27 @@ function colorForSegment(name: string): string {
 }
 
 export function ContextPanel() {
-	const open = contextOpen.value;
-	const data = contextData.value;
+	const open    = useChatStore(s => s.contextOpen);
+	const data    = useChatStore(s => s.contextData);
+	const chatId  = useChatStore(s => s.chatId);
+	const setOpen = useChatStore(s => s.setContextOpen);
+	const setData = useChatStore(s => s.setContextData);
 
-	// Fetch context when panel opens
 	useEffect(() => {
 		if (!open) return;
-		contextData.value = null;
-		const id = chatId.value;
-		if (id) vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: id } });
-	}, [open]);
+		setData(null);
+		if (chatId) vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: chatId } });
+	}, [open, chatId, setData]);
 
 	function refresh() {
-		const id = chatId.value;
-		if (!id) return;
-		contextData.value = null;
-		vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: id, force_refresh: true } });
+		if (!chatId) return;
+		setData(null);
+		vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: chatId, force_refresh: true } });
 	}
 
 	if (!open) return null;
 
 	const pct = data && data.budget > 0 ? Math.min(100, (data.total / data.budget) * 100) : 0;
-
-	// Pin "Free space" at the bottom and "Compaction buffer" just above it,
-	// so they read as the budget tail. Everything else sorts by tokens desc.
 	const tailRank = (name: string) =>
 		name === 'Free space' ? 2 : name === 'Compaction buffer' ? 1 : 0;
 	const sorted = data
@@ -58,55 +54,84 @@ export function ContextPanel() {
 		: [];
 
 	return (
-		<div class="context-panel">
-			<div class="context-header">
-				<span class="context-title">Context window</span>
-				{data && (
-					<span class="context-summary">
-						<strong>{fmtTok(data.total)}</strong>
-						<span class="context-sep">/</span>
-						{fmtTok(data.budget)}
-						<span class="context-pct">({pct.toFixed(1)}%)</span>
-					</span>
-				)}
-				<button type="button" class="context-refresh" title="Force refresh (re-count tokens via Anthropic)" onClick={refresh}>⟳</button>
-				<button type="button" class="context-close" onClick={() => { contextOpen.value = false; }}>✕</button>
+		<div
+			className="absolute right-4 top-12 z-30 w-80 max-w-[90vw] rounded-xl p-3 space-y-2"
+			style={{
+				background: 'var(--surface-elevated)',
+				color:      'var(--surface-elevated-foreground)',
+				border:     '1px solid var(--border)',
+				boxShadow:  '0 8px 24px rgba(0,0,0,0.28)',
+			}}
+		>
+			<div className="flex items-center gap-2">
+				<span className="typography-ui-header font-medium flex-1">Context window</span>
+				<button
+					type="button"
+					onClick={refresh}
+					title="Force refresh"
+					className="p-1 rounded hover:bg-[var(--interactive-hover)]"
+					style={{ color: 'var(--muted-foreground)' }}
+				>
+					<Icon name="refresh" className="w-3.5 h-3.5" />
+				</button>
+				<button
+					type="button"
+					onClick={() => setOpen(false)}
+					title="Close"
+					className="p-1 rounded hover:bg-[var(--interactive-hover)]"
+					style={{ color: 'var(--muted-foreground)' }}
+				>
+					<Icon name="close" className="w-3.5 h-3.5" />
+				</button>
 			</div>
 
 			{data ? (
 				<>
-					<div class="context-bar">
-						<div class="context-bar-fill" style={{ width: `${pct}%` }} />
+					<div className="flex items-baseline gap-1 typography-meta" style={{ color: 'var(--muted-foreground)' }}>
+						<strong style={{ color: 'var(--foreground)' }}>{fmtTok(data.total)}</strong>
+						<span>/</span>
+						<span>{fmtTok(data.budget)}</span>
+						<span className="ml-auto tabular-nums">{pct.toFixed(1)}%</span>
 					</div>
-					<table class="context-table">
+
+					<div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-subtle)' }}>
+						<div
+							className="h-full transition-all"
+							style={{ width: `${pct}%`, background: pct >= 85 ? 'var(--status-error)' : pct >= 65 ? 'var(--status-warning)' : 'var(--status-success)' }}
+						/>
+					</div>
+
+					<table className="w-full typography-meta">
 						<tbody>
 							{sorted.map(seg => (
-								<tr key={seg.name} class={seg.name === 'Free space' ? 'context-free' : ''}>
-									<td class="context-swatch">
-										<span style={{ background: colorForSegment(seg.name) }} />
+								<tr
+									key={seg.name}
+									style={{ opacity: seg.name === 'Free space' ? 0.6 : 1 }}
+								>
+									<td className="py-0.5 pr-1.5 w-3">
+										<span className="block w-2 h-2 rounded-sm" style={{ background: colorForSegment(seg.name), border: seg.name === 'Free space' ? '1px dashed var(--border)' : 'none' }} />
 									</td>
-									<td class="context-name">{seg.name}</td>
-									<td class="context-tokens">{fmtTok(seg.tokens)}</td>
-									<td class="context-pct-cell">{fmtPct(seg.tokens, data.budget)}</td>
+									<td className="py-0.5 truncate" style={{ color: 'var(--foreground)' }}>{seg.name}</td>
+									<td className="py-0.5 px-1 text-right tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{fmtTok(seg.tokens)}</td>
+									<td className="py-0.5 text-right tabular-nums w-12" style={{ color: 'var(--muted-foreground)' }}>{fmtPct(seg.tokens, data.budget)}</td>
 								</tr>
 							))}
 						</tbody>
 					</table>
-					<div class="context-footer">
-						<span>{data.model}</span>
-						{data.effort && <span class="context-effort">· {data.effort}</span>}
+
+					<div className="flex items-center gap-1 typography-meta pt-1" style={{ color: 'var(--muted-foreground)', borderTop: '1px solid var(--border)' }}>
+						<span className="pt-1">{data.model}</span>
+						{data.effort && <span className="pt-1">· {data.effort}</span>}
 					</div>
 				</>
 			) : (
-				<div class="context-loading">Loading…</div>
+				<div className="py-4 text-center typography-meta" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
 			)}
 		</div>
 	);
 }
 
 function fmtTok(n: number): string {
-	// Backend emits -1 when count_tokens failed for that segment — never substitute a
-	// local estimate; render an explicit em-dash so the user sees the gap.
 	if (n < 0)          return '—';
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
 	if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
@@ -114,7 +139,7 @@ function fmtTok(n: number): string {
 }
 
 function fmtPct(tokens: number, budget: number): string {
-	if (tokens < 0)   return '—';
+	if (tokens < 0)  return '—';
 	if (budget <= 0) return '0%';
 	return `${((tokens / budget) * 100).toFixed(1)}%`;
 }

@@ -9,4 +9,5 @@ export const useMessageQueueStore = create<any>((set: any) => ({
 	removeFromQueue: (id: string) => set((s: any) => ({ queue: s.queue.filter((m: any) => m.id !== id) })),
 	clearQueue: () => set({ queue: [] }),
 	queueModeEnabled: false, popToInput: noop,
+	queuedMessages: {} as Record<string, QueuedMessage[]>,
 }));

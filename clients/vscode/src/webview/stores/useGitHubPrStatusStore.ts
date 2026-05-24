@@ -7,4 +7,4 @@ export const useGitHubPrStatusStore = create<any>(() => ({
 	startWatching: noop, stopWatching: noop, refresh: noop, updateStatus: noop,
 }));
 export function getGitHubPrStatusKey(): string { return ''; }
-export function usePrVisualSummaryByKeys(): any { return {}; }
+export function usePrVisualSummaryByKeys(): any { return new Map(); }

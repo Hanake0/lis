@@ -1,5 +1,5 @@
-import { useState } from 'preact/hooks';
-import type { TokenMeta } from '../../state';
+import { useState } from 'react';
+import type { TokenMeta } from '../../store';
 
 export function TokenBadge({ tokens }: { tokens: TokenMeta }) {
 	const [open, setOpen] = useState(false);
@@ -8,8 +8,8 @@ export function TokenBadge({ tokens }: { tokens: TokenMeta }) {
 	if (!total) return null;
 
 	const rows: Array<{ label: string; value: number; color: string }> = [
-		{ label: 'Input',   value: tokens.input_tokens  ?? 0, color: '#569cd6' },
-		{ label: 'Output',  value: tokens.output_tokens ?? 0, color: '#4ec9b0' },
+		{ label: 'Input',  value: tokens.input_tokens  ?? 0, color: '#569cd6' },
+		{ label: 'Output', value: tokens.output_tokens ?? 0, color: '#4ec9b0' },
 	];
 	if (tokens.cache_read_tokens)     rows.push({ label: 'Cache ↩', value: tokens.cache_read_tokens,     color: '#c586c0' });
 	if (tokens.cache_creation_tokens) rows.push({ label: 'Cache ↑', value: tokens.cache_creation_tokens, color: '#dcdcaa' });
@@ -18,27 +18,39 @@ export function TokenBadge({ tokens }: { tokens: TokenMeta }) {
 	const grand = rows.reduce((s, r) => s + r.value, 0);
 
 	return (
-		<div class="token-badge-wrap">
+		<div className="relative inline-block">
 			<button
 				type="button"
-				class={`token-badge${open ? ' token-badge--open' : ''}`}
-				onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+				onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
 				title="Token usage"
+				className="inline-flex items-center gap-1 typography-meta tabular-nums px-2 py-0.5 rounded-full transition-colors hover:bg-[var(--interactive-hover)]"
+				style={{
+					color:      'var(--muted-foreground)',
+					background: open ? 'var(--interactive-active)' : 'var(--surface-subtle)',
+					border:     '1px solid var(--border)',
+				}}
 			>
-				{formatTok(total)}
+				<span className="opacity-70">⌬</span>
+				<span>{formatTok(total)}</span>
 			</button>
 			{open && (
-				<div class="token-panel" onClick={e => e.stopPropagation()}>
+				<div
+					className="absolute left-0 top-full mt-1 z-10 min-w-[220px] rounded-lg p-2 space-y-1.5"
+					style={{
+						background: 'var(--surface-elevated)',
+						color:      'var(--surface-elevated-foreground)',
+						border:     '1px solid var(--border)',
+						boxShadow:  '0 4px 12px rgba(0,0,0,0.18)',
+					}}
+					onClick={(e) => e.stopPropagation()}
+				>
 					{rows.map(r => (
-						<div key={r.label} class="token-row">
-							<span class="token-label">{r.label}</span>
-							<div class="token-bar-track">
-								<div
-									class="token-bar-fill"
-									style={{ width: `${grand > 0 ? (r.value / grand) * 100 : 0}%`, background: r.color }}
-								/>
+						<div key={r.label} className="flex items-center gap-2 typography-meta">
+							<span className="w-16 flex-shrink-0" style={{ color: 'var(--muted-foreground)' }}>{r.label}</span>
+							<div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-subtle)' }}>
+								<div className="h-full rounded-full" style={{ width: `${grand > 0 ? (r.value / grand) * 100 : 0}%`, background: r.color }} />
 							</div>
-							<span class="token-value">{formatTok(r.value)}</span>
+							<span className="tabular-nums w-12 text-right">{formatTok(r.value)}</span>
 						</div>
 					))}
 				</div>

@@ -14,8 +14,8 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	isLoading: false,
 	abortPromptSessionId: null,
 	availableWorktrees: [],
-	availableWorktreesByProject: {},
-	worktreeMetadata: null,
+	availableWorktreesByProject: new Map(),
+	worktreeMetadata: new Map(),
 	isSessionPlanAvailable: false,
 
 	setCurrentSession: (id: string) => set({ currentSessionId: id, newSessionDraft: null }),

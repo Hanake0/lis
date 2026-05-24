@@ -1,19 +1,20 @@
-import { useRef, useEffect, useState } from 'preact/hooks';
-import { messages, isTyping, type ChatMessage } from '../state';
+import { useRef, useEffect, useState } from 'react';
+import { useChatStore, type ChatMessage } from '../store';
 import { UserMessage } from './messages/UserMessage';
 import { AssistantMessage } from './messages/AssistantMessage';
 import { ThinkingBlock } from './messages/ThinkingBlock';
 import { ToolBlock } from './messages/ToolBlock';
 import { TypingIndicator } from './messages/TypingIndicator';
 import { ErrorMessage } from './messages/ErrorMessage';
+import { ChatEmptyState } from './ChatEmptyState';
+import { Icon } from './icon/Icon';
 
 export function MessageList() {
-	const listRef    = useRef<HTMLDivElement>(null);
+	const listRef   = useRef<HTMLDivElement>(null);
 	const [showJump, setShowJump] = useState(false);
-	const msgs    = messages.value;
-	const typing  = isTyping.value;
+	const msgs   = useChatStore(s => s.messages);
+	const typing = useChatStore(s => s.isTyping);
 
-	// Auto-scroll when messages change if user is near bottom
 	useEffect(() => {
 		const el = listRef.current;
 		if (!el) return;
@@ -34,12 +35,40 @@ export function MessageList() {
 		setShowJump(false);
 	}
 
+	const isEmpty = msgs.length === 0 && !typing;
+
 	return (
-		<div class="message-list" ref={listRef} onScroll={onScroll}>
-			{msgs.map(m => <MessageRow key={m.id} msg={m} />)}
-			{typing && <TypingIndicator />}
+		<div className="flex-1 relative overflow-hidden">
+			<div
+				ref={listRef}
+				onScroll={onScroll}
+				className="absolute inset-0 overflow-y-auto"
+			>
+				{isEmpty ? (
+					<ChatEmptyState />
+				) : (
+					<div className="py-6">
+						{msgs.map(m => <MessageRow key={m.id} msg={m} />)}
+						{typing && <TypingIndicator />}
+						<div className="h-4" />
+					</div>
+				)}
+			</div>
 			{showJump && (
-				<button class="jump-btn" type="button" onClick={jumpToBottom} title="Scroll to bottom">↓</button>
+				<button
+					type="button"
+					onClick={jumpToBottom}
+					title="Scroll to bottom"
+					className="absolute bottom-3 right-3 flex items-center justify-center w-9 h-9 rounded-full transition-colors hover:bg-[var(--interactive-hover)]"
+					style={{
+						background: 'var(--surface-elevated)',
+						color:      'var(--foreground)',
+						border:     '1px solid var(--border)',
+						boxShadow:  '0 4px 12px rgba(0,0,0,0.18)',
+					}}
+				>
+					<Icon name="arrow-down-s" className="w-4 h-4" />
+				</button>
 			)}
 		</div>
 	);

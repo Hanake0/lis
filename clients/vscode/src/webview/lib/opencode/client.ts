@@ -11,4 +11,6 @@ export const opencodeClient = {
 		},
 	}),
 	getDirectory: () => null as string | null,
+	getFilesystemHome: async () => null,
+	getHealth: async () => ({ planModeExperimentalEnabled: false }),
 };

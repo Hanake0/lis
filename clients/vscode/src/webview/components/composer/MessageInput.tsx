@@ -1,19 +1,21 @@
+import type { KeyboardEvent, FormEvent } from 'react';
+
 interface Props {
-	value: string;
+	value:    string;
 	onChange: (v: string) => void;
-	onSend: () => void;
+	onSend:   () => void;
 }
 
 export function MessageInput({ value, onChange, onSend }: Props) {
-	function onKey(e: KeyboardEvent) {
+	function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
 			onSend();
 		}
 	}
 
-	function onInput(e: Event) {
-		const el = e.target as HTMLTextAreaElement;
+	function onInput(e: FormEvent<HTMLTextAreaElement>) {
+		const el = e.currentTarget;
 		onChange(el.value);
 		el.style.height = 'auto';
 		el.style.height = `${Math.min(200, el.scrollHeight)}px`;
@@ -21,14 +23,16 @@ export function MessageInput({ value, onChange, onSend }: Props) {
 
 	return (
 		<textarea
-			class="composer-textarea"
+			data-chat-input="true"
+			className="block w-full resize-none bg-transparent outline-none typography-markdown px-4 py-3 leading-relaxed placeholder:opacity-50"
+			style={{ color: 'var(--foreground)', minHeight: '3.25rem' }}
 			value={value}
-			rows={1}
-			placeholder="Message Lis (Enter to send, Shift+Enter for newline)"
+			rows={2}
+			placeholder="Ask, plan, or build something…"
 			onKeyDown={onKey}
 			onInput={onInput}
 			// eslint-disable-next-line jsx-a11y/no-autofocus
-			autofocus
+			autoFocus
 		/>
 	);
 }

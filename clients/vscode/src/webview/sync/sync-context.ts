@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useChatStore, type ChatMessage } from '@/store';
 
 export type DirectorySyncState = {
@@ -7,28 +8,26 @@ export type DirectorySyncState = {
 	question: Record<string, unknown[]>;
 };
 
-function buildState(): DirectorySyncState {
-	const { chatId, isTyping } = useChatStore.getState();
-	return {
-		session: chatId ? [{ id: chatId, title: 'Chat' }] : [],
-		session_status: chatId ? { [chatId]: { type: isTyping ? 'busy' : 'idle' } } : {},
-		permission: {},
-		question: {},
-	};
-}
+const EMPTY_PERMISSION: Record<string, unknown[]> = {};
+const EMPTY_QUESTION: Record<string, unknown[]> = {};
 
 export function useDirectorySync<T>(selector: (state: DirectorySyncState) => T): T {
 	const chatId = useChatStore((s) => s.chatId);
 	const isTyping = useChatStore((s) => s.isTyping);
-	void chatId; void isTyping;
-	return selector(buildState());
+	const state = useMemo<DirectorySyncState>(() => ({
+		session: chatId ? [{ id: chatId, title: 'Chat' }] : [],
+		session_status: chatId ? { [chatId]: { type: isTyping ? 'busy' : 'idle' } } : {},
+		permission: EMPTY_PERMISSION,
+		question: EMPTY_QUESTION,
+	}), [chatId, isTyping]);
+	return selector(state);
 }
 
 export function useSyncDirectory(): string { return ''; }
 
 export function useSessions(): Array<{ id: string; title?: string; parentID?: string }> {
 	const chatId = useChatStore((s) => s.chatId);
-	return chatId ? [{ id: chatId, title: 'Chat' }] : [];
+	return useMemo(() => chatId ? [{ id: chatId, title: 'Chat' }] : [], [chatId]);
 }
 
 function convertMessage(m: ChatMessage): { info: any; parts: any[] } {
@@ -56,7 +55,7 @@ function convertMessage(m: ChatMessage): { info: any; parts: any[] } {
 	if (m.kind === 'thinking') {
 		return {
 			info: { id: m.id, role: 'assistant', time: { completed: m.streaming ? undefined : Date.now() } },
-			parts: [{ type: 'thinking', text: m.content ?? '' }],
+			parts: [{ type: 'thinking', text: (m as any).content ?? '' }],
 		};
 	}
 	if (m.kind === 'tool') {
@@ -67,7 +66,7 @@ function convertMessage(m: ChatMessage): { info: any; parts: any[] } {
 				toolName: m.name,
 				input: m.args,
 				output: m.error ?? m.result ?? '',
-				state: m.status === 'running' ? 'call' : m.status === 'error' ? 'result' : 'result',
+				state: m.status === 'running' ? 'call' : 'result',
 				isError: m.status === 'error',
 			}],
 		};
@@ -83,7 +82,10 @@ function convertMessage(m: ChatMessage): { info: any; parts: any[] } {
 
 export function useSessionMessages(_sessionId: string): any[] {
 	const messages = useChatStore((s) => s.messages);
-	return messages.filter((m) => m.kind === 'user' || m.kind === 'assistant').map((m) => convertMessage(m).info);
+	return useMemo(
+		() => messages.filter((m) => m.kind === 'user' || m.kind === 'assistant').map((m) => convertMessage(m).info),
+		[messages],
+	);
 }
 
 export function useSessionMessagesResolved(_sessionId: string): boolean { return true; }
@@ -94,13 +96,16 @@ export function useSessionMessageCount(_sessionId: string): number {
 
 export function useSessionMessageRecords(_sessionId: string): Array<{ info: any; parts: any[] }> {
 	const messages = useChatStore((s) => s.messages);
-	return messages.map(convertMessage);
+	return useMemo(() => messages.map(convertMessage), [messages]);
 }
+
+const BUSY_STATUS = { type: 'busy' as const };
+const IDLE_STATUS = { type: 'idle' as const };
 
 export function useSessionStatus(_sessionId: string): { type: string } | null {
 	const isTyping = useChatStore((s) => s.isTyping);
-	const hasStreaming = useChatStore((s) => s.messages.some((m) => m.kind === 'assistant' && m.streaming));
-	return (isTyping || hasStreaming) ? { type: 'busy' } : { type: 'idle' };
+	const hasStreaming = useChatStore((s) => s.messages.some((m) => m.kind === 'assistant' && (m as any).streaming));
+	return (isTyping || hasStreaming) ? BUSY_STATUS : IDLE_STATUS;
 }
 
 export function useUserMessageHistory(): unknown[] { return []; }
@@ -111,11 +116,11 @@ export class SyncProvider {
 	static defaultProps = {};
 }
 
-export function buildSessionMessageRecordsSnapshot(..._args: any[]): any { return null; }
-export function useAllLiveSessions(..._args: any[]): any { return []; }
-export function useAllSessionStatuses(..._args: any[]): any { return {}; }
+export function buildSessionMessageRecordsSnapshot(..._args: any[]): any { return []; }
+export function useAllLiveSessions(): any[] { return []; }
+export function useAllSessionStatuses(): any { return {}; }
 export function useDirectoryStore(..._args: any[]): any { return null; }
 export function useEnsureSessionMessages(..._args: any[]): any { return null; }
 export function useGlobalSessionStatus(..._args: any[]): any { return null; }
 export function useSession(..._args: any[]): any { return null; }
-export function useSessionPermissions(..._args: any[]): any { return []; }
+export function useSessionPermissions(..._args: any[]): any[] { return []; }
