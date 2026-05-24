@@ -221,17 +221,31 @@ public sealed class ConversationService(
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 
 		Dictionary<string, object> extensionData = new() { ["max_tokens"] = agentModelSettings.MaxTokens };
-		if (agentModelSettings.ThinkingEffort is { Length: > 0 } effort)
-			extensionData["thinking"] = new Dictionary<string, object> {
-				["type"] = "enabled",
-				["budget_tokens"] = effort switch {
-					"low"    => 1024,
-					"medium" => 4096,
-					"high"   => 16384,
-					_ => int.TryParse(effort, out int t) ? t : 4096
-				},
-				["display"] = "summarized"
-			};
+		if (agentModelSettings.ThinkingEffort is { Length: > 0 } effort) {
+			// "max" / "adaptive" use the adaptive thinking type with output_config.effort.
+			// low/medium/high use the explicit budget_tokens form.
+			if (effort.Equals("max", StringComparison.OrdinalIgnoreCase)
+			    || effort.Equals("adaptive", StringComparison.OrdinalIgnoreCase)) {
+				extensionData["thinking"] = new Dictionary<string, object> {
+					["type"]          = "adaptive",
+					["display"]       = "summarized",
+					["output_config"] = new Dictionary<string, object> {
+						["effort"] = effort.Equals("max", StringComparison.OrdinalIgnoreCase) ? "max" : "high"
+					}
+				};
+			} else {
+				extensionData["thinking"] = new Dictionary<string, object> {
+					["type"] = "enabled",
+					["budget_tokens"] = effort switch {
+						"low"    => 1024,
+						"medium" => 4096,
+						"high"   => 16384,
+						_ => int.TryParse(effort, out int t) ? t : 4096
+					},
+					["display"] = "summarized"
+				};
+			}
+		}
 
 		// Clone kernel and strip plugins not in the agent's tool policy.
 		// FunctionChoiceBehavior.Auto(functions:) breaks Anthropic SDK serialization,

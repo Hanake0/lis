@@ -92,21 +92,24 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 
 			role ??= chunk.Role;
 
-			// Detect thinking content (Microsoft.Extensions.AI.TextReasoningContent from M.E.AI via Anthropic SDK)
-			bool isThinking = chunk.InnerContent is Microsoft.Extensions.AI.TextReasoningContent;
-			if (!isThinking) {
+			// Detect thinking content (M.E.AI TextReasoningContent via Anthropic SDK).
+			// The thinking text lives on TextReasoningContent.Text, NOT chunk.Content.
+			string? thinkingText = null;
+			if (chunk.InnerContent is Microsoft.Extensions.AI.TextReasoningContent rc1) {
+				thinkingText = rc1.Text;
+			} else {
 				foreach (StreamingKernelContent item in chunk.Items) {
-					if (item.InnerContent is Microsoft.Extensions.AI.TextReasoningContent) { isThinking = true; break; }
+					if (item.InnerContent is Microsoft.Extensions.AI.TextReasoningContent rc2) {
+						thinkingText = rc2.Text;
+						break;
+					}
 				}
 			}
+			bool isThinking = thinkingText is not null;
 
 			if (isThinking) {
-				if (firstChunk && streamSink is not null && streamChatId is not null) {
-					firstChunk = false;
-					await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", chunk.Content ?? "", false, ct);
-				} else if (streamSink is not null && streamChatId is not null && chunk.Content is { Length: > 0 }) {
-					await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", chunk.Content, false, ct);
-				}
+				if (streamSink is not null && streamChatId is not null && !string.IsNullOrEmpty(thinkingText))
+					await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", thinkingText, false, ct);
 				// Don't append thinking to the text output — it's separate content
 				fccBuilder.Append(chunk);
 				if (chunk.Metadata is { Count: > 0 }) lastMetadata = chunk.Metadata;
