@@ -2,6 +2,7 @@
 
 import { vscode } from './vscodeApi';
 import { getChatId } from './dispatcher';
+import { toggleContextPanel } from './contextPanel';
 
 interface AgentInfo {
 	name: string;
@@ -44,11 +45,13 @@ export function initControls(): void {
 			<option value="full">full</option>
 		</select>
 		<button id="ctrl-save" type="button" title="Save overrides to agent">Save</button>
+		<button id="ctrl-context" type="button" title="Show context window breakdown">ctx</button>
 	`;
 	composerEl.insertBefore(controlsRow, composerEl.firstChild);
 
 	getEl<HTMLSelectElement>('ctrl-agent').addEventListener('change', onAgentChange);
 	getEl<HTMLButtonElement>('ctrl-save').addEventListener('click', onSave);
+	getEl<HTMLButtonElement>('ctrl-context').addEventListener('click', toggleContextPanel);
 }
 
 export function getOverrides(): { model?: string; effort?: string; tool_profile?: string; thinking_mode?: string } {

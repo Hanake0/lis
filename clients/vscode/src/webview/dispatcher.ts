@@ -5,6 +5,7 @@ import { handleChunk, handleThinkingChunk, finalizeStreamedMessage, setThinkingT
 import { handleToolStart, handleToolResult, handleToolTokens } from './toolBlocks';
 import { storeMetadata, attachMetadataBadge } from './metadata';
 import { handleAgentInfo, handleAgentList } from './composer';
+import { renderContext } from './contextPanel';
 
 interface Message {
 	id:                    string;
@@ -96,6 +97,14 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 
 		case 'agent_list':
 			handleAgentList(frame.agents as Array<{ name: string; display_name?: string; model: string; effort?: string; tool_profile?: string; is_default: boolean }>);
+			break;
+
+		case 'context':
+			renderContext(
+				frame.total as number,
+				frame.budget as number,
+				frame.segments as Array<{ name: string; tokens: number }>,
+			);
 			break;
 
 		case 'error':

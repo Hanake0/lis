@@ -240,6 +240,109 @@ body { display: flex; flex-direction: column; }
 	white-space: pre-wrap;
 }
 
+/* ── Context-usage panel ──────────────────────────────────────── */
+.context-panel {
+	max-width: 900px;
+	width: 100%;
+	margin: 0 auto;
+	border-top: 1px solid var(--vscode-panel-border);
+	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+	padding: 10px 14px 14px;
+	font-size: 12px;
+}
+.context-panel.hidden { display: none; }
+
+.context-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+.context-title {
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+.context-close {
+	background: transparent;
+	border: none;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	font-size: 14px;
+	padding: 0 4px;
+	line-height: 1;
+}
+.context-close:hover { color: var(--vscode-foreground); }
+
+.context-loading,
+.context-error {
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
+	padding: 8px 0;
+}
+.context-error { color: var(--vscode-errorForeground); font-style: normal; }
+
+.context-summary {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	margin-bottom: 6px;
+}
+.context-total {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+.context-of,
+.context-pct {
+	color: var(--vscode-descriptionForeground);
+}
+.context-budget {
+	color: var(--vscode-foreground);
+}
+
+.context-bar {
+	display: flex;
+	width: 100%;
+	height: 10px;
+	border-radius: 3px;
+	overflow: hidden;
+	background: var(--vscode-input-background);
+	margin-bottom: 8px;
+}
+.context-bar-slice { height: 100%; }
+.context-bar-remaining {
+	background: var(--vscode-panel-border) !important;
+	opacity: 0.4;
+}
+
+.context-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 11px;
+}
+.context-table tr { border-bottom: 1px solid var(--vscode-panel-border); }
+.context-table tr:last-child { border-bottom: none; }
+.context-table td {
+	padding: 4px 6px;
+	vertical-align: middle;
+}
+.context-swatch { width: 14px; }
+.context-swatch span {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	vertical-align: middle;
+}
+.context-name { color: var(--vscode-foreground); }
+.context-tokens,
+.context-pct-cell {
+	text-align: right;
+	font-family: var(--vscode-editor-font-family, monospace);
+	color: var(--vscode-descriptionForeground);
+}
+.context-tokens { color: var(--vscode-foreground); }
+
 /* ── Composer controls row ────────────────────────────────────── */
 .composer-controls {
 	display: flex;

@@ -33,6 +33,11 @@ export interface AgentSummary {
 	is_default: boolean;
 }
 
+export interface ContextSegment {
+	name:   string;
+	tokens: number;
+}
+
 // ── Server → Client frames ─────────────────────────────────────────
 
 export type ServerFrame =
@@ -49,7 +54,8 @@ export type ServerFrame =
 	| { type: 'agent_list';      agents: AgentSummary[] }
 	| { type: 'error';           error: string; chat_id?: string }
 	| { type: 'chat_list';       chats: ChatSummary[] }
-	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] };
+	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] }
+	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[] };
 
 // ── Client → Server frames ─────────────────────────────────────────
 
@@ -60,4 +66,5 @@ export type ClientFrame =
 	| { type: 'set_agent';      chat_id: string; agent_name: string }
 	| { type: 'get_agent';      chat_id: string }
 	| { type: 'list_agents' }
-	| { type: 'save_overrides'; chat_id: string; model?: string; effort?: string; tool_profile?: string };
+	| { type: 'save_overrides'; chat_id: string; model?: string; effort?: string; tool_profile?: string }
+	| { type: 'get_context';    chat_id: string };
