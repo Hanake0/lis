@@ -1,9 +1,5 @@
 import { create } from 'zustand';
-
-interface PermissionStore {
-	permissions: unknown[];
-}
-
-export const usePermissionStore = create<PermissionStore>(() => ({
-	permissions: [],
+const noop: any = () => {};
+export const usePermissionStore = create<any>(() => ({
+	permissions: [], setSessionAutoAccept: noop,
 }));

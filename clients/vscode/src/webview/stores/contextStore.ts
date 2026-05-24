@@ -1,9 +1,4 @@
 import { create } from 'zustand';
-
-interface ContextStore {
-	contextFiles: unknown[];
-}
-
-export const useContextStore = create<ContextStore>(() => ({
-	contextFiles: [],
+export const useContextStore = create<any>(() => ({
+	contextFiles: [], hasHydrated: true,
 }));

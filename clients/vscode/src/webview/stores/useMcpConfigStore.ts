@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-const asyncNoop: any = async () => {};
 export const useMcpConfigStore = create<any>(() => ({
-	configs: [], servers: [],
+	configs: [], servers: [], mcpServers: [], loadMcpConfigs: noop,
 }));
-export function envRecordToArray(..._a: any[]): any { return []; }
+export function envRecordToArray(): any[] { return []; }

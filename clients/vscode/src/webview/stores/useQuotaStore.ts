@@ -1,25 +1,14 @@
 import { create } from 'zustand';
-
-interface QuotaStore {
-	results: unknown[];
-	isLoading: boolean;
-	lastUpdated: number | null;
-	displayMode: 'usage' | 'remaining';
-	dropdownProviderIds: string[];
-	fetchAllQuotas: () => void;
-	loadSettings: () => Promise<void>;
-	setDisplayMode: (mode: 'usage' | 'remaining') => void;
-}
-
-export const useQuotaStore = create<QuotaStore>((set) => ({
-	results: [],
-	isLoading: false,
-	lastUpdated: null,
-	displayMode: 'usage',
-	dropdownProviderIds: [],
-	fetchAllQuotas: () => {},
-	loadSettings: async () => {},
-	setDisplayMode: (mode) => set({ displayMode: mode }),
+const noop: any = () => {};
+export const useQuotaStore = create<any>((set: any) => ({
+	results: [], isLoading: false, lastUpdated: null, error: null,
+	displayMode: 'usage', dropdownProviderIds: [],
+	selectedModels: [], expandedFamilies: new Set<string>(),
+	selectedProviderId: null, autoRefresh: false, refreshIntervalMs: 60000,
+	fetchAllQuotas: noop, loadSettings: noop,
+	setDisplayMode: (mode: string) => set({ displayMode: mode }),
+	toggleFamilyExpanded: noop, setSelectedProvider: noop,
+	setDropdownProviderIds: noop, toggleModelSelected: noop,
+	applyDefaultSelections: noop, setAutoRefresh: noop, setRefreshInterval: noop,
 }));
-
 export function useQuotaAutoRefresh(): void {}

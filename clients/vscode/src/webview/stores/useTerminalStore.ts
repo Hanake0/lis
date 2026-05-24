@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-const asyncNoop: any = async () => {};
 export const useTerminalStore = create<any>(() => ({
-	terminals: [], activeTerminalId: null, isConnected: false,
-	output: [], inputHistory: [], historyIndex: -1,
-	createTerminal: asyncNoop, closeTerminal: noop, setActiveTerminal: noop,
+	terminals: [], sessions: [], activeTerminalId: null, isConnected: false,
+	output: [], inputHistory: [], historyIndex: -1, projectActionRuns: [],
+	hasHydrated: true,
+	createTerminal: noop, closeTerminal: noop, setActiveTerminal: noop,
 	sendInput: noop, clearOutput: noop, resize: noop,
 	getTerminal: () => null, isTerminalActive: () => false,
-	fetchTerminals: asyncNoop, killTerminal: asyncNoop,
-	connectTerminal: asyncNoop, disconnectTerminal: noop,
+	fetchTerminals: noop, killTerminal: noop, connectTerminal: noop, disconnectTerminal: noop,
+	ensureDirectory: noop, setTabLabel: noop, setTabIconKey: noop, setActiveTab: noop,
+	setConnecting: noop, setTabSessionId: noop, setTabPreviewUrl: noop,
+	setProjectActionRun: noop, updateProjectActionRunStatus: noop, removeProjectActionRun: noop,
+	createTab: noop, closeTab: noop, setTabLifecycle: noop, appendToBuffer: noop, clearBuffer: noop,
 }));

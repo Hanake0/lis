@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-const asyncNoop: any = async () => {};
 export const useMcpStore = create<any>(() => ({
 	servers: [], tools: [], isLoading: false, error: null,
-	fetchServers: asyncNoop, fetchTools: asyncNoop, installServer: asyncNoop, removeServer: asyncNoop,
+	fetchServers: noop, fetchTools: noop, installServer: noop, removeServer: noop,
+	refresh: noop, connect: noop, disconnect: noop, completeAuth: noop,
+	startAuth: noop, clearAuth: noop, testConnection: noop, getErrorForDirectory: () => null,
 }));
-export function computeMcpHealth(..._a: any[]): any { return null; }
+export function computeMcpHealth(): any { return null; }

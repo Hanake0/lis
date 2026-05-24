@@ -1,10 +1,14 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-const asyncNoop: any = async () => {};
 export const useSessionFoldersStore = create<any>(() => ({
-	folders: {}, foldersByProject: {},
-	getFolders: () => [], getFolderById: () => null, createFolder: noop,
-	deleteFolder: noop, renameFolder: noop, moveSessionToFolder: noop,
-	removeSessionFromFolder: noop, reorderFolders: noop,
-	getFolderSessions: () => [], getSessionFolder: () => null, loadFolders: noop,
+	folders: {}, foldersByProject: {}, foldersMap: {},
+	collapsedFolderIds: new Set<string>(),
+	getFolders: () => [], getFolderById: () => null, getFoldersForScope: () => [],
+	createFolder: noop, deleteFolder: noop, renameFolder: noop,
+	moveSessionToFolder: noop, removeSessionFromFolder: noop,
+	addSessionToFolder: noop, addSessionsToFolder: noop,
+	removeSessionsFromFolders: noop, reorderFolders: noop,
+	toggleFolderCollapse: noop, cleanupSessions: noop,
+	getFolderSessions: () => [], getSessionFolder: () => null,
+	getSessionFolderId: () => null, loadFolders: noop,
 }));

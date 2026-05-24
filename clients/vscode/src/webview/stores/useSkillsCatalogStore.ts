@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-const asyncNoop: any = async () => {};
 export const useSkillsCatalogStore = create<any>(() => ({
-	skills: [], isLoading: false, error: null, fetchSkills: asyncNoop, installSkill: asyncNoop,
+	skills: [], isLoading: false, isScanning: false, isInstalling: false, error: null,
+	fetchSkills: noop, installSkill: noop, scanRepo: noop, loadCatalog: noop, installSkills: noop,
 }));

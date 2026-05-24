@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-const asyncNoop: any = async () => {};
 export const useCommandsStore = create<any>(() => ({
-	commands: [], getCommand: () => null,
+	commands: [], getCommand: () => null, loadCommands: noop,
 }));
-export function isCommandBuiltIn(..._a: any[]): any { return false; }
+export function isCommandBuiltIn(): boolean { return false; }
