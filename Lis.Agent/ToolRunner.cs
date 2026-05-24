@@ -12,7 +12,8 @@ using Microsoft.SemanticKernel.ChatCompletion;
 namespace Lis.Agent;
 
 public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService approvalService, IUsageExtractor usageExtractor, IReasoningExtractor reasoningExtractor, ILogger<ToolRunner> logger) {
-	internal const string UsageMetadataKey = "LisTokenUsage";
+	internal const string UsageMetadataKey    = "LisTokenUsage";
+	internal const string ThinkingMetadataKey = "LisThinking";
 
 	private static int MaxIterations =>
 		int.TryParse(Environment.GetEnvironmentVariable("LIS_MAX_TOOL_ITERATIONS"), out int v) ? v : 10;
@@ -98,6 +99,7 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 
 		AuthorRole?                role       = null;
 		StringBuilder              text       = new();
+		StringBuilder              thinking   = new();
 		FunctionCallContentBuilder fccBuilder = new();
 		bool                       typingSet  = false;
 		bool                       firstChunk = true;
@@ -115,6 +117,7 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 			bool isThinking = thinkingText is not null;
 
 			if (isThinking) {
+				if (!string.IsNullOrEmpty(thinkingText)) thinking.Append(thinkingText);
 				if (streamSink is not null && streamChatId is not null && !string.IsNullOrEmpty(thinkingText))
 					await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", thinkingText, false, ct);
 				// Don't append thinking to the text output — it's separate content
@@ -157,10 +160,15 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 
 		TokenUsage? usage = usageExtractor.Extract(lastMetadata);
 
-		// Build message with usage attached in metadata (thread-safe, per-message)
-		Dictionary<string, object?>? metadata = usage is not null
-			? new Dictionary<string, object?> { [UsageMetadataKey] = usage }
-			: null;
+		// Build message with usage + accumulated thinking attached in metadata
+		// (thread-safe, per-message). Thinking is the same text we streamed to the
+		// channel so reloading history can restore exactly what the user saw.
+		Dictionary<string, object?>? metadata = null;
+		if (usage is not null || thinking.Length > 0) {
+			metadata = new Dictionary<string, object?>();
+			if (usage is not null)     metadata[UsageMetadataKey]    = usage;
+			if (thinking.Length > 0)   metadata[ThinkingMetadataKey] = thinking.ToString();
+		}
 
 		string? content = text.Length > 0 ? text.ToString() : null;
 		ChatMessageContent message = new(role: role ?? AuthorRole.Assistant, content: content, metadata: metadata);

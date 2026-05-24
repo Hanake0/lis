@@ -25,6 +25,7 @@ export interface MessageRow {
 	tool_name?: string;
 	tool_args?: string;
 	tool_is_error?: boolean;
+	thinking_content?: string;
 }
 
 export interface AgentSummary {

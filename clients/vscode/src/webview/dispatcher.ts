@@ -17,6 +17,7 @@ interface Message {
 	cache_read_tokens?:    number;
 	cache_creation_tokens?: number;
 	thinking_tokens?:      number;
+	thinking_content?:     string;
 	tool_name?:            string;
 	tool_args?:            string;
 	tool_is_error?:        boolean;
@@ -138,10 +139,12 @@ function appendMessage(msg: Message, fromHistory = false): void {
 	if (!hasText(msg)) return;
 
 	// History-only: the live thinking block was created during streaming chunks
-	// and is already in the DOM. On reload, no chunks fire — insert a placeholder
-	// block above the bubble so the thinking step doesn't visually disappear.
-	if (fromHistory && msg.role === 'assistant' && (msg.thinking_tokens ?? 0) > 0) {
-		appendThinkingPlaceholder(msg.thinking_tokens!);
+	// and is already in the DOM. On reload, no chunks fire — re-insert it above
+	// the bubble using the thinking text we persisted server-side from the same
+	// stream, so reload looks identical to live.
+	if (fromHistory && msg.role === 'assistant'
+		&& ((msg.thinking_tokens ?? 0) > 0 || (msg.thinking_content && msg.thinking_content.length > 0))) {
+		appendThinkingPlaceholder(msg.thinking_tokens ?? 0, msg.thinking_content);
 	}
 
 	messages.push(msg);

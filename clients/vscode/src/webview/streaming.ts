@@ -88,12 +88,11 @@ function formatTokens(n: number): string {
 }
 
 /**
- * Renders a placeholder thinking block during history restore. Thinking content
- * isn't persisted (Anthropic returns summarized thinking per-call only), so the
- * block only shows the token count — but it preserves the live-streaming layout
- * so reloading a chat doesn't visually erase the thinking step that happened.
+ * Renders a thinking block during history restore. The content is the same text
+ * we streamed to the channel live and accumulated server-side, so reloading a
+ * chat shows the exact thinking the user originally saw.
  */
-export function appendThinkingPlaceholder(tokens: number): void {
+export function appendThinkingPlaceholder(tokens: number, content?: string): void {
 	const el = document.createElement('div');
 	el.className = 'msg thinking-block collapsed';
 
@@ -102,18 +101,22 @@ export function appendThinkingPlaceholder(tokens: number): void {
 	label.textContent = 'Thinking';
 	label.addEventListener('click', () => el.classList.toggle('collapsed'));
 
-	const pill = document.createElement('span');
-	pill.className = 'thinking-tokens';
-	pill.textContent = formatTokens(tokens);
-	pill.title = `${tokens} thinking tokens`;
-	label.appendChild(pill);
+	if (tokens > 0) {
+		const pill = document.createElement('span');
+		pill.className = 'thinking-tokens';
+		pill.textContent = formatTokens(tokens);
+		pill.title = `${tokens} thinking tokens`;
+		label.appendChild(pill);
+	}
 
-	const content = document.createElement('div');
-	content.className = 'thinking-content';
-	content.textContent = '(thinking content not retained in history)';
+	const contentEl = document.createElement('div');
+	contentEl.className = 'thinking-content';
+	contentEl.textContent = content && content.length > 0
+		? content
+		: '(thinking content not retained)';
 
 	el.appendChild(label);
-	el.appendChild(content);
+	el.appendChild(contentEl);
 	messagesEl.appendChild(el);
 }
 
