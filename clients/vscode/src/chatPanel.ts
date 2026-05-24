@@ -5,8 +5,12 @@ import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
 interface WebviewInbound {
-	type:   'ready' | 'send';
-	text?:  string;
+	type:          'ready' | 'send' | 'send_frame';
+	text?:         string;
+	model?:        string;
+	effort?:       string;
+	tool_profile?: string;
+	frame?:        Record<string, unknown>;
 }
 
 interface ChatPanel {
@@ -77,11 +81,20 @@ export class ChatPanelManager {
 				this.post(entry, { type: 'init', chatId: entry.chatId });
 				this.post(entry, { type: 'state', state: this.client.currentState });
 				this.client.send({ type: 'history', chat_id: entry.chatId });
+				this.client.send({ type: 'get_agent', chat_id: entry.chatId });
+				this.client.send({ type: 'list_agents' });
 				break;
 
 			case 'send':
 				if (!msg.text) return;
-				this.client.send({ type: 'message', chat_id: entry.chatId, text: msg.text, dispatch: 'immediate' });
+				this.client.send({
+					type: 'message', chat_id: entry.chatId, text: msg.text, dispatch: 'immediate',
+					model: msg.model, effort: msg.effort, tool_profile: msg.tool_profile,
+				});
+				break;
+
+			case 'send_frame':
+				if (msg.frame) this.client.send(msg.frame as never);
 				break;
 		}
 	}

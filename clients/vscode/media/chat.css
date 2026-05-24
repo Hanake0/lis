@@ -191,3 +191,54 @@ body { display: flex; flex-direction: column; }
 .tool-result.error { color: var(--vscode-errorForeground); }
 .tool-block.collapsed .tool-args,
 .tool-block.collapsed .tool-result { display: none; }
+
+/* ── Message metadata badge ───────────────────────────────────── */
+.meta-badge {
+	display: inline-block;
+	margin-left: 8px;
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	opacity: 0.6;
+	vertical-align: middle;
+}
+.meta-badge:hover { opacity: 1; }
+.meta-panel {
+	margin-top: 6px;
+	padding: 6px 8px;
+	font-size: 11px;
+	font-family: var(--vscode-editor-font-family, monospace);
+	color: var(--vscode-descriptionForeground);
+	border-top: 1px solid var(--vscode-panel-border);
+	white-space: pre-wrap;
+}
+
+/* ── Composer controls row ────────────────────────────────────── */
+.composer-controls {
+	display: flex;
+	gap: 4px;
+	padding: 4px 0;
+	flex-wrap: wrap;
+	align-items: center;
+}
+.composer-controls select,
+.composer-controls input[type="text"] {
+	background: var(--vscode-input-background);
+	color:      var(--vscode-input-foreground);
+	border:     1px solid var(--vscode-input-border);
+	padding:    2px 4px;
+	font-size:  11px;
+	border-radius: 3px;
+}
+.composer-controls select { min-width: 70px; }
+.composer-controls input[type="text"] { flex: 1; min-width: 100px; }
+.composer-controls button {
+	background: var(--vscode-button-secondaryBackground);
+	color:      var(--vscode-button-secondaryForeground);
+	border:     none;
+	padding:    2px 8px;
+	font-size:  11px;
+	cursor:     pointer;
+	border-radius: 3px;
+}
+.composer-controls button:hover { background: var(--vscode-button-secondaryHoverBackground); }

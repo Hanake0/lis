@@ -10,7 +10,7 @@ export function setStatus(state: string): void {
 	statusEl.className   = `status ${state}`;
 }
 
-export function renderMessage(msg: { role?: string; text?: string }): void {
+export function renderMessage(msg: { role?: string; text?: string }): HTMLDivElement {
 	const el = document.createElement('div');
 	el.className   = `msg ${msg.role || 'assistant'}`;
 	el.textContent = msg.text || '';
@@ -20,6 +20,7 @@ export function renderMessage(msg: { role?: string; text?: string }): void {
 		messagesEl.appendChild(el);
 	}
 	scrollToBottom();
+	return el;
 }
 
 export function appendSystem(text: string): void {

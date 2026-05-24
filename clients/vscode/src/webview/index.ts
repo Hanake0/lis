@@ -4,6 +4,7 @@
 import { vscode } from './vscodeApi';
 import { handleHostMessage, getChatId } from './dispatcher';
 import { showTyping } from './renderer';
+import { initControls, getOverrides } from './composer';
 
 const form  = document.getElementById('composer') as HTMLFormElement;
 const input = document.getElementById('input') as HTMLTextAreaElement;
@@ -27,7 +28,8 @@ input.addEventListener('input', autoResize);
 function send(): void {
 	const text = input.value.trim();
 	if (!text || !getChatId()) return;
-	vscode.postMessage({ type: 'send', text });
+	const overrides = getOverrides();
+	vscode.postMessage({ type: 'send', text, ...overrides });
 	input.value = '';
 	autoResize();
 	showTyping();
@@ -44,4 +46,5 @@ window.addEventListener('message', ev => {
 	handleHostMessage(ev.data);
 });
 
+initControls();
 vscode.postMessage({ type: 'ready' });
