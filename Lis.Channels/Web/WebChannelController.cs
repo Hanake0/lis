@@ -101,9 +101,13 @@ public sealed class WebChannelController(
 
 	private async Task DispatchClientFrameAsync(ClientFrame frame, CancellationToken ct) {
 		switch (frame.Type) {
-			case "message":     await this.HandleMessageFrameAsync(frame, ct);  break;
-			case "history":     await this.HandleHistoryFrameAsync(frame, ct);  break;
-			case "list_chats":  await this.HandleListChatsFrameAsync(ct);       break;
+			case "message":        await this.HandleMessageFrameAsync(frame, ct);    break;
+			case "history":        await this.HandleHistoryFrameAsync(frame, ct);    break;
+			case "list_chats":     await this.HandleListChatsFrameAsync(ct);         break;
+			case "set_agent":      await this.HandleSetAgentAsync(frame, ct);        break;
+			case "get_agent":      await this.HandleGetAgentAsync(frame, ct);        break;
+			case "list_agents":    await this.HandleListAgentsAsync(ct);             break;
+			case "save_overrides": await this.HandleSaveOverridesAsync(frame, ct);   break;
 			default:
 				await client.PublishAsync(ServerFrame.Error($"unknown frame type: {frame.Type}"), ct);
 				break;
@@ -119,13 +123,16 @@ public sealed class WebChannelController(
 		MessageDispatchMode dispatch = ParseDispatch(frame.Dispatch);
 
 		IncomingMessage incoming = new() {
-			ExternalId = $"web:{Guid.NewGuid():N}",
-			ChatId     = frame.ChatId,
-			SenderId   = options.Value.OwnerId,
-			SenderName = options.Value.OwnerName,
-			Timestamp  = DateTimeOffset.UtcNow,
-			Body       = frame.Text,
-			Dispatch   = dispatch,
+			ExternalId          = $"web:{Guid.NewGuid():N}",
+			ChatId              = frame.ChatId,
+			SenderId            = options.Value.OwnerId,
+			SenderName          = options.Value.OwnerName,
+			Timestamp           = DateTimeOffset.UtcNow,
+			Body                = frame.Text,
+			Dispatch            = dispatch,
+			ModelOverride       = frame.Model,
+			EffortOverride      = frame.Effort,
+			ToolProfileOverride = frame.ToolProfile,
 		};
 
 		// Echo the user's own message back so other connected clients (and the sender on reload) see it.
@@ -185,6 +192,111 @@ public sealed class WebChannelController(
 			.ToListAsync(ct);
 
 		await client.PublishAsync(ServerFrame.ChatList(chats), ct);
+	}
+
+	// ── Agent management ────────────────────────────────────────────
+
+	private async Task HandleSetAgentAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId) || string.IsNullOrEmpty(frame.AgentName)) {
+			await client.PublishAsync(ServerFrame.Error("set_agent requires chat_id and agent_name", frame.ChatId), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.AgentEntity? agent = await db.Agents
+			.FirstOrDefaultAsync(a => a.Name == frame.AgentName, ct);
+		if (agent is null) {
+			await client.PublishAsync(ServerFrame.Error($"agent '{frame.AgentName}' not found", frame.ChatId), ct);
+			return;
+		}
+
+		Persistence.Entities.ChatEntity? chat = await db.Chats
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+		if (chat is not null) {
+			chat.AgentId = agent.Id;
+			await db.SaveChangesAsync(ct);
+		}
+
+		await client.PublishAsync(
+			ServerFrame.AgentInfo(frame.ChatId, agent.Name, agent.DisplayName, agent.Model, agent.ThinkingEffort, agent.ToolProfile), ct);
+	}
+
+	private async Task HandleGetAgentAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("get_agent requires chat_id"), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.ChatEntity? chat = await db.Chats
+			.Include(c => c.Agent)
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+
+		Persistence.Entities.AgentEntity? agent = chat?.Agent
+			?? await db.Agents.FirstOrDefaultAsync(a => a.IsDefault, ct);
+
+		if (agent is null) {
+			await client.PublishAsync(ServerFrame.Error("no agent found", frame.ChatId), ct);
+			return;
+		}
+
+		await client.PublishAsync(
+			ServerFrame.AgentInfo(frame.ChatId, agent.Name, agent.DisplayName, agent.Model, agent.ThinkingEffort, agent.ToolProfile), ct);
+	}
+
+	private async Task HandleListAgentsAsync(CancellationToken ct) {
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		List<AgentSummary> agents = await db.Agents
+			.OrderBy(a => a.Id)
+			.Select(a => new AgentSummary {
+				Name        = a.Name,
+				DisplayName = a.DisplayName,
+				Model       = a.Model,
+				Effort      = a.ThinkingEffort,
+				ToolProfile = a.ToolProfile,
+				IsDefault   = a.IsDefault,
+			})
+			.ToListAsync(ct);
+
+		await client.PublishAsync(ServerFrame.AgentList(agents), ct);
+	}
+
+	private async Task HandleSaveOverridesAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("save_overrides requires chat_id"), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.ChatEntity? chat = await db.Chats
+			.Include(c => c.Agent)
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+
+		Persistence.Entities.AgentEntity? agent = chat?.Agent
+			?? await db.Agents.FirstOrDefaultAsync(a => a.IsDefault, ct);
+
+		if (agent is null) {
+			await client.PublishAsync(ServerFrame.Error("no agent found", frame.ChatId), ct);
+			return;
+		}
+
+		if (frame.Model is { Length: > 0 })      agent.Model          = frame.Model;
+		if (frame.Effort is { Length: > 0 })      agent.ThinkingEffort = frame.Effort;
+		if (frame.ToolProfile is { Length: > 0 }) agent.ToolProfile    = frame.ToolProfile;
+		agent.UpdatedAt = DateTimeOffset.UtcNow;
+
+		await db.SaveChangesAsync(ct);
+
+		await client.PublishAsync(
+			ServerFrame.AgentInfo(frame.ChatId, agent.Name, agent.DisplayName, agent.Model, agent.ThinkingEffort, agent.ToolProfile), ct);
 	}
 
 	private static MessageDispatchMode ParseDispatch(string? value) => value switch {

@@ -21,6 +21,11 @@ public sealed class IncomingMessage {
 	/// <summary>How the channel wants this message dispatched. Defaults to debounce (WhatsApp behavior).</summary>
 	public MessageDispatchMode Dispatch { get; init; } = MessageDispatchMode.Default;
 
+	// Per-message overrides (web channel only — override agent defaults for this turn)
+	public string? ModelOverride       { get; init; }
+	public string? EffortOverride      { get; init; }
+	public string? ToolProfileOverride { get; init; }
+
 	/// <summary>Set after ingestion — the DB-generated primary key.</summary>
 	public long DbId { get; set; }
 }

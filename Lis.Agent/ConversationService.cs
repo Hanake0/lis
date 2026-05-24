@@ -130,6 +130,16 @@ public sealed class ConversationService(
 		ModelSettings  agentModelSettings = AgentService.ToModelSettings(agent);
 		SessionEntity  session            = chat.CurrentSession!;
 
+		// Apply per-message overrides from the client frame
+		if (message.ModelOverride is { Length: > 0 } || message.EffortOverride is { Length: > 0 })
+			agentModelSettings = new ModelSettings {
+				Model          = message.ModelOverride ?? agentModelSettings.Model,
+				MaxTokens      = agentModelSettings.MaxTokens,
+				ContextBudget  = agentModelSettings.ContextBudget,
+				ThinkingEffort = message.EffortOverride ?? agentModelSettings.ThinkingEffort,
+			};
+		string effectiveToolProfile = message.ToolProfileOverride ?? agent.ToolProfile ?? "standard";
+
 		// Handle commands before AI processing
 		if (commandRouter.Match(message.Body) is { } match) {
 			if (match.Command.OwnerOnly && message.SenderId != lisOptions.Value.OwnerJid) {
@@ -226,8 +236,11 @@ public sealed class ConversationService(
 		// Clone kernel and strip plugins not in the agent's tool policy.
 		// FunctionChoiceBehavior.Auto(functions:) breaks Anthropic SDK serialization,
 		// so we filter at the kernel level instead — SK auto-discovers from plugins.
+		string? origToolProfile = agent.ToolProfile;
+		agent.ToolProfile = effectiveToolProfile;
 		Kernel agentKernel = kernel.Clone();
 		HashSet<string> allowedPlugins = toolPolicyService.GetAllowedPluginNames(agent);
+		agent.ToolProfile = origToolProfile;
 		foreach (KernelPlugin plugin in agentKernel.Plugins.ToList())
 			if (!allowedPlugins.Contains(plugin.Name))
 				agentKernel.Plugins.Remove(plugin);

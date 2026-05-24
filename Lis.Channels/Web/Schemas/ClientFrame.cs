@@ -21,4 +21,18 @@ public sealed class ClientFrame {
 
 	[JsonPropertyName("limit")]
 	public int? Limit { get; init; }
+
+	// Per-message overrides
+	[JsonPropertyName("model")]
+	public string? Model { get; init; }
+
+	[JsonPropertyName("effort")]
+	public string? Effort { get; init; }
+
+	[JsonPropertyName("tool_profile")]
+	public string? ToolProfile { get; init; }
+
+	// Agent management
+	[JsonPropertyName("agent_name")]
+	public string? AgentName { get; init; }
 }

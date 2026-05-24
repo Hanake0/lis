@@ -53,6 +53,25 @@ public sealed class ServerFrame {
 	[JsonPropertyName("result")]
 	public string? Result { get; init; }
 
+	// Agent info
+	[JsonPropertyName("agent_name")]
+	public string? AgentName { get; init; }
+
+	[JsonPropertyName("display_name")]
+	public string? DisplayName { get; init; }
+
+	[JsonPropertyName("model")]
+	public string? Model { get; init; }
+
+	[JsonPropertyName("effort")]
+	public string? Effort { get; init; }
+
+	[JsonPropertyName("tool_profile")]
+	public string? ToolProfileField { get; init; }
+
+	[JsonPropertyName("agents")]
+	public IReadOnlyList<AgentSummary>? Agents { get; init; }
+
 	// Token usage (on message frames)
 	[JsonPropertyName("input_tokens")]
 	public int? InputTokens { get; init; }
@@ -105,4 +124,11 @@ public sealed class ServerFrame {
 
 	public static ServerFrame ToolResult(string chatId, string messageId, string toolName, string result, string? error = null) =>
 		new() { Type = "tool_result", ChatId = chatId, Id = messageId, ToolName = toolName, Result = result, ErrorMessage = error };
+
+	// Agent management factories
+	public static ServerFrame AgentInfo(string chatId, string agentName, string? displayName, string model, string? effort, string? toolProfile) =>
+		new() { Type = "agent_info", ChatId = chatId, AgentName = agentName, DisplayName = displayName, Model = model, Effort = effort, ToolProfileField = toolProfile };
+
+	public static ServerFrame AgentList(IReadOnlyList<AgentSummary> agents) =>
+		new() { Type = "agent_list", Agents = agents };
 }
