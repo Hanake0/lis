@@ -54,34 +54,34 @@ public class ProjectMetadataControllerTests :IDisposable {
 		ProjectEntity project = await this.SeedProjectAsync("p1");
 
 		ActionResult<ProjectMetadataEntryDto> result = await this.sut.Set(
-			project.ExternalId, "notes", new SetProjectMetadataRequest("hello world"), default
+			project.ExternalId, "notes", new SetProjectMetadataRequest("\"hello world\""), default
 		);
 
 		OkObjectResult ok = Assert.IsType<OkObjectResult>(result.Result);
 		ProjectMetadataEntryDto dto = Assert.IsType<ProjectMetadataEntryDto>(ok.Value);
-		Assert.Equal("notes",        dto.Key);
-		Assert.Equal("hello world",  dto.Value);
+		Assert.Equal("notes",            dto.Key);
+		Assert.Equal("\"hello world\"",  dto.Value);
 		Assert.Equal(this.time.GetUtcNow(), dto.UpdatedAt);
 
 		ProjectMetadataEntity persisted = Assert.Single(this.db.ProjectMetadata);
-		Assert.Equal(project.Id,    persisted.ProjectId);
-		Assert.Equal("hello world", persisted.Value);
+		Assert.Equal(project.Id,        persisted.ProjectId);
+		Assert.Equal("\"hello world\"", persisted.Value);
 	}
 
 	[Fact]
 	public async Task Set_Updates_An_Existing_Row_In_Place() {
 		ProjectEntity project = await this.SeedProjectAsync("p1");
-		await this.sut.Set(project.ExternalId, "notes", new SetProjectMetadataRequest("v1"), default);
+		await this.sut.Set(project.ExternalId, "notes", new SetProjectMetadataRequest("\"v1\""), default);
 		this.time.Advance(TimeSpan.FromMinutes(5));
 
 		ActionResult<ProjectMetadataEntryDto> result = await this.sut.Set(
-			project.ExternalId, "notes", new SetProjectMetadataRequest("v2"), default
+			project.ExternalId, "notes", new SetProjectMetadataRequest("\"v2\""), default
 		);
 
 		ProjectMetadataEntryDto dto = Assert.IsType<ProjectMetadataEntryDto>(
 			Assert.IsType<OkObjectResult>(result.Result).Value
 		);
-		Assert.Equal("v2", dto.Value);
+		Assert.Equal("\"v2\"", dto.Value);
 		Assert.Equal(this.time.GetUtcNow(), dto.UpdatedAt);
 
 		// Still one row, not two — `(project_id, key)` is unique.
@@ -92,8 +92,31 @@ public class ProjectMetadataControllerTests :IDisposable {
 	public async Task Set_Rejects_Whitespace_Key_With_ArgumentException() {
 		ProjectEntity project = await this.SeedProjectAsync("p1");
 		await Assert.ThrowsAsync<ArgumentException>(() =>
-			this.sut.Set(project.ExternalId, "   ", new SetProjectMetadataRequest("x"), default)
+			this.sut.Set(project.ExternalId, "   ", new SetProjectMetadataRequest("\"x\""), default)
 		);
+	}
+
+	[Fact]
+	public async Task Set_Rejects_Invalid_Json_With_ArgumentException() {
+		ProjectEntity project = await this.SeedProjectAsync("p1");
+		// Bare unquoted text is not valid JSON; jsonb column would reject it on the way down,
+		// so the controller surfaces the early 400 instead.
+		await Assert.ThrowsAsync<ArgumentException>(() =>
+			this.sut.Set(project.ExternalId, "notes", new SetProjectMetadataRequest("not json"), default)
+		);
+	}
+
+	[Fact]
+	public async Task Set_Accepts_Json_Arrays_And_Objects() {
+		ProjectEntity project = await this.SeedProjectAsync("p1");
+
+		await this.sut.Set(project.ExternalId, "todos", new SetProjectMetadataRequest("[{\"id\":\"t1\"}]"), default);
+		await this.sut.Set(project.ExternalId, "shape", new SetProjectMetadataRequest("{\"k\":1}"),         default);
+
+		ProjectMetadataEntity todos = Assert.Single(this.db.ProjectMetadata, m => m.Key == "todos");
+		ProjectMetadataEntity shape = Assert.Single(this.db.ProjectMetadata, m => m.Key == "shape");
+		Assert.Equal("[{\"id\":\"t1\"}]", todos.Value);
+		Assert.Equal("{\"k\":1}",         shape.Value);
 	}
 
 	[Fact]
@@ -127,9 +150,9 @@ public class ProjectMetadataControllerTests :IDisposable {
 	[Fact]
 	public async Task List_Returns_All_Keys_Alphabetical() {
 		ProjectEntity project = await this.SeedProjectAsync("p1");
-		await this.sut.Set(project.ExternalId, "notes",         new SetProjectMetadataRequest("n"), default);
-		await this.sut.Set(project.ExternalId, "todos",         new SetProjectMetadataRequest("t"), default);
-		await this.sut.Set(project.ExternalId, "setupCommands", new SetProjectMetadataRequest("s"), default);
+		await this.sut.Set(project.ExternalId, "notes",         new SetProjectMetadataRequest("\"n\""), default);
+		await this.sut.Set(project.ExternalId, "todos",         new SetProjectMetadataRequest("\"t\""), default);
+		await this.sut.Set(project.ExternalId, "setupCommands", new SetProjectMetadataRequest("\"s\""), default);
 
 		ActionResult<ProjectMetadataEntryDto[]> result = await this.sut.List(project.ExternalId, default);
 
@@ -142,7 +165,7 @@ public class ProjectMetadataControllerTests :IDisposable {
 	[Fact]
 	public async Task Delete_Returns_NoContent_And_Removes_The_Row() {
 		ProjectEntity project = await this.SeedProjectAsync("p1");
-		await this.sut.Set(project.ExternalId, "notes", new SetProjectMetadataRequest("v"), default);
+		await this.sut.Set(project.ExternalId, "notes", new SetProjectMetadataRequest("\"v\""), default);
 
 		IActionResult result = await this.sut.Delete(project.ExternalId, "notes", default);
 
@@ -164,8 +187,8 @@ public class ProjectMetadataControllerTests :IDisposable {
 		ProjectEntity a = await this.SeedProjectAsync("a");
 		ProjectEntity b = await this.SeedProjectAsync("b");
 
-		await this.sut.Set(a.ExternalId, "notes", new SetProjectMetadataRequest("a-notes"), default);
-		await this.sut.Set(b.ExternalId, "notes", new SetProjectMetadataRequest("b-notes"), default);
+		await this.sut.Set(a.ExternalId, "notes", new SetProjectMetadataRequest("\"a-notes\""), default);
+		await this.sut.Set(b.ExternalId, "notes", new SetProjectMetadataRequest("\"b-notes\""), default);
 
 		ProjectMetadataValueDto fromA = Assert.IsType<ProjectMetadataValueDto>(
 			Assert.IsType<OkObjectResult>((await this.sut.Get(a.ExternalId, "notes", default)).Result).Value
@@ -173,8 +196,8 @@ public class ProjectMetadataControllerTests :IDisposable {
 		ProjectMetadataValueDto fromB = Assert.IsType<ProjectMetadataValueDto>(
 			Assert.IsType<OkObjectResult>((await this.sut.Get(b.ExternalId, "notes", default)).Result).Value
 		);
-		Assert.Equal("a-notes", fromA.Value);
-		Assert.Equal("b-notes", fromB.Value);
+		Assert.Equal("\"a-notes\"", fromA.Value);
+		Assert.Equal("\"b-notes\"", fromB.Value);
 	}
 
 	// ── Helpers ────────────────────────────────────────────────────

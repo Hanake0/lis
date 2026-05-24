@@ -4,11 +4,16 @@
  * OC `openchamberConfig.ts` surface so the sidebar dialogs (notes panel,
  * NewWorktreeDialog, plan view) drop in unchanged.
  *
+ * The metadata `value` column is `jsonb` on Postgres — so every read/write
+ * round-trips through `JSON.stringify` / `JSON.parse` here. Strings store
+ * as JSON string scalars (`"hello"`), arrays as JSON arrays, etc. The
+ * backend validates the payload is well-formed JSON before insert.
+ *
  * Each "kind" of metadata is one key in the project's KV bag:
- *   - `notes`         → markdown body
+ *   - `notes`         → markdown body (JSON string scalar)
  *   - `todos`         → JSON array of TodoItem
  *   - `setupCommands` → JSON array of string
- *   - `plan`          → markdown body of the plan file
+ *   - `plan`          → markdown body of the plan file (JSON string scalar)
  *
  * The values are persisted on the Lis backend (Postgres) — so a webview
  * reload doesn't lose them and they're available across sidebar instances.
@@ -89,15 +94,21 @@ function ensureProjectId(project: ProjectRef | string | null | undefined): strin
 
 // ── Public API ──────────────────────────────────────────────────────
 
-/** Read the per-project notes (markdown body). Empty string when not set. */
+/** Decode a stored JSON string scalar back to a plain string. Empty when malformed. */
+function parseJsonString(raw: string): string {
+	const parsed: unknown = JSON.parse(raw);
+	return typeof parsed === 'string' ? parsed : '';
+}
+
+/** Read the per-project notes + todos pair. */
 export async function getProjectNotesAndTodos(project: ProjectRef | string): Promise<ProjectContextData> {
 	const id = ensureProjectId(project);
 	if (!id) return { notes: '', todos: [] };
 
 	const [notes, todos] = await Promise.all([
-		safeGet(id, KEY_NOTES, '',     (raw) => raw),
+		safeGet(id, KEY_NOTES, '', parseJsonString),
 		safeGet(id, KEY_TODOS, [] as ProjectTodoItem[], (raw) => {
-			const parsed = JSON.parse(raw);
+			const parsed: unknown = JSON.parse(raw);
 			return Array.isArray(parsed) ? parsed as ProjectTodoItem[] : [];
 		}),
 	]);
@@ -115,12 +126,11 @@ export async function saveProjectNotesAndTodos(project: ProjectRef | string, dat
 	const failed: string[] = [];
 	if (typeof data.notes === 'string') {
 		if (data.notes.length > OPENCHAMBER_PROJECT_NOTES_MAX_LENGTH) return { ok: false, failed: ['notes-too-long'] };
-		const ok = await safeSet(id, KEY_NOTES, data.notes);
+		const ok = await safeSet(id, KEY_NOTES, JSON.stringify(data.notes));
 		if (!ok) failed.push(KEY_NOTES);
 	}
 	if (Array.isArray(data.todos)) {
-		const serialised = JSON.stringify(data.todos);
-		const ok = await safeSet(id, KEY_TODOS, serialised);
+		const ok = await safeSet(id, KEY_TODOS, JSON.stringify(data.todos));
 		if (!ok) failed.push(KEY_TODOS);
 	}
 	return failed.length === 0 ? { ok: true } : { ok: false, failed };
@@ -131,7 +141,7 @@ export async function getWorktreeSetupCommands(project: ProjectRef | string): Pr
 	const id = ensureProjectId(project);
 	if (!id) return [];
 	return safeGet(id, KEY_SETUP_COMMANDS, [] as string[], (raw) => {
-		const parsed = JSON.parse(raw);
+		const parsed: unknown = JSON.parse(raw);
 		if (!Array.isArray(parsed)) return [];
 		return parsed.filter((c): c is string => typeof c === 'string');
 	});
@@ -151,7 +161,8 @@ export async function readProjectPlanFile(project: ProjectRef | string): Promise
 	try {
 		const res = await LisRpcClient.instance().getProjectMetadata(id, KEY_PLAN);
 		if (!res.found || res.value == null) return null;
-		return { body: res.value, updatedAt: res.updated_at ?? undefined };
+		const body = parseJsonString(res.value);
+		return { body, updatedAt: res.updated_at ?? undefined };
 	} catch (err) {
 		if (err instanceof LisRpcError) return null;
 		throw err;
@@ -162,7 +173,7 @@ export async function readProjectPlanFile(project: ProjectRef | string): Promise
 export async function createProjectPlanFile(project: ProjectRef | string, body: string): Promise<ProjectPlanFile | null> {
 	const id = ensureProjectId(project);
 	if (!id) return null;
-	const ok = await safeSet(id, KEY_PLAN, body);
+	const ok = await safeSet(id, KEY_PLAN, JSON.stringify(body));
 	if (!ok) return null;
 	return readProjectPlanFile(project);
 }

@@ -33,9 +33,14 @@ public sealed class ProjectMetadataEntity {
 	[JsonPropertyName("key")]
 	public required string Key { get; set; }
 
-	/// <summary>Free-form string. Callers typically store JSON; column is text so size isn't a worry.</summary>
+	/// <summary>
+	/// Arbitrary JSON payload. Stored as <c>jsonb</c> so PostgreSQL keeps it indexed and validated,
+	/// and so future queries can use <c>-&gt;</c> / <c>jsonb_path_ops</c> against individual keys
+	/// without round-tripping through the API. Callers always send valid JSON (strings are still
+	/// serialised — e.g. notes go in as a JSON string scalar).
+	/// </summary>
 	[Required]
-	[Column("value", TypeName = "text")]
+	[Column("value", TypeName = "jsonb")]
 	[JsonPropertyName("value")]
 	public required string Value { get; set; }
 

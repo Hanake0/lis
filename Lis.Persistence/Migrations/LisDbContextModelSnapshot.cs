@@ -996,7 +996,7 @@ namespace Lis.Persistence.Migrations
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("jsonb")
                         .HasColumnName("value")
                         .HasJsonPropertyName("value");
 

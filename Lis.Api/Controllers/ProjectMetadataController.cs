@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using Lis.Api.Schemas.Projects;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
@@ -70,6 +72,16 @@ public sealed class ProjectMetadataController(LisDbContext db, TimeProvider time
 		if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("metadata key is required", nameof(key));
 		if (request is null)                throw new ArgumentException("request body is required", nameof(request));
 
+		// jsonb column rejects non-JSON. Validate up-front and surface a 400 instead
+		// of bubbling up Postgres's parse error to the caller.
+		string canonicalJson;
+		try {
+			using JsonDocument doc = JsonDocument.Parse(request.Value);
+			canonicalJson = doc.RootElement.GetRawText();
+		} catch (JsonException ex) {
+			throw new ArgumentException($"value must be valid JSON: {ex.Message}", nameof(request));
+		}
+
 		long projectId = await this.ResolveProjectIdAsync(projectExternalId, ct);
 		DateTimeOffset now = time.GetUtcNow();
 
@@ -80,12 +92,12 @@ public sealed class ProjectMetadataController(LisDbContext db, TimeProvider time
 			row = new ProjectMetadataEntity {
 				ProjectId = projectId,
 				Key       = key,
-				Value     = request.Value,
+				Value     = canonicalJson,
 				UpdatedAt = now,
 			};
 			db.ProjectMetadata.Add(row);
 		} else {
-			row.Value     = request.Value;
+			row.Value     = canonicalJson;
 			row.UpdatedAt = now;
 		}
 
