@@ -68,8 +68,8 @@
   --tools-title:        var(--vscode-foreground);
   --tools-description:  var(--vscode-descriptionForeground);
 
-  /* Sidebar */
-  --sidebar:                 var(--vscode-sideBar-background, var(--vscode-editor-background));
+  /* Sidebar — use sideBar bg for proper contrast with the editor area */
+  --sidebar:                 var(--vscode-sideBar-background, color-mix(in srgb, var(--vscode-editor-background) 92%, black));
   --sidebar-foreground:      var(--vscode-sideBar-foreground, var(--vscode-foreground));
   --sidebar-primary:         var(--vscode-button-background);
   --sidebar-primary-foreground: var(--vscode-button-foreground);
