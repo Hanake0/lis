@@ -55,7 +55,7 @@ export type ServerFrame =
 	| { type: 'error';           error: string; chat_id?: string }
 	| { type: 'chat_list';       chats: ChatSummary[] }
 	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] }
-	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[] };
+	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[]; model: string; effort?: string };
 
 // ── Client → Server frames ─────────────────────────────────────────
 

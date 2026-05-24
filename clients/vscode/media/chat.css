@@ -247,21 +247,34 @@ body { display: flex; flex-direction: column; }
 	margin: 0 auto;
 	border-top: 1px solid var(--vscode-panel-border);
 	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-	padding: 10px 14px 14px;
+	padding: 10px 14px 12px;
 	font-size: 12px;
 }
 .context-panel.hidden { display: none; }
 
 .context-header {
 	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 8px;
+	align-items: baseline;
+	gap: 10px;
+	margin-bottom: 6px;
 }
 .context-title {
 	font-weight: 600;
 	color: var(--vscode-foreground);
+	flex-shrink: 0;
 }
+.context-total-line {
+	flex: 1;
+	text-align: right;
+	display: inline-flex;
+	gap: 4px;
+	justify-content: flex-end;
+	align-items: baseline;
+}
+.context-total  { font-weight: 600; color: var(--vscode-foreground); }
+.context-budget { color: var(--vscode-foreground); }
+.context-of,
+.context-pct    { color: var(--vscode-descriptionForeground); }
 .context-close {
 	background: transparent;
 	border: none;
@@ -281,38 +294,18 @@ body { display: flex; flex-direction: column; }
 }
 .context-error { color: var(--vscode-errorForeground); font-style: normal; }
 
-.context-summary {
-	display: flex;
-	align-items: baseline;
-	gap: 6px;
-	margin-bottom: 6px;
-}
-.context-total {
-	font-size: 16px;
-	font-weight: 600;
-	color: var(--vscode-foreground);
-}
-.context-of,
-.context-pct {
-	color: var(--vscode-descriptionForeground);
-}
-.context-budget {
-	color: var(--vscode-foreground);
-}
-
 .context-bar {
-	display: flex;
 	width: 100%;
-	height: 10px;
-	border-radius: 3px;
+	height: 4px;
+	border-radius: 2px;
 	overflow: hidden;
 	background: var(--vscode-input-background);
-	margin-bottom: 8px;
+	margin-bottom: 10px;
 }
-.context-bar-slice { height: 100%; }
-.context-bar-remaining {
-	background: var(--vscode-panel-border) !important;
-	opacity: 0.4;
+.context-bar-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-background, var(--vscode-button-background));
+	transition: width 200ms ease-out;
 }
 
 .context-table {
@@ -332,6 +325,7 @@ body { display: flex; flex-direction: column; }
 	width: 10px;
 	height: 10px;
 	border-radius: 2px;
+	border: 1px solid var(--vscode-panel-border);
 	vertical-align: middle;
 }
 .context-name { color: var(--vscode-foreground); }
@@ -342,6 +336,22 @@ body { display: flex; flex-direction: column; }
 	color: var(--vscode-descriptionForeground);
 }
 .context-tokens { color: var(--vscode-foreground); }
+.context-table tr.context-free .context-name,
+.context-table tr.context-free .context-tokens {
+	color: var(--vscode-descriptionForeground);
+	font-weight: 600;
+}
+
+.context-footer {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-panel-border);
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	text-align: right;
+}
+.context-model  { color: var(--vscode-foreground); }
+.context-effort { margin-left: 4px; }
 
 /* ── Composer controls row ────────────────────────────────────── */
 .composer-controls {

@@ -104,6 +104,8 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 				frame.total as number,
 				frame.budget as number,
 				frame.segments as Array<{ name: string; tokens: number }>,
+				frame.model as string,
+				frame.effort as string | undefined,
 			);
 			break;
 

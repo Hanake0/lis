@@ -13,10 +13,12 @@ using Microsoft.SemanticKernel.ChatCompletion;
 namespace Lis.Agent;
 
 /// <summary>
-/// Computes a per-segment token breakdown of the prompt that would be sent to the
-/// model for a chat right now. Uses the same components that build the live request
-/// (PromptComposer, ContextWindowBuilder, ToolPolicyService) so the numbers reflect
-/// what the next API call would actually carry, not a guess.
+/// Builds the context-window panel data. The <b>Total</b> shown to the user is the
+/// authoritative input-side token count from the last assistant message's API response
+/// (input + cache_read + cache_creation) — never a local estimate. The per-segment
+/// breakdown still uses local tokenization since Anthropic doesn't return a breakdown,
+/// matching what Claude Code shows in its own panel. Segments are advisory; the total
+/// is the source of truth.
 /// </summary>
 public sealed class ContextBreakdownService(
 	IServiceScopeFactory  scopeFactory,
@@ -28,7 +30,12 @@ public sealed class ContextBreakdownService(
 	IOptions<LisOptions>  options) {
 
 	public sealed record Segment(string Name, int Tokens);
-	public sealed record Breakdown(int Total, int Budget, IReadOnlyList<Segment> Segments);
+	public sealed record Breakdown(
+		int                    Total,
+		int                    Budget,
+		IReadOnlyList<Segment> Segments,
+		string                 Model,
+		string?                Effort);
 
 	public async Task<Breakdown?> ComputeAsync(string chatId, CancellationToken ct) {
 		using IServiceScope scope = scopeFactory.CreateScope();
@@ -48,6 +55,23 @@ public sealed class ContextBreakdownService(
 			? await db.Sessions.FindAsync([session.ParentSessionId], ct)
 			: null;
 
+		// Authoritative total: the last assistant message's API-reported input-side
+		// token count. Anything else (summing segments, recounting locally) would be
+		// an estimate, and we already have the exact number.
+		MessageEntity? lastAssistant = await db.Messages
+			.Where(m => m.SessionId == session.Id && m.Role == "assistant" && !m.Queued)
+			.OrderByDescending(m => m.Timestamp)
+			.FirstOrDefaultAsync(ct);
+
+		int actualTotal = (lastAssistant?.InputTokens         ?? 0)
+		                + (lastAssistant?.CacheReadTokens     ?? 0)
+		                + (lastAssistant?.CacheCreationTokens ?? 0);
+
+		int budget = modelSettings.ContextBudget;
+
+		// Per-segment breakdown is locally tokenized — the API doesn't return one, so
+		// this is the same approach Claude Code uses. The numbers won't sum exactly to
+		// actualTotal (tokenizer ≈ API), but they show *what* makes up the context.
 		List<MessageEntity> messages = await db.Messages
 			.Where(m => m.SessionId == session.Id && !m.Queued)
 			.OrderBy(m => m.Timestamp)
@@ -58,17 +82,12 @@ public sealed class ContextBreakdownService(
 		ChatHistory history = contextWindowBuilder.Build(
 			systemPrompt, messages, session, parentSession, options.Value, chat);
 
-		// System prompt sits at history[0] when non-empty.
 		int systemTokens = TokenEstimator.Count(systemPrompt);
 
-		// Session summaries (parent + current) are injected as the first assistant
-		// messages by ContextWindowBuilder — count them by re-walking the source.
 		int summaryTokens =
 			TokenEstimator.Count(parentSession?.Summary) +
 			TokenEstimator.Count(session.Summary);
 
-		// Messages are everything in history minus the system prompt slot and the
-		// summary slots we just counted. Serialize each remaining slot for tokenization.
 		int messageTokens = 0;
 		int startIdx = string.IsNullOrWhiteSpace(systemPrompt) ? 0 : 1;
 		int summarySlots = (parentSession?.Summary is { Length: > 0 } ? 1 : 0)
@@ -78,8 +97,6 @@ public sealed class ContextBreakdownService(
 			messageTokens += TokenEstimator.Count(SerializeMessage(msg));
 		}
 
-		// Tools — the function schemas attached to the Anthropic request. Filter by
-		// the agent's tool profile so the count matches what the live call would carry.
 		string? origProfile = agent.ToolProfile;
 		agent.ToolProfile = agent.ToolProfile ?? "standard";
 		HashSet<string> allowedPlugins = toolPolicyService.GetAllowedPluginNames(agent);
@@ -93,21 +110,21 @@ public sealed class ContextBreakdownService(
 			}
 		}
 
-		int total = systemTokens + summaryTokens + messageTokens + toolTokens;
+		// Free space sits against the *authoritative* total so the panel never lies
+		// about how much room is left, even if local tokenization drifts.
+		int freeSpace = Math.Max(0, budget - actualTotal);
 
-		List<Segment> segments = new() {
-			new Segment("System prompt",     systemTokens),
-			new Segment("Memory / summaries", summaryTokens),
-			new Segment("Messages",          messageTokens),
-			new Segment("Tools",             toolTokens),
-		};
+		List<Segment> segments = new();
+		if (messageTokens > 0) segments.Add(new Segment("Messages",      messageTokens));
+		if (toolTokens    > 0) segments.Add(new Segment("Tools",         toolTokens));
+		if (systemTokens  > 0) segments.Add(new Segment("System prompt", systemTokens));
+		if (summaryTokens > 0) segments.Add(new Segment("Summaries",     summaryTokens));
+		segments.Add(new Segment("Free space", freeSpace));
 
-		return new Breakdown(total, modelSettings.ContextBudget, segments);
+		return new Breakdown(actualTotal, budget, segments, agent.Model, agent.ThinkingEffort);
 	}
 
 	private static string SerializeMessage(ChatMessageContent msg) {
-		// Reasonable approximation — captures text, function calls, function results.
-		// Doesn't account for image bytes (model-side, not tokenized as text).
 		if (!string.IsNullOrEmpty(msg.Content)) return msg.Content;
 		try { return JsonSerializer.Serialize(msg.Items); }
 		catch { return msg.Content ?? ""; }

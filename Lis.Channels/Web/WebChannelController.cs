@@ -357,7 +357,8 @@ public sealed class WebChannelController(
 			.ToList();
 
 		await client.PublishAsync(
-			ServerFrame.Context(frame.ChatId, breakdown.Total, breakdown.Budget, segments), ct);
+			ServerFrame.Context(frame.ChatId, breakdown.Total, breakdown.Budget, segments,
+				breakdown.Model, breakdown.Effort), ct);
 	}
 
 	private static MessageDispatchMode ParseDispatch(string? value) => value switch {

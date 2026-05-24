@@ -144,8 +144,17 @@ public sealed class ServerFrame {
 	public static ServerFrame ChatHistory(string chatId, IReadOnlyList<MessageRow> messages) =>
 		new() { Type = "chat_history", ChatId = chatId, Messages = messages };
 
-	public static ServerFrame Context(string chatId, int total, int budget, IReadOnlyList<ContextSegment> segments) =>
-		new() { Type = "context", ChatId = chatId, Total = total, Budget = budget, Segments = segments };
+	public static ServerFrame Context(string chatId, int total, int budget,
+		IReadOnlyList<ContextSegment> segments, string model, string? effort) =>
+		new() {
+			Type    = "context",
+			ChatId  = chatId,
+			Total   = total,
+			Budget  = budget,
+			Segments = segments,
+			Model   = model,
+			Effort  = effort,
+		};
 
 	// Streaming factories
 	public static ServerFrame Chunk(string chatId, string messageId, string delta, bool done) =>
