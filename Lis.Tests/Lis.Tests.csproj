@@ -30,6 +30,7 @@
     <ProjectReference Include="..\Lis.Tools\Lis.Tools.csproj" />
     <ProjectReference Include="..\Lis.Channels\Lis.Channels.csproj" />
     <ProjectReference Include="..\Lis.Providers\Lis.Providers.csproj" />
+    <ProjectReference Include="..\Lis.Api\Lis.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
