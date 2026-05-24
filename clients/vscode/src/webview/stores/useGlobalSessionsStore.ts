@@ -1,11 +1,8 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-
-export const useGlobalSessionsStore = create(() => ({
-	sessions: [],
+const asyncNoop: any = async () => {};
+export const useGlobalSessionsStore = create<any>(() => ({
+	sessions: [], activeSessions: [], globalActiveSessions: [],
 }));
-
-export function resolveGlobalSessionDirectory(_sessionId: string): string | null {
-	return null;
-}
-export function refreshGlobalSessions(..._args: any[]): any { return null; }
+export function resolveGlobalSessionDirectory(_id: string): string | null { return null; }
+export function refreshGlobalSessions(..._a: any[]): any { return null; }

@@ -1,10 +1,6 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-
-interface GlobalSyncStore {
-	directories: string[];
-}
-
-export const useGlobalSyncStore = create<GlobalSyncStore>(() => ({
-	directories: [],
+const asyncNoop: any = async () => {};
+export const useGlobalSyncStore = create<any>(() => ({
+	directories: [], activeDirectories: [],
 }));

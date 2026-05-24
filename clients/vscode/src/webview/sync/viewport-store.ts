@@ -1,11 +1,7 @@
 import { create } from 'zustand';
-
-interface ViewportStore {
-	isSyncing: boolean;
-	setIsSyncing: (v: boolean) => void;
-}
-
-export const useViewportStore = create<ViewportStore>((set) => ({
+const noop: any = () => {};
+const asyncNoop: any = async () => {};
+export const useViewportStore = create<any>((set: any) => ({
 	isSyncing: false,
-	setIsSyncing: (v) => set({ isSyncing: v }),
+	setIsSyncing: (v: boolean) => set({ isSyncing: v }),
 }));

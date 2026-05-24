@@ -1,12 +1,7 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-
-interface GitHubAuthStore {
-	isAuthenticated: boolean;
-	refreshStatus: (github: unknown, opts?: { force?: boolean }) => Promise<void>;
-}
-
-export const useGitHubAuthStore = create<GitHubAuthStore>((_set) => ({
-	isAuthenticated: false,
-	refreshStatus: async () => {},
+const asyncNoop: any = async () => {};
+export const useGitHubAuthStore = create<any>(() => ({
+	isAuthenticated: false, isLoading: false, token: null, username: null,
+	refreshStatus: asyncNoop, login: asyncNoop, logout: asyncNoop,
 }));

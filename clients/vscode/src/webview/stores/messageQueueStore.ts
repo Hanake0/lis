@@ -1,20 +1,11 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-
-export interface QueuedMessage {
-	id: string;
-	text: string;
-	timestamp: number;
-}
-
-interface MessageQueueStore {
-	queue: QueuedMessage[];
-	addToQueue: (msg: QueuedMessage) => void;
-	removeFromQueue: (id: string) => void;
-}
-
-export const useMessageQueueStore = create<MessageQueueStore>((set) => ({
-	queue: [],
-	addToQueue: (msg) => set((s) => ({ queue: [...s.queue, msg] })),
-	removeFromQueue: (id) => set((s) => ({ queue: s.queue.filter((m) => m.id !== id) })),
+const asyncNoop: any = async () => {};
+export interface QueuedMessage { id: string; text: string; timestamp: number; }
+export const useMessageQueueStore = create<any>((set: any) => ({
+	queue: [] as QueuedMessage[],
+	pendingQueue: [] as QueuedMessage[],
+	addToQueue: (msg: QueuedMessage) => set((s: any) => ({ queue: [...s.queue, msg] })),
+	removeFromQueue: (id: string) => set((s: any) => ({ queue: s.queue.filter((m: any) => m.id !== id) })),
+	clearQueue: () => set({ queue: [] }),
 }));

@@ -1,3 +1,7 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-export const useFilesViewTabsStore = create(() => ({ tabs: [] }));
+const asyncNoop: any = async () => {};
+export const useFilesViewTabsStore = create<any>(() => ({
+	tabs: [], activeTabId: null, openTab: noop,
+	closeTab: noop, setActiveTab: noop, reorderTabs: noop,
+}));

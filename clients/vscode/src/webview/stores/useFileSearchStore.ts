@@ -1,3 +1,6 @@
 import { create } from 'zustand';
 const noop: any = () => {};
-export const useFileSearchStore = create(() => ({ results: [], isSearching: false }));
+const asyncNoop: any = async () => {};
+export const useFileSearchStore = create<any>(() => ({
+	results: [], isSearching: false,
+}));
