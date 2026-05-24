@@ -21,16 +21,24 @@ GET /web/ws?token=<shared-secret>
 
 All frames have a `type` discriminator. Null fields are omitted on the wire.
 
-| `type`           | Payload                                              | When                                                  |
-| ---------------- | ---------------------------------------------------- | ----------------------------------------------------- |
-| `connected`      | —                                                    | First frame after upgrade.                            |
-| `message`        | `chat_id`, `id`, `text`, `role`, `timestamp`         | Any persisted message (user echo OR assistant reply). |
-| `typing`         | `chat_id`                                            | Assistant is composing.                               |
-| `typing_stopped` | `chat_id`                                            | Assistant stopped composing.                          |
-| `reaction`       | `chat_id`, `id` (message id), `emoji`                | Reaction added (or removed: `emoji=""`).              |
-| `chat_list`      | `chats: [{chat_id, name, updated_at}]`               | Response to `list_chats`.                             |
-| `chat_history`   | `chat_id`, `messages: [{id, role, text, timestamp}]` | Response to `history`.                                |
-| `error`          | `error`, optional `chat_id`                          | Bad input or processing failure.                      |
+| `type`            | Payload                                                         | When                                                  |
+| ----------------- | --------------------------------------------------------------- | ----------------------------------------------------- |
+| `connected`       | —                                                               | First frame after upgrade.                            |
+| `message`         | `chat_id`, `id`, `text`, `role`, `timestamp`, token fields*     | Any persisted message (user echo OR assistant reply). |
+| `chunk`           | `chat_id`, `id`, `delta`, `done`                                | Text token delta during streaming.                    |
+| `thinking_chunk`  | `chat_id`, `id`, `delta`, `done`                                | Thinking/reasoning delta during streaming.            |
+| `tool_start`      | `chat_id`, `id`, `tool_name`, `tool_args`                       | Tool invocation begins.                               |
+| `tool_result`     | `chat_id`, `id`, `tool_name`, `result`, `error`                 | Tool invocation completed.                            |
+| `typing`          | `chat_id`                                                       | Assistant is composing.                               |
+| `typing_stopped`  | `chat_id`                                                       | Assistant stopped composing.                          |
+| `reaction`        | `chat_id`, `id` (message id), `emoji`                           | Reaction added (or removed: `emoji=""`).              |
+| `agent_info`      | `chat_id`, `agent_name`, `display_name`, `model`, `effort`, `tool_profile` | Current agent config for a chat.             |
+| `agent_list`      | `agents: [{name, display_name, model, effort, tool_profile, is_default}]`  | All available agents.                        |
+| `chat_list`       | `chats: [{chat_id, name, updated_at}]`                          | Response to `list_chats`.                             |
+| `chat_history`    | `chat_id`, `messages: [{id, role, text, timestamp, ...tokens}]` | Response to `history`.                                |
+| `error`           | `error`, optional `chat_id`                                     | Bad input or processing failure.                      |
+
+*Token fields on `message`: `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `thinking_tokens`. See [STREAMING.md](./STREAMING.md).
 
 Frames are **broadcast** to every connected client. Clients filter inbound frames by
 `chat_id` to render only the active chat (or render all of them — that's the client's
@@ -38,11 +46,15 @@ choice). The server keeps no per-connection routing state.
 
 ### Client → Server Frames
 
-| `type`       | Payload                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `message`    | `chat_id` (required), `text` (required), optional `dispatch` (one of `default`/`immediate`/`queue_only`/`interrupt` — defaults to `immediate`). |
-| `history`    | `chat_id` (required), optional `limit` (1–500, default 100).                                     |
-| `list_chats` | —                                                                                                |
+| `type`           | Payload                                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `message`        | `chat_id`, `text` (required), optional `dispatch`, `model`, `effort`, `tool_profile` (per-message overrides).                      |
+| `history`        | `chat_id` (required), optional `limit` (1–500, default 100).                                                                       |
+| `list_chats`     | —                                                                                                                                  |
+| `set_agent`      | `chat_id`, `agent_name` — switch the chat's agent.                                                                                 |
+| `get_agent`      | `chat_id` — returns `agent_info` frame.                                                                                            |
+| `list_agents`    | — returns `agent_list` frame.                                                                                                      |
+| `save_overrides` | `chat_id`, optional `model`, `effort`, `tool_profile` — persist overrides to the agent entity.                                     |
 
 ### Dispatch Modes
 
@@ -101,10 +113,8 @@ WhatsApp can both be on, but the agent currently resolves a single `IChannelClie
 If both are enabled, the DI container picks the last registration; first cut deployments
 should pick one.
 
-## Limitations (First Cut)
+## Limitations
 
-* No streaming — assistant messages arrive as complete frames once the AI loop emits text.
-* No tool-call cards — tool calls happen server-side, only the final assistant text shows up.
 * No media uploads from the web client.
 * Only one `IChannelClient` is wired into `ConversationService` at a time. Multi-channel routing is future work.
 

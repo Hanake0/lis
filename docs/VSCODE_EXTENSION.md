@@ -23,10 +23,11 @@ Then load it in VS Code:
 
 In VS Code Settings → Extensions → Lis:
 
-| Setting          | Default                            | What it does                                      |
-| ---------------- | ---------------------------------- | ------------------------------------------------- |
-| `lis.serverUrl`  | `ws://localhost:3010/web/ws`       | WebSocket URL of the Lis server.                  |
-| `lis.authToken`  | `""`                               | Must match `WEB_CHANNEL_TOKEN` on the server.     |
+| Setting              | Default                            | What it does                                      |
+| -------------------- | ---------------------------------- | ------------------------------------------------- |
+| `lis.serverUrl`      | `ws://localhost:3010/web/ws`       | WebSocket URL of the Lis server.                  |
+| `lis.authToken`      | `""`                               | Must match `WEB_CHANNEL_TOKEN` on the server.     |
+| `lis.verboseLogging` | `false`                            | Log every WS frame to the Lis output channel.     |
 
 Changes are picked up live — the extension reconnects automatically.
 
@@ -47,15 +48,18 @@ Commands (Cmd/Ctrl+Shift+P):
 
 ```
 ┌──────────────────────────────────┐
-│ Webview (chat.html/css/js)       │
-│  • renders messages, typing      │
-│  • postMessage → extension       │
+│ Webview (src/webview/*.ts)       │
+│  • streaming renderer            │
+│  • tool call blocks              │
+│  • message metadata              │
+│  • composer controls             │
+│  • bundled by esbuild → dist/    │
 └────────────┬─────────────────────┘
              │ postMessage
 ┌────────────▼─────────────────────┐
-│ ChatViewProvider                 │
-│  • owns chat list + current chat │
-│  • bridges webview ↔ LisClient   │
+│ ChatPanelManager                 │
+│  • one WebviewPanel per chat     │
+│  • routes frames by chat_id      │
 └────────────┬─────────────────────┘
              │ send / onFrame
 ┌────────────▼─────────────────────┐
@@ -63,20 +67,24 @@ Commands (Cmd/Ctrl+Shift+P):
 │  • WebSocket wrapper             │
 │  • reconnect with backoff        │
 └──────────────────────────────────┘
+   SessionsTreeProvider
+   • sidebar TreeView of chats
+   • subscribes to chat_list frames
 ```
 
-* `extension.ts` activates the provider, registers commands, and forwards config changes.
-* `lisClient.ts` is pure transport: connect, send, fire frame/state listeners. Reconnects with capped exponential backoff (1s → 2s → … → 30s).
-* `chatViewProvider.ts` is the bridge — owns chat list state, posts frames to the webview, and translates webview events back to client frames.
-* `media/chat.{html,css,js}` is the UI. The HTML template is inlined as a string in the provider so the bundled extension is self-contained.
+* `extension.ts` creates Logger, LisClient, SessionsTreeProvider, ChatPanelManager. Registers commands and wires config change listener.
+* `src/types.ts` — shared frame type definitions (ServerFrame, ClientFrame, DTOs).
+* `src/lisClient.ts` — pure transport: connect, send, fire frame/state listeners. Reconnects with capped exponential backoff (1s → 30s).
+* `src/chatPanel.ts` — `ChatPanelManager` owns one `WebviewPanel` per chat_id. Filters incoming frames by chat_id and forwards to the matching panel.
+* `src/sessionsTreeProvider.ts` — native TreeView sidebar listing chats sorted by recency.
+* `src/webview/` — webview TypeScript modules bundled by esbuild into `dist/chat.js`.
+* `media/chat.css` — webview styles.
+* Two esbuild entry points: `src/extension.ts` (extension host) and `src/webview/index.ts` (webview bundle).
 
-## Limitations (First Cut)
+## Limitations
 
 * Plain text only — no markdown rendering yet (the body is shown as `pre-wrap`).
-* No tool-call cards.
-* No streaming — assistant replies arrive as complete messages.
 * No media uploads.
-* No optimistic local rendering — the user message renders only after the server echoes it back (so other clients connected to the same Lis instance see it too).
 
 ## Manual Test
 
