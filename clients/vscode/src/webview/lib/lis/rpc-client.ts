@@ -117,6 +117,31 @@ export class LisRpcClient {
 	removeProjectIcon(id: string):                                    Promise<unknown>   { return this.delete(`/projects/${encodeURIComponent(id)}/icon`); }
 	moveChat(chatId: string, projectId: string | null):               Promise<void>      { return this.post(`/chats/${encodeURIComponent(chatId)}/move`, { project_external_id: projectId }); }
 
+	// ── Chats ──────────────────────────────────────────────────────
+
+	/**
+	 * Create (or idempotently fetch) a chat. Pass `chatId` to use a deterministic id;
+	 * omit it and the server mints one in the `web:{guid}` shape. Re-POSTing the same
+	 * id returns the existing row with a 200 — the server treats it as idempotent.
+	 *
+	 * `projectExternalId` binds the chat under a project (404 if the project doesn't exist).
+	 * `channel` defaults to `"web"` on the server when omitted.
+	 */
+	createChat(input: { chatId?: string; name?: string; projectExternalId?: string | null; channel?: string }): Promise<{
+		chat_id:     string;
+		name:        string | null;
+		project_id:  string | null;
+		created_at:  string;
+		updated_at:  string;
+	}> {
+		return this.post('/chats', {
+			chat_id:    input.chatId,
+			name:       input.name,
+			project_id: input.projectExternalId,
+			channel:    input.channel,
+		});
+	}
+
 	// ── Session folders + pins ─────────────────────────────────────
 
 	listSessionFolders(scope: string):                                Promise<unknown[]> { return this.get('/session-folders', { scope }); }
