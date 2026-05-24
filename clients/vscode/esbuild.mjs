@@ -1,6 +1,26 @@
 import { context, build } from 'esbuild';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const watch = process.argv.includes('--watch');
+
+/** @type {import('esbuild').Plugin} */
+const aliasPlugin = {
+	name: 'alias',
+	setup(b) {
+		b.onResolve({ filter: /^@\// }, async (args) => {
+			const resolved = await b.resolve(
+				'./' + path.relative(
+					path.dirname(args.importer || path.join(__dirname, 'src/webview/index.ts')),
+					path.join(__dirname, 'src/webview', args.path.slice(2)),
+				).replace(/\\/g, '/'),
+				{ importer: args.importer, resolveDir: path.dirname(args.importer || path.join(__dirname, 'src/webview/index.ts')), kind: args.kind },
+			);
+			return resolved;
+		});
+	},
+};
 
 const extensionConfig = {
 	entryPoints: ['src/extension.ts'],
@@ -26,7 +46,7 @@ const webviewConfig = {
 	minify: !watch,
 	logLevel: 'info',
 	jsx: 'automatic',
-	jsxImportSource: 'preact',
+	plugins: [aliasPlugin],
 };
 
 if (watch) {

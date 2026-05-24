@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/design-system.css";
+@import "./styles/typography.css";
+@source "./**/*.{ts,tsx,css}";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * OC design tokens ported from github.com/openchamber/openchamber (MIT).
+ * Below we override the most relevant tokens to follow VS Code theme colors,
+ * so the chat adapts to whatever theme the user has active.
+ */
+:root,
+.dark {
+  --background:            var(--vscode-editor-background);
+  --foreground:            var(--vscode-foreground);
+  --card:                  var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --card-foreground:       var(--vscode-foreground);
+  --popover:               var(--vscode-dropdown-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --popover-foreground:    var(--vscode-foreground);
+  --primary:               var(--vscode-button-background);
+  --primary-foreground:    var(--vscode-button-foreground);
+  --secondary:             var(--vscode-input-background);
+  --secondary-foreground:  var(--vscode-foreground);
+  --muted:                 var(--vscode-input-background);
+  --muted-foreground:      var(--vscode-descriptionForeground);
+  --accent:                var(--vscode-list-hoverBackground, rgba(128,128,128,0.08));
+  --accent-foreground:     var(--vscode-foreground);
+  --destructive:           var(--vscode-errorForeground, #e34671);
+  --destructive-foreground:var(--vscode-foreground);
+  --border:                var(--vscode-panel-border, rgba(128,128,128,0.22));
+  --input:                 var(--vscode-input-background);
+  --ring:                  var(--vscode-focusBorder, #007fd4);
+
+  /* Surface scale used by tool/thinking cards */
+  --surface-background:          var(--vscode-editor-background);
+  --surface-foreground:          var(--vscode-foreground);
+  --surface-muted:               rgba(128,128,128,0.10);
+  --surface-mutedForeground:     var(--vscode-descriptionForeground);
+  --surface-elevated:            var(--vscode-dropdown-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --surface-elevatedForeground:  var(--vscode-foreground);
+  --surface-subtle:              rgba(128,128,128,0.10);
+  --surface-overlay:             rgba(0,0,0,0.45);
+
+  /* Interactive states */
+  --interactive-border:        var(--vscode-panel-border, rgba(128,128,128,0.22));
+  --interactive-border-focus:  var(--vscode-focusBorder, #007fd4);
+  --interactive-border-hover:  rgba(128,128,128,0.45);
+  --interactive-hover:         var(--vscode-list-hoverBackground, rgba(128,128,128,0.12));
+  --interactive-active:        var(--vscode-list-activeSelectionBackground, rgba(128,128,128,0.18));
+  --interactive-focus:         var(--vscode-focusBorder, #007fd4);
+  --interactive-selection:     var(--vscode-editor-selectionBackground, rgba(128,128,128,0.22));
+
+  /* Status colors */
+  --status-error:        var(--vscode-errorForeground, #e34671);
+  --status-error-border: color-mix(in srgb, var(--vscode-errorForeground, #e34671) 35%, transparent);
+  --status-warning:      var(--vscode-charts-yellow, #f1b467);
+  --status-success:      var(--vscode-charts-green, #3fa266);
+  --status-info:         var(--vscode-charts-blue, #81a1c1);
+
+  /* Tool card tokens (used by ToolPart / ReasoningPart ports) */
+  --tools-background:   var(--vscode-editor-background);
+  --tools-border:       var(--vscode-panel-border, rgba(128,128,128,0.25));
+  --tools-header-hover: var(--vscode-list-hoverBackground, rgba(128,128,128,0.10));
+  --tools-icon:         var(--vscode-descriptionForeground);
+  --tools-title:        var(--vscode-foreground);
+  --tools-description:  var(--vscode-descriptionForeground);
+
+  /* Primary base for selection / accents */
+  --primary-base: var(--vscode-focusBorder, #007fd4);
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--vscode-font-family, ui-sans-serif, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  overscroll-behavior: none;
+}
+
+body {
+  overflow: hidden;
+}
+
+/* Buttons never look selectable */
+button, [role="button"] {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Consistent pointer cursor on interactive controls */
+:where(button, [role="button"], a[href]):not(:disabled) { cursor: pointer; }
+:where(button, [role="button"]):disabled { cursor: not-allowed; }
+
+@keyframes oc-busy-pulse {
+  0%, 100% { opacity: 0.2; }
+  50%       { opacity: 1; }
+}
+
+.animate-busy-pulse { animation: oc-busy-pulse 1.2s ease-in-out infinite; }
+
+/* Thin scrollbars matching the editor */
+::-webkit-scrollbar          { width: 10px; height: 10px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: var(--vscode-scrollbarSlider-background, rgba(128,128,128,0.3)); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128,128,128,0.5)); }
+
+@layer components {
+  /* Chat column wrappers (match OC) */
+  .chat-column        { width: min(100%, 48rem); margin-inline: auto; padding-inline: clamp(0.75rem, 2.5vw, 1rem); }
+  .chat-input-column  { width: min(100%, 48rem); margin-inline: auto; padding-inline: clamp(0.75rem, 2.5vw, 1rem); }
+  .chat-message-column{ width: min(100%, 48rem); margin-inline: auto; padding-inline: clamp(0.75rem, 2.5vw, 1rem); }
+
+  /* Markdown content styling (prose) */
+  .prose                       { font-size: var(--text-markdown); line-height: 1.6; color: var(--foreground); }
+  .prose p                     { margin: 0.55em 0; }
+  .prose p:first-child         { margin-top: 0; }
+  .prose p:last-child          { margin-bottom: 0; }
+  .prose h1, .prose h2,
+  .prose h3, .prose h4         { margin: 0.9em 0 0.4em; font-weight: 600; line-height: 1.3; }
+  .prose h1                    { font-size: 1.35em; }
+  .prose h2                    { font-size: 1.18em; }
+  .prose h3                    { font-size: 1.06em; }
+  .prose ul, .prose ol         { margin: 0.45em 0; padding-left: 1.4em; }
+  .prose li                    { margin: 0.15em 0; }
+  .prose code                  { font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, monospace); font-size: 0.85em; background: var(--surface-subtle); border-radius: 3px; padding: 0.1em 0.32em; }
+  .prose pre                   { margin: 0.65em 0; }
+  .prose pre code              { background: transparent; padding: 0; font-size: 1em; }
+  .prose blockquote            { border-left: 3px solid var(--border); margin: 0.5em 0; padding: 0.2em 0.8em; color: var(--muted-foreground); }
+  .prose a                     { color: var(--vscode-textLink-foreground, #569cd6); text-decoration: none; }
+  .prose a:hover               { text-decoration: underline; }
+  .prose table                 { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+  .prose th, .prose td         { border: 1px solid var(--border); padding: 0.3em 0.6em; text-align: left; }
+  .prose th                    { background: var(--surface-subtle); font-weight: 600; }
+  .prose hr                    { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
+
+  /* Code blocks rendered by markdown */
+  .code-block        { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.10)); border-radius: 8px; overflow: hidden; margin: 0.65em 0; border: 1px solid var(--border); }
+  .code-header       { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0.75rem; background: var(--surface-subtle); border-bottom: 1px solid var(--border); }
+  .code-lang         { font-size: 11px; color: var(--muted-foreground); font-family: var(--vscode-editor-font-family, monospace); }
+  .copy-btn          { font-size: 11px; color: var(--muted-foreground); background: none; border: none; padding: 0; transition: color 0.1s; }
+  .copy-btn:hover    { color: var(--foreground); }
+  .code-block pre    { margin: 0; padding: 0.75rem; overflow-x: auto; }
+  .code-block code   { font-family: var(--vscode-editor-font-family, monospace); font-size: var(--text-code); line-height: 1.5; }
+
+  /* hljs theme using VS Code Dark+ palette */
+  .hljs                          { background: transparent !important; color: var(--vscode-editor-foreground, var(--foreground)); }
+  .hljs-keyword, .hljs-operator  { color: #569cd6; }
+  .hljs-string, .hljs-attr       { color: #ce9178; }
+  .hljs-comment                  { color: #6a9955; font-style: italic; }
+  .hljs-number, .hljs-literal    { color: #b5cea8; }
+  .hljs-type, .hljs-class,
+  .hljs-built_in                 { color: #4ec9b0; }
+  .hljs-function, .hljs-title    { color: #dcdcaa; }
+  .hljs-variable, .hljs-params   { color: #9cdcfe; }
+  .hljs-tag, .hljs-name          { color: #569cd6; }
+  .hljs-attribute                { color: #9cdcfe; }
+  .hljs-meta                     { color: #c586c0; }
+  .hljs-deletion                 { color: #e34671; }
+  .hljs-addition                 { color: #3fa266; }
+
+  /* JSON syntax (tool body) */
+  .jk { color: #9cdcfe; }
+  .js { color: #ce9178; }
+  .jb { color: #569cd6; }
+  .jn { color: #b5cea8; }
+  .jd { color: #b5cea8; }
+}
