@@ -44,17 +44,27 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 			foreach (FunctionCallContent call in calls) {
 				string toolId = $"tool:{Guid.NewGuid():N}";
 				string argsJson = call.Arguments is not null ? JsonSerializer.Serialize(call.Arguments) : "{}";
+				// Streaming SK FunctionCallContent often has an empty PluginName (the
+				// kernel-side lookup hasn't resolved yet) — FunctionName carries the full
+				// "plugin_function" form Anthropic returned. Skip the underscore in that case.
+				string toolName = string.IsNullOrEmpty(call.PluginName)
+					? call.FunctionName ?? "tool"
+					: $"{call.PluginName}_{call.FunctionName}";
 
 				if (streamSink is not null && streamChatId is not null)
-					await streamSink.SendToolStartAsync(streamChatId, toolId, $"{call.PluginName}_{call.FunctionName}", argsJson, ct);
+					await streamSink.SendToolStartAsync(streamChatId, toolId, toolName, argsJson, ct);
 
 				FunctionResultContent funcResult = await this.InvokeFunctionAsync(kernel, call, ct);
 				string resultText = funcResult.Result?.ToString() ?? "";
 
 				if (streamSink is not null && streamChatId is not null)
-					await streamSink.SendToolResultAsync(streamChatId, toolId, $"{call.PluginName}_{call.FunctionName}", resultText, null, ct);
+					await streamSink.SendToolResultAsync(streamChatId, toolId, toolName, resultText, null, ct);
 
 				ChatMessageContent toolMsg = funcResult.ToChatMessage();
+				// Stash the call args on the persisted message so history can recover
+				// the parameters the agent used — SkContent for tool messages otherwise
+				// only carries the result.
+				toolMsg.Metadata = new Dictionary<string, object?> { ["ToolArgs"] = argsJson };
 				history.Add(toolMsg);
 				yield return toolMsg;
 			}
