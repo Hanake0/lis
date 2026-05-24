@@ -11,7 +11,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 		private readonly extensionUri: vscode.Uri,
 		private readonly client: LisClient,
 	) {
-		client.on('frame', (frame: ServerFrame) => this.onFrame(frame));
+		client.onFrame((frame: ServerFrame) => this.onFrame(frame));
 	}
 
 	setOpenSessionHandler(handler: (chatId: string, title?: string) => void): void {
@@ -35,7 +35,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage((msg) => {
 			switch (msg.type) {
 				case 'ready':
-					if (this.client.connected) {
+					if (this.client.currentState === 'connected') {
 						this.post({ type: 'state', state: 'connected' });
 						this.client.send({ type: 'list_chats' });
 						this.client.send({ type: 'list_agents' });
