@@ -980,6 +980,98 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("session");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.SessionFolderEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasJsonPropertyName("created_at");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("external_id")
+                        .HasJsonPropertyName("external_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("name")
+                        .HasJsonPropertyName("name");
+
+                    b.Property<string>("ParentExternalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("parent_external_id")
+                        .HasJsonPropertyName("parent_external_id");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("scope_key")
+                        .HasJsonPropertyName("scope_key");
+
+                    b.Property<int>("SortIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_index")
+                        .HasJsonPropertyName("sort_index");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("ScopeKey", "ParentExternalId", "SortIndex");
+
+                    b.ToTable("session_folder");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.SessionFolderItemEntity", b =>
+                {
+                    b.Property<long>("FolderId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("folder_id")
+                        .HasJsonPropertyName("folder_id");
+
+                    b.Property<string>("ChatExternalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("chat_external_id")
+                        .HasJsonPropertyName("chat_external_id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at")
+                        .HasJsonPropertyName("added_at");
+
+                    b.Property<int>("SortIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_index")
+                        .HasJsonPropertyName("sort_index");
+
+                    b.HasKey("FolderId", "ChatExternalId");
+
+                    b.HasIndex("ChatExternalId");
+
+                    b.ToTable("session_folder_item");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.ChatAllowedSenderEntity", b =>
                 {
                     b.HasOne("Lis.Persistence.Entities.ChatEntity", "Chat")
@@ -1112,6 +1204,17 @@ namespace Lis.Persistence.Migrations
                     b.Navigation("ParentSession");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.SessionFolderItemEntity", b =>
+                {
+                    b.HasOne("Lis.Persistence.Entities.SessionFolderEntity", "Folder")
+                        .WithMany("Items")
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Folder");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.AgentEntity", b =>
                 {
                     b.Navigation("PromptSections");
@@ -1134,6 +1237,11 @@ namespace Lis.Persistence.Migrations
             modelBuilder.Entity("Lis.Persistence.Entities.ProjectEntity", b =>
                 {
                     b.Navigation("Chats");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.SessionFolderEntity", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }
