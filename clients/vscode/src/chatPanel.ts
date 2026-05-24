@@ -84,8 +84,11 @@ export class ChatPanelManager {
 		});
 	}
 
-	private onWebviewMessage(entry: ChatPanel, msg: WebviewInbound): void {
+	private onWebviewMessage(entry: ChatPanel, msg: WebviewInbound & { type: string }): void {
 		switch (msg.type) {
+			case 'toggle_sidebar':
+				void vscode.commands.executeCommand('workbench.view.extension.lis-sidebar');
+				return;
 			case 'ready':
 				entry.ready = true;
 				this.post(entry, { type: 'init', chatId: entry.chatId });

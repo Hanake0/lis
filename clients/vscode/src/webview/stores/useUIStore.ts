@@ -97,7 +97,9 @@ export const useUIStore = create<any>((set: any) => ({
 	setWideChatLayoutEnabled: (v: boolean) => set({ wideChatLayoutEnabled: v }),
 	setIsMobile: (v: boolean) => set({ isMobile: v }),
 
-	toggleSidebar: () => {},
+	toggleSidebar: () => {
+		try { (window as any).acquireVsCodeApi?.()?.postMessage({ type: 'toggle_sidebar' }); } catch {}
+	},
 	setSidebarOpen: (_open: boolean) => {},
 	setSidebarWidth: (_width: number) => {},
 	toggleRightSidebar: () => set((s: any) => ({ isRightSidebarOpen: !s.isRightSidebarOpen })),

@@ -93,7 +93,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	private getHtml(webview: vscode.Webview): string {
 		const nonce = generateNonce();
 		const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.css'));
-		const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'sidebar.js'));
+		const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.js'));
 		const cspSource = webview.cspSource;
 
 		return `<!DOCTYPE html>
@@ -107,6 +107,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
 	<div id="app"></div>
+	<script nonce="${nonce}">window.__LIS_SIDEBAR_MODE = true;</script>
 	<script nonce="${nonce}" src="${jsUri}"></script>
 </body>
 </html>`;
