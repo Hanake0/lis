@@ -886,6 +886,114 @@ namespace Lis.Persistence.Migrations
                     b.ToTable("prompt_section");
                 });
 
+            modelBuilder.Entity("Lis.Persistence.Entities.ScheduledTaskEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id")
+                        .HasJsonPropertyName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AgentName")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("agent_name")
+                        .HasJsonPropertyName("agent_name");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasJsonPropertyName("created_at");
+
+                    b.Property<string>("CronExpression")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("cron_expr")
+                        .HasJsonPropertyName("cron_expr");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled")
+                        .HasJsonPropertyName("enabled");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("external_id")
+                        .HasJsonPropertyName("external_id");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error")
+                        .HasJsonPropertyName("last_error");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_run_at")
+                        .HasJsonPropertyName("last_run_at");
+
+                    b.Property<string>("LastStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("last_status")
+                        .HasJsonPropertyName("last_status");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("model")
+                        .HasJsonPropertyName("model");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("name")
+                        .HasJsonPropertyName("name");
+
+                    b.Property<DateTimeOffset?>("NextRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_run_at")
+                        .HasJsonPropertyName("next_run_at");
+
+                    b.Property<long?>("ProjectId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("project_id")
+                        .HasJsonPropertyName("project_id");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("prompt")
+                        .HasJsonPropertyName("prompt");
+
+                    b.Property<string>("Timezone")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("timezone")
+                        .HasJsonPropertyName("timezone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasJsonPropertyName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("Enabled", "NextRunAt");
+
+                    b.ToTable("scheduled_task");
+                });
+
             modelBuilder.Entity("Lis.Persistence.Entities.SessionEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -1184,6 +1292,16 @@ namespace Lis.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Agent");
+                });
+
+            modelBuilder.Entity("Lis.Persistence.Entities.ScheduledTaskEntity", b =>
+                {
+                    b.HasOne("Lis.Persistence.Entities.ProjectEntity", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Lis.Persistence.Entities.SessionEntity", b =>
