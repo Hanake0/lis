@@ -202,45 +202,47 @@ public sealed class ContextBreakdownService(
 	}
 
 	// ── Counter helpers ─────────────────────────────────────────────
-	// All four helpers share the same baseline (an empty-content user message)
-	// and the same in-memory cache keyed by content hash. Returns null on any
-	// counter failure so the caller can render "—" instead of a wrong number.
+	// Each helper makes one count_tokens call (cached by content hash) and returns
+	// the raw input_tokens. Anthropic's API 400s on empty user content, so when a
+	// dummy message is needed (system-only / tools-only counts) we send "." — its
+	// single token bleeds into the segment count by ~1, which is invisible against
+	// segments measured in thousands. No baseline subtraction; same shape Claude
+	// Code uses (see tokenEstimation.countTokensWithAPI, which 0-shorts on empty
+	// content explicitly because the API rejects it). Returns null on counter
+	// failure so the caller can render "—" — never substituted by a local tokenizer.
+
+	private const string DummyContent = ".";
 
 	private async Task<int?> CountTextAsync(string model, string text, CancellationToken ct) {
-		int? baseline = await this.GetBaselineAsync(model, ct);
-		if (baseline is null) return null;
+		if (string.IsNullOrEmpty(text)) return 0;
 		JsonObject body = new() {
 			["model"]    = model,
 			["messages"] = new JsonArray {
 				new JsonObject { ["role"] = "user", ["content"] = text }
 			}
 		};
-		int? raw = await this.CachedCountAsync("text:" + model + ":" + text, body, ct);
-		return raw is null ? null : Math.Max(0, raw.Value - baseline.Value);
+		return await this.CachedCountAsync("text:" + model + ":" + text, body, ct);
 	}
 
 	private async Task<int?> CountSystemAsync(string model, string systemPrompt, CancellationToken ct) {
 		if (string.IsNullOrEmpty(systemPrompt)) return 0;
-		int? baseline = await this.GetBaselineAsync(model, ct);
-		if (baseline is null) return null;
 		JsonObject body = new() {
 			["model"]    = model,
 			["system"]   = new JsonArray {
 				new JsonObject { ["type"] = "text", ["text"] = systemPrompt }
 			},
 			["messages"] = new JsonArray {
-				new JsonObject { ["role"] = "user", ["content"] = "" }
+				new JsonObject { ["role"] = "user", ["content"] = DummyContent }
 			}
 		};
-		int? raw = await this.CachedCountAsync("system:" + model + ":" + systemPrompt, body, ct);
-		return raw is null ? null : Math.Max(0, raw.Value - baseline.Value);
+		return await this.CachedCountAsync("system:" + model + ":" + systemPrompt, body, ct);
 	}
 
 	private async Task<int?> CountSummariesAsync(string model, string? parent, string? current, CancellationToken ct) {
 		bool hasParent  = parent  is { Length: > 0 };
 		bool hasCurrent = current is { Length: > 0 };
 		if (!hasParent && !hasCurrent) return 0;
-		// One call covering both — fewer roundtrips and the envelope cancels via baseline.
+		// One call covering both — fewer roundtrips and identical envelope to other text counts.
 		string combined = (hasParent ? parent! : "")
 		                + (hasParent && hasCurrent ? "\n" : "")
 		                + (hasCurrent ? current! : "");
@@ -253,9 +255,6 @@ public sealed class ContextBreakdownService(
 	/// Used when the turn-1 anchor is unusable or stale.
 	/// </summary>
 	private async Task<int?> CountSystemAndToolsAsync(string model, string systemPrompt, AgentEntity agent, CancellationToken ct) {
-		int? baseline = await this.GetBaselineAsync(model, ct);
-		if (baseline is null) return null;
-
 		string? origProfile = agent.ToolProfile;
 		agent.ToolProfile = agent.ToolProfile ?? "standard";
 		HashSet<string> allowed = toolPolicyService.GetAllowedPluginNames(agent);
@@ -275,7 +274,7 @@ public sealed class ContextBreakdownService(
 				new JsonObject { ["type"] = "text", ["text"] = systemPrompt }
 			},
 			["messages"] = new JsonArray {
-				new JsonObject { ["role"] = "user", ["content"] = "" }
+				new JsonObject { ["role"] = "user", ["content"] = DummyContent }
 			},
 			["tools"]    = tools
 		};
@@ -283,18 +282,7 @@ public sealed class ContextBreakdownService(
 		// Cache key incorporates the tool set fingerprint so a profile/agent change
 		// naturally misses the cache and re-counts.
 		string toolFp = tools.ToJsonString();
-		int? raw = await this.CachedCountAsync("sysTools:" + model + ":" + systemPrompt + ":" + toolFp, body, ct);
-		return raw is null ? null : Math.Max(0, raw.Value - baseline.Value);
-	}
-
-	private async Task<int?> GetBaselineAsync(string model, CancellationToken ct) {
-		JsonObject body = new() {
-			["model"]    = model,
-			["messages"] = new JsonArray {
-				new JsonObject { ["role"] = "user", ["content"] = "" }
-			}
-		};
-		return await this.CachedCountAsync("baseline:" + model, body, ct);
+		return await this.CachedCountAsync("sysTools:" + model + ":" + systemPrompt + ":" + toolFp, body, ct);
 	}
 
 	private async Task<int?> CachedCountAsync(string keyMaterial, JsonObject body, CancellationToken ct) {
