@@ -130,6 +130,7 @@ builder.Services.AddSingleton<ContextWindowBuilder>();
 builder.Services.AddSingleton<PromptComposer>();
 builder.Services.AddSingleton<ToolRunner>();
 builder.Services.AddSingleton<ContextBreakdownService>();
+builder.Services.AddSingleton<IContextBreakdownService>(sp => sp.GetRequiredService<ContextBreakdownService>());
 builder.Services.AddScoped<IProjectService,       ProjectService>();
 builder.Services.AddScoped<ISessionFolderService, SessionFolderService>();
 builder.Services.AddScoped<IChatPinService,       ChatPinService>();

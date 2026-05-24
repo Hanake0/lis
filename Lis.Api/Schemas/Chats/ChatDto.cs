@@ -92,3 +92,30 @@ public sealed record SaveChatOverridesRequest(
 	[property: JsonPropertyName("effort"), MaxLength(16)]        string? Effort,
 	[property: JsonPropertyName("tool_profile"), MaxLength(32)]  string? ToolProfile
 );
+
+/// <summary>
+/// One labelled slice of the context-window breakdown — system prompt, summary,
+/// per-turn messages, etc. <c>tokens = -1</c> means the counter failed for that
+/// slice; the UI renders "—" rather than zeroing it (we never silently
+/// substitute a local tokenizer for an Anthropic count).
+/// </summary>
+public sealed record ContextSegmentDto(
+	[property: JsonPropertyName("name")]   string Name,
+	[property: JsonPropertyName("tokens")] int    Tokens
+);
+
+/// <summary>
+/// Context-window panel data. <c>total</c> is the authoritative API-reported
+/// input-side count (input + cache-read + cache-create from the last assistant
+/// turn). <c>budget</c> is the configured model budget. <c>segments</c> sum to
+/// roughly the total (segments use subtraction / token-count calls for the few
+/// pieces not derivable from the persisted totals).
+/// </summary>
+public sealed record ContextBreakdownDto(
+	[property: JsonPropertyName("chat_id")]  string                Id,
+	[property: JsonPropertyName("total")]    int                   Total,
+	[property: JsonPropertyName("budget")]   int                   Budget,
+	[property: JsonPropertyName("model")]    string                Model,
+	[property: JsonPropertyName("effort")]   string?               Effort,
+	[property: JsonPropertyName("segments")] ContextSegmentDto[]   Segments
+);

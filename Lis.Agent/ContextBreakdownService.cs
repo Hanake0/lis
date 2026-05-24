@@ -26,13 +26,22 @@ namespace Lis.Agent;
 /// don't hit the network. A segment whose counter call failed is emitted with <c>Tokens = -1</c>
 /// so the UI can render "—"; we never silently substitute a local tokenizer.
 /// </summary>
+/// <summary>
+/// Public contract for <see cref="ContextBreakdownService"/>. Extracted so the
+/// REST controllers can be unit-tested with a fake without spinning the full
+/// SK + kernel + token-counter dependency chain.
+/// </summary>
+public interface IContextBreakdownService {
+	Task<ContextBreakdownService.Breakdown?> ComputeAsync(string chatId, CancellationToken ct, bool forceRefresh = false);
+}
+
 public sealed class ContextBreakdownService(
 	IServiceScopeFactory  scopeFactory,
 	Kernel                kernel,
 	PromptComposer        promptComposer,
 	AgentService          agentService,
 	ToolPolicyService     toolPolicyService,
-	ITokenCounter?        tokenCounter = null) {
+	ITokenCounter?        tokenCounter = null) :IContextBreakdownService {
 
 	public sealed record Segment(string Name, int Tokens);
 	public sealed record Breakdown(

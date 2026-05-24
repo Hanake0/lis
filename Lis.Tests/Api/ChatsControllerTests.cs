@@ -20,11 +20,12 @@ namespace Lis.Tests.Api;
 /// InMemory + a capturing <see cref="IEventBus"/>.
 /// </summary>
 public class ChatsControllerTests :IDisposable {
-	private readonly LisDbContext            db;
-	private readonly FakeTimeProvider        time;
-	private readonly CapturingEventBus       bus;
-	private readonly FakeGenerationService   generation;
-	private readonly ChatsController         sut;
+	private readonly LisDbContext             db;
+	private readonly FakeTimeProvider         time;
+	private readonly CapturingEventBus        bus;
+	private readonly FakeGenerationService    generation;
+	private readonly FakeContextBreakdown     context;
+	private readonly ChatsController          sut;
 
 	public ChatsControllerTests() {
 		DbContextOptions<LisDbContext> options = new DbContextOptionsBuilder<LisDbContext>()
@@ -35,7 +36,8 @@ public class ChatsControllerTests :IDisposable {
 		this.time       = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
 		this.bus        = new CapturingEventBus();
 		this.generation = new FakeGenerationService();
-		this.sut        = new ChatsController(this.db, this.bus, this.time, this.generation);
+		this.context    = new FakeContextBreakdown();
+		this.sut        = new ChatsController(this.db, this.bus, this.time, this.generation, this.context);
 	}
 
 	public void Dispose() {
@@ -310,6 +312,53 @@ public class ChatsControllerTests :IDisposable {
 		// Idempotent broadcast — racing clients still get the "drop this row" signal.
 		Assert.Single(this.bus.Captured);
 		Assert.Equal(ChatEventNames.Deleted, this.bus.Captured[0].Name);
+	}
+
+	// ── Context breakdown ─────────────────────────────────────────
+
+	[Fact]
+	public async Task GetContext_Returns_The_Mapped_Breakdown_From_The_Service() {
+		this.context.Returned = new ContextBreakdownService.Breakdown(
+			Total:    1500,
+			Budget:   12000,
+			Segments: new List<ContextBreakdownService.Segment> {
+				new("system",  120),
+				new("history", 1380),
+			},
+			Model:  "anthropic/claude-sonnet-4",
+			Effort: "high"
+		);
+
+		ActionResult<ContextBreakdownDto> result = await this.sut.GetContext("c1", force: null, default);
+		ContextBreakdownDto dto = Assert.IsType<ContextBreakdownDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+
+		Assert.Equal("c1",                        dto.Id);
+		Assert.Equal(1500,                        dto.Total);
+		Assert.Equal(12000,                       dto.Budget);
+		Assert.Equal("anthropic/claude-sonnet-4", dto.Model);
+		Assert.Equal("high",                      dto.Effort);
+		Assert.Equal(2,                           dto.Segments.Length);
+		Assert.Equal("system",                    dto.Segments[0].Name);
+		Assert.Equal(120,                         dto.Segments[0].Tokens);
+	}
+
+	[Fact]
+	public async Task GetContext_Null_Breakdown_Throws_KeyNotFoundException() {
+		this.context.Returned = null;
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.GetContext("c1", force: null, default));
+	}
+
+	[Fact]
+	public async Task GetContext_Force_Query_Param_Is_Propagated_To_The_Service() {
+		this.context.Returned = new ContextBreakdownService.Breakdown(0, 1, new List<ContextBreakdownService.Segment>(), "m", null);
+		await this.sut.GetContext("c1", force: true,  default);
+		await this.sut.GetContext("c2", force: false, default);
+		await this.sut.GetContext("c3", force: null,  default);
+
+		Assert.Equal(3, this.context.Calls.Count);
+		Assert.True (this.context.Calls[0].Force);
+		Assert.False(this.context.Calls[1].Force);
+		Assert.False(this.context.Calls[2].Force);  // null becomes false
 	}
 
 	// ── List messages (history) ───────────────────────────────────
@@ -739,6 +788,21 @@ public class ChatsControllerTests :IDisposable {
 			throw new NotSupportedException("Tests do not subscribe directly.");
 
 		public IReadOnlyList<ServerEvent> ReplaySince(long? lastEventId) => [];
+	}
+
+	/// <summary>
+	/// Captures the chat id + force flag and returns a canned breakdown. The
+	/// real service touches kernel + token counter + DB — way too much to set
+	/// up for a controller unit test.
+	/// </summary>
+	private sealed class FakeContextBreakdown :IContextBreakdownService {
+		public List<(string ChatId, bool Force)> Calls { get; } = [];
+		public ContextBreakdownService.Breakdown? Returned { get; set; }
+
+		public Task<ContextBreakdownService.Breakdown?> ComputeAsync(string chatId, CancellationToken ct, bool forceRefresh = false) {
+			this.Calls.Add((chatId, forceRefresh));
+			return Task.FromResult(this.Returned);
+		}
 	}
 
 	/// <summary>

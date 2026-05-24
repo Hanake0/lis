@@ -26,10 +26,11 @@ namespace Lis.Api.Controllers;
 [Tags("Chats")]
 [Produces("application/json")]
 public sealed class ChatsController(
-	LisDbContext            db,
-	IEventBus               events,
-	TimeProvider            time,
-	IChatGenerationService  generation
+	LisDbContext             db,
+	IEventBus                events,
+	TimeProvider             time,
+	IChatGenerationService   generation,
+	IContextBreakdownService contextBreakdown
 ) :ControllerBase {
 
 	/// <summary>
@@ -218,6 +219,39 @@ public sealed class ChatsController(
 
 		MessageDto[] dtos = raw.Select(MessageDto.FromRaw).ToArray();
 		return this.Ok(dtos);
+	}
+
+	/// <summary>
+	/// Returns the context-window breakdown for this chat. The breakdown is null
+	/// when the chat hasn't started a session yet (no assistant turn to compute
+	/// against) — we 404 that case so the UI shows "no context yet" rather than
+	/// rendering an empty panel. <c>force=true</c> bypasses the per-content
+	/// token-count cache.
+	/// </summary>
+	[HttpGet("{chatExternalId}/context")]
+	[ProducesResponseType(typeof(ContextBreakdownDto), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails),      StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<ContextBreakdownDto>> GetContext(
+		[FromRoute] string chatExternalId,
+		[FromQuery] bool?  force,
+		CancellationToken  ct
+	) {
+		ContextBreakdownService.Breakdown? breakdown =
+			await contextBreakdown.ComputeAsync(chatExternalId, ct, force == true);
+		if (breakdown is null) throw new KeyNotFoundException($"chat '{chatExternalId}' has no active session yet");
+
+		ContextSegmentDto[] segments = breakdown.Segments
+			.Select(s => new ContextSegmentDto(s.Name, s.Tokens))
+			.ToArray();
+
+		return this.Ok(new ContextBreakdownDto(
+			Id:       chatExternalId,
+			Total:    breakdown.Total,
+			Budget:   breakdown.Budget,
+			Model:    breakdown.Model,
+			Effort:   breakdown.Effort,
+			Segments: segments
+		));
 	}
 
 	// ── Agent assignment + overrides ───────────────────────────────
