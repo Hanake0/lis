@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 
 import { LisClient } from './lisClient';
 import { Logger } from './logger';
-import { SessionsTreeProvider } from './sessionsTreeProvider';
+import { SidebarWebviewProvider } from './sidebarWebviewProvider';
 import { ChatPanelManager } from './chatPanel';
 
 let client:   LisClient | null            = null;
-let sessions: SessionsTreeProvider | null = null;
+let sidebar:  SidebarWebviewProvider | null = null;
 let panels:   ChatPanelManager | null     = null;
 let logger:   Logger | null               = null;
 
@@ -18,21 +18,23 @@ export function activate(context: vscode.ExtensionContext): void {
 	logger.info('extension activated');
 
 	client   = new LisClient(cfg.url, cfg.token, logger);
-	sessions = new SessionsTreeProvider(client);
+	sidebar  = new SidebarWebviewProvider(context.extensionUri, client);
 	panels   = new ChatPanelManager(context, client);
+
+	sidebar.setOpenSessionHandler((chatId, title) => {
+		panels?.openOrFocus(chatId, title);
+	});
 
 	context.subscriptions.push(
 		channel,
-		vscode.window.registerTreeDataProvider('lis.sessions', sessions),
+		vscode.window.registerWebviewViewProvider('lis.sidebar', sidebar),
 
-		vscode.commands.registerCommand('lis.connect',         () => client?.connect()),
-		vscode.commands.registerCommand('lis.disconnect',      () => client?.disconnect()),
-		vscode.commands.registerCommand('lis.refreshSessions', () => sessions?.refresh()),
-		vscode.commands.registerCommand('lis.showOutput',      () => logger?.show()),
+		vscode.commands.registerCommand('lis.connect',    () => client?.connect()),
+		vscode.commands.registerCommand('lis.disconnect', () => client?.disconnect()),
+		vscode.commands.registerCommand('lis.showOutput', () => logger?.show()),
 
 		vscode.commands.registerCommand('lis.newChat', () => {
 			const chatId = `web:${crypto.randomUUID()}`;
-			sessions?.addLocalChat(chatId);
 			client?.send({ type: 'create_session', chat_id: chatId, name: 'New Chat' });
 			panels?.openOrFocus(chatId, 'New Chat');
 		}),

@@ -14,7 +14,7 @@
   "main": "./dist/extension.js",
   "icon": "media/lis-avatar.png",
   "activationEvents": [
-    "onView:lis.sessions"
+    "onView:lis.sidebar"
   ],
   "contributes": {
     "viewsContainers": {
@@ -29,8 +29,9 @@
     "views": {
       "lis-sidebar": [
         {
-          "id": "lis.sessions",
-          "name": "Sessions"
+          "id": "lis.sidebar",
+          "name": "Sessions",
+          "type": "webview"
         }
       ]
     },
@@ -49,11 +50,6 @@
         "icon": "$(add)"
       },
       {
-        "command": "lis.refreshSessions",
-        "title": "Lis: Refresh Sessions",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "lis.openChat",
         "title": "Lis: Open Chat"
       },
@@ -62,20 +58,6 @@
         "title": "Lis: Show Output"
       }
     ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "lis.newChat",
-          "when": "view == lis.sessions",
-          "group": "navigation@1"
-        },
-        {
-          "command": "lis.refreshSessions",
-          "when": "view == lis.sessions",
-          "group": "navigation@2"
-        }
-      ]
-    },
     "configuration": {
       "title": "Lis",
       "properties": {

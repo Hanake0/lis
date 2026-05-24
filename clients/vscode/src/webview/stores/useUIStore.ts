@@ -22,8 +22,8 @@ export const useUIStore = create<any>((set: any) => ({
 	wideChatLayoutEnabled: false,
 	isMobile: false,
 
-	isSidebarOpen: true,
-	sidebarWidth: 280,
+	isSidebarOpen: false,
+	sidebarWidth: 0,
 	isRightSidebarOpen: false,
 	rightSidebarWidth: 360,
 	rightSidebarTab: 'git' as RightSidebarTab,
@@ -97,9 +97,9 @@ export const useUIStore = create<any>((set: any) => ({
 	setWideChatLayoutEnabled: (v: boolean) => set({ wideChatLayoutEnabled: v }),
 	setIsMobile: (v: boolean) => set({ isMobile: v }),
 
-	toggleSidebar: () => set((s: any) => ({ isSidebarOpen: !s.isSidebarOpen })),
-	setSidebarOpen: (open: boolean) => set({ isSidebarOpen: open }),
-	setSidebarWidth: (width: number) => set({ sidebarWidth: width }),
+	toggleSidebar: () => {},
+	setSidebarOpen: (_open: boolean) => {},
+	setSidebarWidth: (_width: number) => {},
 	toggleRightSidebar: () => set((s: any) => ({ isRightSidebarOpen: !s.isRightSidebarOpen })),
 	setRightSidebarOpen: (open: boolean) => set({ isRightSidebarOpen: open }),
 	setRightSidebarWidth: (width: number) => set({ rightSidebarWidth: width }),
