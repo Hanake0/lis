@@ -12,8 +12,9 @@
   ],
   "browser": "./dist/extension.js",
   "main": "./dist/extension.js",
+  "icon": "media/lis-avatar.png",
   "activationEvents": [
-    "onView:lis.chat"
+    "onView:lis.sessions"
   ],
   "contributes": {
     "viewsContainers": {
@@ -28,9 +29,8 @@
     "views": {
       "lis-sidebar": [
         {
-          "type": "webview",
-          "id": "lis.chat",
-          "name": "Chat"
+          "id": "lis.sessions",
+          "name": "Sessions"
         }
       ]
     },
@@ -45,9 +45,37 @@
       },
       {
         "command": "lis.newChat",
-        "title": "Lis: New Chat"
+        "title": "Lis: New Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "lis.refreshSessions",
+        "title": "Lis: Refresh Sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "lis.openChat",
+        "title": "Lis: Open Chat"
+      },
+      {
+        "command": "lis.showOutput",
+        "title": "Lis: Show Output"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "lis.newChat",
+          "when": "view == lis.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "lis.refreshSessions",
+          "when": "view == lis.sessions",
+          "group": "navigation@2"
+        }
+      ]
+    },
     "configuration": {
       "title": "Lis",
       "properties": {
@@ -60,6 +88,11 @@
           "type": "string",
           "default": "",
           "description": "Shared secret matching WEB_CHANNEL_TOKEN on the server."
+        },
+        "lis.verboseLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log every WebSocket frame sent and received to the Lis output channel. Noisy; use for protocol debugging."
         }
       }
     }
