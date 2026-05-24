@@ -8,6 +8,10 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 export function App() {
 	useEffect(() => {
+		document.documentElement.classList.add('dark');
+	}, []);
+
+	useEffect(() => {
 		const { setChatId, setConnection } = useChatStore.getState();
 		const handler = (ev: MessageEvent<{ type: string; [k: string]: unknown }>) => {
 			const msg = ev.data;

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useChatStore } from '@/store';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 
 export type { AttachedFile };
@@ -26,3 +27,9 @@ export const useSessionUIStore = create<SessionUIStore>((set) => ({
 	closeNewSessionDraft: () => set({ newSessionDraft: null }),
 	clearError: () => set({ error: null }),
 }));
+
+useChatStore.subscribe((state, prev) => {
+	if (state.chatId !== prev.chatId && state.chatId) {
+		useSessionUIStore.setState({ currentSessionId: state.chatId, newSessionDraft: null });
+	}
+});

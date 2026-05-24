@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useChatStore } from '@/store';
 
 export interface ModelMetadata {
 	id: string;
@@ -35,10 +36,32 @@ export const useConfigStore = create<ConfigStore>((set, _get) => ({
 	isConnected: false,
 	providers: [],
 	agents: [],
-	getCurrentModel: () => undefined,
+	getCurrentModel: () => {
+		const model = useChatStore.getState().composerModel;
+		return model ? { id: model, name: model } : undefined;
+	},
 	loadProviders: async () => {},
 	loadAgents: async () => {},
 	initializeApp: async () => {
 		set({ isInitialized: true, isConnected: true });
 	},
 }));
+
+useChatStore.subscribe((state) => {
+	const connected = state.connection === 'connected';
+	const agents = state.agents.map((a) => ({
+		id: a.name,
+		name: a.display_name ?? a.name,
+		model: a.model,
+	}));
+	useConfigStore.setState({
+		isConnected: connected,
+		isInitialized: connected,
+		agents,
+		providers: state.composerModel ? [{
+			id: 'default',
+			name: 'Provider',
+			models: [{ id: state.composerModel, name: state.composerModel }],
+		}] : [],
+	});
+});
