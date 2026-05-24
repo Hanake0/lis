@@ -52,7 +52,10 @@ export class ChatPanelManager {
 			{
 				enableScripts:   true,
 				retainContextWhenHidden: true,
-				localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
+				localResourceRoots: [
+						vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+						vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+					],
 			},
 		);
 		panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'lis-noturna.svg');
@@ -107,8 +110,9 @@ export class ChatPanelManager {
 
 	private buildHtml(webview: vscode.Webview): string {
 		const mediaRoot = vscode.Uri.joinPath(this.context.extensionUri, 'media');
+		const distRoot  = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
 		const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'chat.css'));
-		const jsUri  = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'chat.js'));
+		const jsUri  = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.js'));
 		const nonce  = generateNonce();
 
 		return BUNDLED_HTML
