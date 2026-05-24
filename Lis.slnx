@@ -12,6 +12,7 @@
   </Folder>
   <Project Path="Lis.Core/Lis.Core.csproj" />
   <Project Path="Lis.Persistence/Lis.Persistence.csproj" />
+  <Project Path="Lis.Git/Lis.Git.csproj" />
   <Project Path="Lis.Agent/Lis.Agent.csproj" />
   <Project Path="Lis.Tools/Lis.Tools.csproj" />
   <Project Path="Lis.Channels/Lis.Channels.csproj" />
