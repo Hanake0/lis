@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+const noop: any = () => {};
 
 export interface SyntheticContextPart {
 	text: string;

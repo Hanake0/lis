@@ -1,11 +1,19 @@
 import { create } from 'zustand';
 
-interface ProjectsStore {
-	activeProjectId: string | null;
-	setActiveProjectId: (id: string | null) => void;
-}
+const noop: any = () => {};
 
-export const useProjectsStore = create<ProjectsStore>((set) => ({
-	activeProjectId: null,
-	setActiveProjectId: (id) => set({ activeProjectId: id }),
+export const useProjectsStore = create<any>((set: any) => ({
+	activeProjectId: null as string | null,
+	projects: [] as any[],
+	setActiveProjectId: (id: string | null) => set({ activeProjectId: id }),
+	setActiveProjectIdOnly: noop,
+	setActiveProject: noop,
+	getActiveProject: () => null,
+	addProject: noop,
+	removeProject: noop,
+	removeProjectIcon: noop,
+	reorderProjects: noop,
+	updateProjectMeta: noop,
+	uploadProjectIcon: noop,
+	discoverProjectIcon: noop,
 }));
