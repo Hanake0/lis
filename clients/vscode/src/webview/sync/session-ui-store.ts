@@ -86,10 +86,21 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	getContextUsage: () => null,
 	getDirectoryForSession: () => null,
 	getSessionsByDirectory: () => [],
-	getWorktreeMetadata: () => null,
+	getWorktreeMetadata: (sessionId: string) => {
+		const map = (useSessionUIStore.getState() as { worktreeMetadata?: Map<string, unknown> }).worktreeMetadata;
+		return map?.get(sessionId) ?? null;
+	},
 	handleSlashUndo: noop,
 	setDraftPreserveDirectoryOverride: noop,
-	setWorktreeMetadata: noop,
+	// Real storage so multi-run + worktree-aware flows can recover the path the chat was opened in.
+	// OC originally backs this with a Map too; the byte-identical components consume it via
+	// `getWorktreeMetadata(sessionId)`.
+	setWorktreeMetadata: (sessionId: string, metadata: unknown) => set((state: { worktreeMetadata?: Map<string, unknown> }) => {
+		const next = new Map(state.worktreeMetadata ?? new Map());
+		if (metadata === null || metadata === undefined) next.delete(sessionId);
+		else                                             next.set   (sessionId, metadata);
+		return { worktreeMetadata: next };
+	}),
 }));
 
 useChatStore.subscribe((state, prev) => {
