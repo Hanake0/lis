@@ -1,7 +1,7 @@
 // Frame dispatch — routes incoming frames to the appropriate handler.
 
 import { appendError, hideTyping, renderMessage, showTyping, setStatus, clearMessagesDom } from './renderer';
-import { handleChunk, handleThinkingChunk, finalizeStreamedMessage, setThinkingTokens } from './streaming';
+import { handleChunk, handleThinkingChunk, finalizeStreamedMessage, setThinkingTokens, appendThinkingPlaceholder } from './streaming';
 import { handleToolStart, handleToolResult, handleToolTokens } from './toolBlocks';
 import { storeMetadata, attachMetadataBadge } from './metadata';
 import { handleAgentInfo, handleAgentList } from './composer';
@@ -117,7 +117,7 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 	}
 }
 
-function appendMessage(msg: Message): void {
+function appendMessage(msg: Message, fromHistory = false): void {
 	if (knownMessageIds.has(msg.id)) return;
 	knownMessageIds.add(msg.id);
 
@@ -136,6 +136,14 @@ function appendMessage(msg: Message): void {
 	}
 
 	if (!hasText(msg)) return;
+
+	// History-only: the live thinking block was created during streaming chunks
+	// and is already in the DOM. On reload, no chunks fire — insert a placeholder
+	// block above the bubble so the thinking step doesn't visually disappear.
+	if (fromHistory && msg.role === 'assistant' && (msg.thinking_tokens ?? 0) > 0) {
+		appendThinkingPlaceholder(msg.thinking_tokens!);
+	}
+
 	messages.push(msg);
 	const el = renderMessage(msg);
 
@@ -158,7 +166,7 @@ function replaceHistory(list: Message[]): void {
 	// Render through appendMessage so tool-role rows produce tool blocks (not bubbles)
 	// and assistant rows attach metadata badges, instead of bypassing to a flat renderAll.
 	clearMessagesDom();
-	for (const m of list) appendMessage(m);
+	for (const m of list) appendMessage(m, true);
 }
 
 function hasText(msg: { text?: string }): boolean {

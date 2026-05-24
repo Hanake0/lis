@@ -87,6 +87,36 @@ function formatTokens(n: number): string {
 	return `${n}`;
 }
 
+/**
+ * Renders a placeholder thinking block during history restore. Thinking content
+ * isn't persisted (Anthropic returns summarized thinking per-call only), so the
+ * block only shows the token count — but it preserves the live-streaming layout
+ * so reloading a chat doesn't visually erase the thinking step that happened.
+ */
+export function appendThinkingPlaceholder(tokens: number): void {
+	const el = document.createElement('div');
+	el.className = 'msg thinking-block collapsed';
+
+	const label = document.createElement('div');
+	label.className = 'thinking-label';
+	label.textContent = 'Thinking';
+	label.addEventListener('click', () => el.classList.toggle('collapsed'));
+
+	const pill = document.createElement('span');
+	pill.className = 'thinking-tokens';
+	pill.textContent = formatTokens(tokens);
+	pill.title = `${tokens} thinking tokens`;
+	label.appendChild(pill);
+
+	const content = document.createElement('div');
+	content.className = 'thinking-content';
+	content.textContent = '(thinking content not retained in history)';
+
+	el.appendChild(label);
+	el.appendChild(content);
+	messagesEl.appendChild(el);
+}
+
 export function finalizeStreamedMessage(_id: string, _text: string): void {
 	// Remove ALL active streaming elements — the final message frame may have
 	// a different ID than the streaming chunks (backend generates IDs separately).
