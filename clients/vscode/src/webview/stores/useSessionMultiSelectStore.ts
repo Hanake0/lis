@@ -5,4 +5,7 @@ export const useSessionMultiSelectStore = create<any>(() => ({
 	isActive: false, enabled: false, scopeKey: null,
 	toggle: noop, clear: noop, setIds: noop, selectAll: noop,
 	toggleSelected: noop, setRange: noop,
+	anchorId: null,
+	disable: noop,
+	toggleMode: noop,
 }));

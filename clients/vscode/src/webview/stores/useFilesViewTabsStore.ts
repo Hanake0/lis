@@ -5,4 +5,5 @@ export const useFilesViewTabsStore = create<any>(() => ({
 	openTab: noop, closeTab: noop, setActiveTab: noop, reorderTabs: noop,
 	setSelectedPath: noop, addOpenPath: noop, removeOpenPathsByPrefix: noop,
 	toggleExpandedPath: noop, removeOpenPath: noop, expandPaths: noop,
+	byRoot: {},
 }));

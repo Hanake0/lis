@@ -46,6 +46,9 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	getDirectoryForSession: () => null,
 	getSessionsByDirectory: () => [],
 	getWorktreeMetadata: () => null,
+	handleSlashUndo: noop,
+	setDraftPreserveDirectoryOverride: noop,
+	setWorktreeMetadata: noop,
 }));
 
 useChatStore.subscribe((state, prev) => {

@@ -12,4 +12,6 @@ export const useSelectionStore = create<any>((set: any) => ({
 	saveAgentModelForSession: noop, saveAgentModelVariantForSession: noop,
 	getAgentModelForSession: () => null, getSessionModelSelection: () => null,
 	getAgentModelVariantForSession: () => null,
+	getSessionAgentSelection: () => null,
+	lastUsedProvider: null,
 }));

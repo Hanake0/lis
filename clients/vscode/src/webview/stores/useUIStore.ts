@@ -173,4 +173,5 @@ export const useUIStore = create<any>((set: any) => ({
 	reorderFavoriteModel: noop,
 	showAllModels: noop,
 	hideAllModels: noop,
+	updateProportionalSidebarWidths: noop,
 }));
