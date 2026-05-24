@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 
 using Lis.Core.Channel;
 using Lis.Core.Util;
@@ -20,13 +21,14 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 	public async IAsyncEnumerable<ChatMessageContent> RunAsync(
 		IChatCompletionService chat, ChatHistory history,
 		Kernel kernel, PromptExecutionSettings settings,
+		IChannelClient? streamSink = null, string? streamChatId = null, string? streamMessageId = null,
 		[EnumeratorCancellation] CancellationToken ct = default) {
 
 		for (int i = 0; i < MaxIterations; i++) {
 			int countBefore = history.Count;
 
 			(ChatMessageContent result, IReadOnlyList<FunctionCallContent> calls, TokenUsage? usage) =
-				await this.StreamResponseAsync(chat, history, settings, kernel, ct);
+				await this.StreamResponseAsync(chat, history, settings, kernel, streamSink, streamChatId, streamMessageId, ct);
 
 			// SK's ChatClientChatCompletionService auto-appends a tool-call-only message
 			// to ChatHistory when FunctionChoiceBehavior is set (even with autoInvoke: false).
@@ -40,7 +42,19 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 			if (calls.Count == 0) yield break;
 
 			foreach (FunctionCallContent call in calls) {
-				ChatMessageContent toolMsg = (await this.InvokeFunctionAsync(kernel, call, ct)).ToChatMessage();
+				string toolId = $"tool:{Guid.NewGuid():N}";
+				string argsJson = call.Arguments is not null ? JsonSerializer.Serialize(call.Arguments) : "{}";
+
+				if (streamSink is not null && streamChatId is not null)
+					await streamSink.SendToolStartAsync(streamChatId, toolId, $"{call.PluginName}_{call.FunctionName}", argsJson, ct);
+
+				FunctionResultContent funcResult = await this.InvokeFunctionAsync(kernel, call, ct);
+				string resultText = funcResult.Result?.ToString() ?? "";
+
+				if (streamSink is not null && streamChatId is not null)
+					await streamSink.SendToolResultAsync(streamChatId, toolId, $"{call.PluginName}_{call.FunctionName}", resultText, null, ct);
+
+				ChatMessageContent toolMsg = funcResult.ToChatMessage();
 				history.Add(toolMsg);
 				yield return toolMsg;
 			}
@@ -62,12 +76,15 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 	[Trace("ToolRunner > StreamResponseAsync")]
 	private async Task<(ChatMessageContent, IReadOnlyList<FunctionCallContent>, TokenUsage?)> StreamResponseAsync(
 		IChatCompletionService chat, ChatHistory history,
-		PromptExecutionSettings settings, Kernel kernel, CancellationToken ct) {
+		PromptExecutionSettings settings, Kernel kernel,
+		IChannelClient? streamSink, string? streamChatId, string? streamMessageId,
+		CancellationToken ct) {
 
 		AuthorRole?                role       = null;
 		StringBuilder              text       = new();
 		FunctionCallContentBuilder fccBuilder = new();
 		bool                       typingSet  = false;
+		bool                       firstChunk = true;
 		IReadOnlyDictionary<string, object?>? lastMetadata = null;
 
 		await foreach (StreamingChatMessageContent chunk in
@@ -75,14 +92,45 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 
 			role ??= chunk.Role;
 
+			// Detect thinking content (Microsoft.Extensions.AI.TextReasoningContent from M.E.AI via Anthropic SDK)
+			bool isThinking = chunk.InnerContent is Microsoft.Extensions.AI.TextReasoningContent;
+			if (!isThinking) {
+				foreach (StreamingKernelContent item in chunk.Items) {
+					if (item.InnerContent is Microsoft.Extensions.AI.TextReasoningContent) { isThinking = true; break; }
+				}
+			}
+
+			if (isThinking) {
+				if (firstChunk && streamSink is not null && streamChatId is not null) {
+					firstChunk = false;
+					await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", chunk.Content ?? "", false, ct);
+				} else if (streamSink is not null && streamChatId is not null && chunk.Content is { Length: > 0 }) {
+					await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", chunk.Content, false, ct);
+				}
+				// Don't append thinking to the text output — it's separate content
+				fccBuilder.Append(chunk);
+				if (chunk.Metadata is { Count: > 0 }) lastMetadata = chunk.Metadata;
+				continue;
+			}
+
 			if (!typingSet && chunk.Content is { Length: > 0 }
 			    && ToolContext.Channel is not null && ToolContext.ChatId is not null) {
 				typingSet = true;
-				await ToolContext.Channel.SetTypingAsync(ToolContext.ChatId, ct);
+				if (streamSink is null)
+					await ToolContext.Channel.SetTypingAsync(ToolContext.ChatId, ct);
 			}
 
-			if (chunk.Content is not null)
+			if (chunk.Content is { Length: > 0 }) {
 				text.Append(chunk.Content);
+				if (streamSink is not null && streamChatId is not null) {
+					if (firstChunk) {
+						firstChunk = false;
+						// End any thinking phase
+						await streamSink.SendThinkingChunkAsync(streamChatId, streamMessageId ?? "", "", true, ct);
+					}
+					await streamSink.SendChunkAsync(streamChatId, streamMessageId ?? "", chunk.Content, false, ct);
+				}
+			}
 
 			fccBuilder.Append(chunk);
 
@@ -90,6 +138,10 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 			if (chunk.Metadata is { Count: > 0 })
 				lastMetadata = chunk.Metadata;
 		}
+
+		// Signal end of streaming
+		if (streamSink is not null && streamChatId is not null && text.Length > 0)
+			await streamSink.SendChunkAsync(streamChatId, streamMessageId ?? "", "", true, ct);
 
 		IReadOnlyList<FunctionCallContent> calls = fccBuilder.Build();
 

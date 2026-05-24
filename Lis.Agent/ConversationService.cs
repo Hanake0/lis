@@ -242,8 +242,11 @@ public sealed class ConversationService(
 		TokenUsage? prevUsage = null;
 		List<long>  pendingToolMsgIds = new();
 		bool        sentAnyMessage    = false;
+		string      streamMessageId   = $"msg:{Guid.NewGuid():N}";
 
-		await foreach (ChatMessageContent msg in toolRunner.RunAsync(chatService, chatHistory, agentKernel, settings, ct)) {
+		await foreach (ChatMessageContent msg in toolRunner.RunAsync(
+			chatService, chatHistory, agentKernel, settings,
+			channelClient, message.ChatId, streamMessageId, ct)) {
 			string? externalId = null;
 			if (msg.Role == AuthorRole.Assistant && !string.IsNullOrWhiteSpace(msg.Content)) {
 				(string? content, bool shouldQuote) = ResponseDirectives.Parse(msg.Content);
