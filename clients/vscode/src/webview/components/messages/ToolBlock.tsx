@@ -1,4 +1,4 @@
-import { useState, useRef } from 'preact/hooks';
+import { useState, useRef, useEffect } from 'preact/hooks';
 import type { ChatMessage } from '../../state';
 
 type ToolMsg = Extract<ChatMessage, { kind: 'tool' }>;
@@ -6,8 +6,17 @@ type ToolMsg = Extract<ChatMessage, { kind: 'tool' }>;
 export function ToolBlock({ msg }: { msg: ToolMsg }) {
 	const [collapsed, setCollapsed] = useState(msg.status !== 'running');
 	const [maxH, setMaxH] = useState<number | undefined>(undefined);
+	const [canScrollDown, setCanScrollDown] = useState(false);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+	function checkScroll() {
+		const el = bodyRef.current;
+		if (!el) return;
+		setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+	}
+
+	useEffect(() => { checkScroll(); }, [collapsed, msg.result, msg.error]);
 
 	function onDragStart(e: PointerEvent) {
 		const body = bodyRef.current;
@@ -29,13 +38,15 @@ export function ToolBlock({ msg }: { msg: ToolMsg }) {
 	const statusIcon = msg.status === 'running'
 		? <span class="tool-spinner" aria-label="Running" />
 		: msg.status === 'done'
-		? <span class="tool-done">✓</span>
-		: <span class="tool-error-icon">✗</span>;
+		? <svg class="tool-done-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Done"><polyline points="3 8 6.5 11.5 13 5" /></svg>
+		: <svg class="tool-error-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-label="Error"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>;
 
 	return (
 		<div class={`tool-block ${statusClass}`}>
 			<button type="button" class="tool-header" onClick={() => setCollapsed(c => !c)}>
-				<span class="tool-icon">⚙</span>
+				<svg class="tool-icon-svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+					<path d="M9.1 1.7a1 1 0 0 0-2.2 0l-.2.9a5 5 0 0 0-.9.5l-.9-.3a1 1 0 0 0-1.1.5L2.7 4.5a1 1 0 0 0 .2 1.2l.7.6v1l-.7.6a1 1 0 0 0-.2 1.2l1.1 1.2a1 1 0 0 0 1.1.5l.9-.3c.3.2.6.4.9.5l.2.9a1 1 0 0 0 2.2 0l.2-.9c.3-.1.6-.3.9-.5l.9.3a1 1 0 0 0 1.1-.5l1.1-1.2a1 1 0 0 0-.2-1.2l-.7-.6v-1l.7-.6a1 1 0 0 0 .2-1.2L12.1 3.3a1 1 0 0 0-1.1-.5l-.9.3a5 5 0 0 0-.9-.5l-.1-.9zM8 6a2 2 0 1 1 0 4A2 2 0 0 1 8 6z"/>
+				</svg>
 				<span class="tool-name">{formatName(msg.name)}</span>
 				<span class="tool-spacer" />
 				{msg.tokens !== undefined && <span class="tool-tokens">{formatTok(msg.tokens)}</span>}
@@ -44,19 +55,22 @@ export function ToolBlock({ msg }: { msg: ToolMsg }) {
 			</button>
 
 			{!collapsed && (
-				<div class="tool-body" ref={bodyRef} style={maxH !== undefined ? { maxHeight: `${maxH}px` } : undefined}>
-					{msg.args && msg.args !== '{}' && (
-						<section class="tool-section">
-							<div class="tool-section-label">Args</div>
-							<pre class="tool-code" dangerouslySetInnerHTML={{ __html: jsonHighlight(msg.args) }} />
-						</section>
-					)}
-					{(msg.result !== undefined || msg.error !== undefined) && (
-						<section class={`tool-section${msg.error ? ' tool-section--error' : ''}`}>
-							<div class="tool-section-label">{msg.error ? 'Error' : 'Result'}</div>
-							<pre class="tool-code tool-result" dangerouslySetInnerHTML={{ __html: jsonHighlight(msg.error ?? msg.result ?? '') }} />
-						</section>
-					)}
+				<div class="tool-body-wrap">
+					<div class="tool-body" ref={bodyRef} onScroll={checkScroll} style={maxH !== undefined ? { maxHeight: `${maxH}px` } : undefined}>
+						{msg.args && msg.args !== '{}' && (
+							<section class="tool-section">
+								<div class="tool-section-label">Args</div>
+								<pre class="tool-code" dangerouslySetInnerHTML={{ __html: jsonHighlight(msg.args) }} />
+							</section>
+						)}
+						{(msg.result !== undefined || msg.error !== undefined) && (
+							<section class={`tool-section${msg.error ? ' tool-section--error' : ''}`}>
+								<div class="tool-section-label">{msg.error ? 'Error' : 'Result'}</div>
+								<pre class="tool-code tool-result" dangerouslySetInnerHTML={{ __html: jsonHighlight(msg.error ?? msg.result ?? '') }} />
+							</section>
+						)}
+					</div>
+					{canScrollDown && <div class="tool-fade-bot" />}
 					<div
 						class="tool-resize-handle"
 						onPointerDown={onDragStart}
