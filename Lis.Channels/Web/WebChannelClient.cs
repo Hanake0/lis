@@ -66,6 +66,20 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 		string messageId, string chatId, string? mediaPath = null, CancellationToken ct = default) =>
 		Task.FromResult<MediaDownload?>(null);
 
+	// ── Streaming (IChannelClient defaults are no-op; web overrides) ─
+
+	public Task SendChunkAsync(string chatId, string messageId, string delta, bool done, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.Chunk(chatId, messageId, delta, done), ct);
+
+	public Task SendThinkingChunkAsync(string chatId, string messageId, string delta, bool done, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.ThinkingChunk(chatId, messageId, delta, done), ct);
+
+	public Task SendToolStartAsync(string chatId, string messageId, string toolName, string args, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.ToolStart(chatId, messageId, toolName, args), ct);
+
+	public Task SendToolResultAsync(string chatId, string messageId, string toolName, string result, string? error, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.ToolResult(chatId, messageId, toolName, result, error), ct);
+
 	// ── Publishing ──────────────────────────────────────────────────
 
 	public async Task PublishAsync(ServerFrame frame, CancellationToken ct = default) {

@@ -37,6 +37,38 @@ public sealed class ServerFrame {
 	[JsonPropertyName("messages")]
 	public IReadOnlyList<MessageRow>? Messages { get; init; }
 
+	// Streaming fields
+	[JsonPropertyName("delta")]
+	public string? Delta { get; init; }
+
+	[JsonPropertyName("done")]
+	public bool? Done { get; init; }
+
+	[JsonPropertyName("tool_name")]
+	public string? ToolName { get; init; }
+
+	[JsonPropertyName("tool_args")]
+	public string? ToolArgs { get; init; }
+
+	[JsonPropertyName("result")]
+	public string? Result { get; init; }
+
+	// Token usage (on message frames)
+	[JsonPropertyName("input_tokens")]
+	public int? InputTokens { get; init; }
+
+	[JsonPropertyName("output_tokens")]
+	public int? OutputTokens { get; init; }
+
+	[JsonPropertyName("cache_read_tokens")]
+	public int? CacheReadTokens { get; init; }
+
+	[JsonPropertyName("cache_creation_tokens")]
+	public int? CacheCreationTokens { get; init; }
+
+	[JsonPropertyName("thinking_tokens")]
+	public int? ThinkingTokens { get; init; }
+
 	public static ServerFrame Connected() =>
 		new() { Type = "connected" };
 
@@ -60,4 +92,17 @@ public sealed class ServerFrame {
 
 	public static ServerFrame ChatHistory(string chatId, IReadOnlyList<MessageRow> messages) =>
 		new() { Type = "chat_history", ChatId = chatId, Messages = messages };
+
+	// Streaming factories
+	public static ServerFrame Chunk(string chatId, string messageId, string delta, bool done) =>
+		new() { Type = "chunk", ChatId = chatId, Id = messageId, Delta = delta, Done = done };
+
+	public static ServerFrame ThinkingChunk(string chatId, string messageId, string delta, bool done) =>
+		new() { Type = "thinking_chunk", ChatId = chatId, Id = messageId, Delta = delta, Done = done };
+
+	public static ServerFrame ToolStart(string chatId, string messageId, string toolName, string args) =>
+		new() { Type = "tool_start", ChatId = chatId, Id = messageId, ToolName = toolName, ToolArgs = args };
+
+	public static ServerFrame ToolResult(string chatId, string messageId, string toolName, string result, string? error = null) =>
+		new() { Type = "tool_result", ChatId = chatId, Id = messageId, ToolName = toolName, Result = result, ErrorMessage = error };
 }
