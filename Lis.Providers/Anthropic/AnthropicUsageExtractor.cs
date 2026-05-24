@@ -1,3 +1,5 @@
+using System.Reflection;
+
 using Lis.Core.Channel;
 
 using Microsoft.Extensions.AI;
@@ -37,6 +39,19 @@ public sealed class AnthropicUsageExtractor : IUsageExtractor {
 				thinkingTokens = (int)thinking;
 		}
 
+		// SDK 5.10 may not map thinking tokens to AdditionalCounts — try the raw Usage object
+		if (thinkingTokens == 0 && metadata.TryGetValue("rawUsage", out object? rawObj) && rawObj is not null)
+			thinkingTokens = TryGetThinkingFromRawUsage(rawObj);
+
 		return new TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens);
+	}
+
+	private static int TryGetThinkingFromRawUsage(object rawUsage) {
+		// Anthropic.SDK.Messaging.Usage may not expose ThinkingTokens as a typed property.
+		// Try reflection as a last resort to read any thinking-related property.
+		PropertyInfo? prop = rawUsage.GetType().GetProperty("ThinkingTokens")
+		                  ?? rawUsage.GetType().GetProperty("thinking_tokens");
+		if (prop is not null && prop.GetValue(rawUsage) is int val) return val;
+		return 0;
 	}
 }

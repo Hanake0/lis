@@ -467,6 +467,13 @@ public sealed class ConversationService(
 	private static async Task<long> PersistSkMessageAsync(
 		LisDbContext db, ChatEntity chat, SessionEntity session,
 		ChatMessageContent msg, TokenUsage? usage, string? externalId, CancellationToken ct) {
+		// For tool results, Content is null — the result is in Items
+		string? body = msg.Content;
+		if (body is null && msg.Role == AuthorRole.Tool) {
+			FunctionResultContent? frc = msg.Items.OfType<FunctionResultContent>().FirstOrDefault();
+			body = frc?.Result?.ToString();
+		}
+
 		MessageEntity entity = new() {
 			ExternalId          = externalId,
 			ChatId              = chat.Id,
@@ -474,7 +481,7 @@ public sealed class ConversationService(
 			SenderId            = "me",
 			IsFromMe            = msg.Role != AuthorRole.User,
 			Role                = msg.Role.Label,
-			Body                = msg.Content,
+			Body                = body,
 			SkContent           = JsonSerializer.Serialize(msg),
 			InputTokens         = usage?.InputTokens,
 			OutputTokens        = usage?.OutputTokens,

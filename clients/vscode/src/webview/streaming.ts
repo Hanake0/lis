@@ -9,7 +9,7 @@ const thinkingElements  = new Map<string, HTMLDivElement>();
 
 export function handleChunk(id: string, delta: string, done: boolean): void {
 	if (done) {
-		streamingElements.delete(id);
+		// Keep in map — finalizeStreamedMessage will remove both map entry and DOM element.
 		return;
 	}
 
