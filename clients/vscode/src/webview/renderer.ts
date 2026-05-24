@@ -35,6 +35,18 @@ export function appendSystem(text: string): void {
 	scrollToBottom();
 }
 
+export function appendError(text: string): void {
+	const el = document.createElement('div');
+	el.className   = 'msg error';
+	el.textContent = text;
+	if (typingEl && typingEl.parentNode === messagesEl) {
+		messagesEl.insertBefore(el, typingEl);
+	} else {
+		messagesEl.appendChild(el);
+	}
+	scrollToBottom();
+}
+
 export function renderAll(messages: Array<{ role?: string; text?: string }>): void {
 	messagesEl.innerHTML = '';
 	typingEl = null;

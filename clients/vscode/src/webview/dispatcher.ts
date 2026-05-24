@@ -1,6 +1,6 @@
 // Frame dispatch — routes incoming frames to the appropriate handler.
 
-import { appendSystem, hideTyping, renderMessage, showTyping, setStatus, clearMessagesDom } from './renderer';
+import { appendError, hideTyping, renderMessage, showTyping, setStatus, clearMessagesDom } from './renderer';
 import { handleChunk, handleThinkingChunk, finalizeStreamedMessage } from './streaming';
 import { handleToolStart, handleToolResult } from './toolBlocks';
 import { storeMetadata, attachMetadataBadge } from './metadata';
@@ -91,7 +91,7 @@ function handleFrame(frame: { type: string; [key: string]: unknown }): void {
 
 		case 'error':
 			hideTyping();
-			appendSystem(`error: ${frame.error}`);
+			appendError(frame.error as string);
 			break;
 	}
 }

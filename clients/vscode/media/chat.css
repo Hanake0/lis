@@ -56,6 +56,17 @@ body { display: flex; flex-direction: column; }
 	color:     var(--vscode-descriptionForeground);
 	font-style: italic;
 }
+.msg.error {
+	align-self: stretch;
+	max-width:  none;
+	background: var(--vscode-inputValidation-errorBackground);
+	color:      var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+	border:     1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+	border-radius: 6px;
+	padding:    8px 12px;
+	font-size:  12px;
+	white-space: pre-wrap;
+}
 
 .msg.typing-bubble {
 	display: flex;
