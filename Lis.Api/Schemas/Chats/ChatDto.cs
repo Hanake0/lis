@@ -6,10 +6,10 @@ using Lis.Persistence.Entities;
 namespace Lis.Api.Schemas.Chats;
 
 /// <summary>
-/// Lightweight chat representation returned by the REST API. The full
-/// historical-summary shape used by the sidebar is not yet ported (Stage 13
-/// will replace WebChannel-list-chats with /api/chats). Today this DTO
-/// supports the create endpoint required by the multi-run orchestrator.
+/// Chat-summary representation returned by <c>GET /api/chats</c> (sidebar
+/// bootstrap) and <c>POST /api/chats</c> (multi-run + new-chat flows). The
+/// rich per-message history travels on a separate endpoint — this DTO carries
+/// only the fields the sidebar's session-list rendering needs.
 /// </summary>
 public sealed record ChatDto(
 	[property: JsonPropertyName("chat_id")]      string  ChatId,
