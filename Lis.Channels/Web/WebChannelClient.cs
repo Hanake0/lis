@@ -15,7 +15,7 @@ namespace Lis.Channels.Web;
 ///
 /// Every connected WebSocket registers itself; every published frame is broadcast to
 /// all connections. Clients filter by <c>chat_id</c> on the frame. The per-socket
-/// <see cref="SemaphoreSlim"/> exists because <see cref="WebSocket.SendAsync"/> is not
+/// <see cref="SemaphoreSlim"/> exists because <c>WebSocket.SendAsync</c> is not
 /// concurrent-safe — multiple publishes to the same socket must serialize.
 /// </summary>
 public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChannelClient {
@@ -32,7 +32,7 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 
 	public void Unregister(Guid id) {
 		if (this._connections.TryRemove(id, out Connection? conn))
-			conn.SendLock.Dispose();
+			conn.Dispose();
 	}
 
 	// ── IChannelClient (called by ConversationService) ──────────────
@@ -115,8 +115,10 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 		}
 	}
 
-	private sealed class Connection(WebSocket socket) {
+	private sealed class Connection(WebSocket socket) : IDisposable {
 		public readonly WebSocket     Socket   = socket;
 		public readonly SemaphoreSlim SendLock = new(1, 1);
+
+		public void Dispose() => this.SendLock.Dispose();
 	}
 }

@@ -29,7 +29,7 @@ public sealed class ServerFrame {
 	public string? Emoji { get; init; }
 
 	[JsonPropertyName("error")]
-	public string? Error { get; init; }
+	public string? ErrorMessage { get; init; }
 
 	[JsonPropertyName("chats")]
 	public IReadOnlyList<ChatSummary>? Chats { get; init; }
@@ -53,7 +53,7 @@ public sealed class ServerFrame {
 		new() { Type = "reaction", ChatId = chatId, Id = messageId, Emoji = emoji };
 
 	public static ServerFrame Error(string error, string? chatId = null) =>
-		new() { Type = "error", Error = error, ChatId = chatId };
+		new() { Type = "error", ErrorMessage = error, ChatId = chatId };
 
 	public static ServerFrame ChatList(IReadOnlyList<ChatSummary> chats) =>
 		new() { Type = "chat_list", Chats = chats };
