@@ -25,6 +25,7 @@ public sealed class WebChannelController(
 	WebChannelClient                client,
 	IConversationService            conversationService,
 	ContextBreakdownService         contextBreakdown,
+	IApprovalService                approvalService,
 	IOptions<WebChannelOptions>     options,
 	IServiceScopeFactory            scopeFactory,
 	IHostApplicationLifetime        lifetime,
@@ -110,14 +111,20 @@ public sealed class WebChannelController(
 
 	private async Task DispatchClientFrameAsync(ClientFrame frame, CancellationToken ct) {
 		switch (frame.Type) {
-			case "message":        await this.HandleMessageFrameAsync(frame, ct);    break;
-			case "history":        await this.HandleHistoryFrameAsync(frame, ct);    break;
-			case "list_chats":     await this.HandleListChatsFrameAsync(ct);         break;
-			case "set_agent":      await this.HandleSetAgentAsync(frame, ct);        break;
-			case "get_agent":      await this.HandleGetAgentAsync(frame, ct);        break;
-			case "list_agents":    await this.HandleListAgentsAsync(ct);             break;
-			case "save_overrides": await this.HandleSaveOverridesAsync(frame, ct);   break;
-			case "get_context":    await this.HandleGetContextAsync(frame, ct);      break;
+			case "message":             await this.HandleMessageFrameAsync(frame, ct);         break;
+			case "history":             await this.HandleHistoryFrameAsync(frame, ct);         break;
+			case "list_chats":          await this.HandleListChatsFrameAsync(ct);              break;
+			case "create_session":      await this.HandleCreateSessionAsync(frame, ct);        break;
+			case "delete_session":      await this.HandleDeleteSessionAsync(frame, ct);        break;
+			case "rename_session":      await this.HandleRenameSessionAsync(frame, ct);        break;
+			case "archive_session":     await this.HandleArchiveSessionAsync(frame, ct);       break;
+			case "set_agent":           await this.HandleSetAgentAsync(frame, ct);             break;
+			case "get_agent":           await this.HandleGetAgentAsync(frame, ct);             break;
+			case "list_agents":         await this.HandleListAgentsAsync(ct);                  break;
+			case "save_overrides":      await this.HandleSaveOverridesAsync(frame, ct);        break;
+			case "get_context":         await this.HandleGetContextAsync(frame, ct);           break;
+			case "abort":               await this.HandleAbortAsync(frame);                    break;
+			case "permission_response": await this.HandlePermissionResponseAsync(frame, ct);   break;
 			default:
 				await client.PublishAsync(ServerFrame.Error($"unknown frame type: {frame.Type}"), ct);
 				break;
@@ -125,12 +132,33 @@ public sealed class WebChannelController(
 	}
 
 	private async Task HandleMessageFrameAsync(ClientFrame frame, CancellationToken ct) {
-		if (string.IsNullOrEmpty(frame.ChatId) || string.IsNullOrEmpty(frame.Text)) {
-			await client.PublishAsync(ServerFrame.Error("message frame requires chat_id and text", frame.ChatId), ct);
+		bool hasText        = !string.IsNullOrEmpty(frame.Text);
+		bool hasAttachments = frame.Attachments is { Count: > 0 };
+
+		if (string.IsNullOrEmpty(frame.ChatId) || (!hasText && !hasAttachments)) {
+			await client.PublishAsync(ServerFrame.Error("message frame requires chat_id and text or attachments", frame.ChatId), ct);
 			return;
 		}
 
 		MessageDispatchMode dispatch = ParseDispatch(frame.Dispatch);
+
+		// Parse inline image attachments from base64 data URLs
+		List<(byte[] Data, string MimeType)>? images = null;
+		if (hasAttachments) {
+			images = new();
+			foreach (ClientImageAttachment att in frame.Attachments!) {
+				if (string.IsNullOrEmpty(att.DataUrl) || string.IsNullOrEmpty(att.MimeType)) continue;
+				if (!att.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) continue;
+
+				byte[]? data = ParseDataUrl(att.DataUrl);
+				if (data is null || data.Length == 0) continue;
+				images.Add((data, att.MimeType));
+			}
+		}
+
+		(byte[]? firstImageData, string? firstImageMime) = images is { Count: > 0 }
+			? (images[0].Data, images[0].MimeType)
+			: (null, null);
 
 		IncomingMessage incoming = new() {
 			ExternalId           = $"web:{Guid.NewGuid():N}",
@@ -144,14 +172,16 @@ public sealed class WebChannelController(
 			EffortOverride       = frame.Effort,
 			ToolProfileOverride  = frame.ToolProfile,
 			ThinkingModeOverride = frame.ThinkingMode,
+			MediaType            = firstImageData is not null ? "image" : null,
+			InlineMediaData      = firstImageData,
+			InlineMediaMimeType  = firstImageMime,
 		};
 
-		// Echo the user's own message back so other connected clients (and the sender on reload) see it.
+		string echoText = frame.Text ?? (firstImageData is not null ? "[image]" : "");
 		await client.PublishAsync(
-			ServerFrame.Message(frame.ChatId, incoming.ExternalId, frame.Text, role: "user", timestamp: incoming.Timestamp),
+			ServerFrame.Message(frame.ChatId, incoming.ExternalId, echoText, role: "user", timestamp: incoming.Timestamp),
 			ct);
 
-		// Fire-and-forget — same pattern as the WhatsApp webhook controller.
 		_ = Task.Run(async () => {
 			try {
 				await conversationService.HandleIncomingAsync(incoming, CancellationToken.None);
@@ -160,6 +190,18 @@ public sealed class WebChannelController(
 				await client.PublishAsync(ServerFrame.Error(ex.Message, frame.ChatId), CancellationToken.None);
 			}
 		}, ct);
+	}
+
+	private static byte[]? ParseDataUrl(string dataUrl) {
+		int commaIdx = dataUrl.IndexOf(',');
+		if (commaIdx < 0) return null;
+
+		string base64 = dataUrl[(commaIdx + 1)..];
+		try {
+			return Convert.FromBase64String(base64);
+		} catch (FormatException) {
+			return null;
+		}
 	}
 
 	private async Task HandleHistoryFrameAsync(ClientFrame frame, CancellationToken ct) {
@@ -216,15 +258,123 @@ public sealed class WebChannelController(
 		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
 
 		List<ChatSummary> chats = await db.Chats
+			.Where(c => c.Channel == "web")
 			.OrderByDescending(c => c.UpdatedAt)
 			.Select(c => new ChatSummary {
-				ChatId    = c.ExternalId,
-				Name      = c.Name,
-				UpdatedAt = c.UpdatedAt,
+				ChatId     = c.ExternalId,
+				Name       = c.Name,
+				UpdatedAt  = c.UpdatedAt,
+				ArchivedAt = c.ArchivedAt,
 			})
 			.ToListAsync(ct);
 
 		await client.PublishAsync(ServerFrame.ChatList(chats), ct);
+	}
+
+	// ── Session CRUD ────────────────────────────────────────────────
+
+	private async Task HandleCreateSessionAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("create_session requires chat_id"), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.ChatEntity? existing = await db.Chats
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+
+		if (existing is not null) {
+			await client.PublishAsync(ServerFrame.ChatCreated(existing.ExternalId, existing.Name, existing.UpdatedAt), ct);
+			return;
+		}
+
+		DateTimeOffset now = DateTimeOffset.UtcNow;
+		Persistence.Entities.ChatEntity chat = new() {
+			ExternalId = frame.ChatId,
+			Name       = frame.Name ?? "New Chat",
+			Channel    = "web",
+			CreatedAt  = now,
+			UpdatedAt  = now,
+			Enabled    = true,
+		};
+		db.Chats.Add(chat);
+		await db.SaveChangesAsync(ct);
+
+		await client.PublishAsync(ServerFrame.ChatCreated(chat.ExternalId, chat.Name, chat.UpdatedAt), ct);
+	}
+
+	private async Task HandleDeleteSessionAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("delete_session requires chat_id"), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.ChatEntity? chat = await db.Chats
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+
+		if (chat is null) {
+			await client.PublishAsync(ServerFrame.ChatDeleted(frame.ChatId), ct);
+			return;
+		}
+
+		db.Chats.Remove(chat);
+		await db.SaveChangesAsync(ct);
+
+		await client.PublishAsync(ServerFrame.ChatDeleted(frame.ChatId), ct);
+	}
+
+	private async Task HandleRenameSessionAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId) || string.IsNullOrEmpty(frame.Name)) {
+			await client.PublishAsync(ServerFrame.Error("rename_session requires chat_id and name"), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.ChatEntity? chat = await db.Chats
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+
+		if (chat is null) {
+			await client.PublishAsync(ServerFrame.Error("chat not found", frame.ChatId), ct);
+			return;
+		}
+
+		chat.Name      = frame.Name;
+		chat.UpdatedAt = DateTimeOffset.UtcNow;
+		await db.SaveChangesAsync(ct);
+
+		await client.PublishAsync(ServerFrame.ChatRenamed(frame.ChatId, chat.Name), ct);
+	}
+
+	private async Task HandleArchiveSessionAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("archive_session requires chat_id"), ct);
+			return;
+		}
+
+		using IServiceScope scope = scopeFactory.CreateScope();
+		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
+
+		Persistence.Entities.ChatEntity? chat = await db.Chats
+			.FirstOrDefaultAsync(c => c.ExternalId == frame.ChatId, ct);
+
+		if (chat is null) {
+			await client.PublishAsync(ServerFrame.Error("chat not found", frame.ChatId), ct);
+			return;
+		}
+
+		DateTimeOffset now = DateTimeOffset.UtcNow;
+		chat.ArchivedAt = now;
+		chat.UpdatedAt  = now;
+		await db.SaveChangesAsync(ct);
+
+		await client.PublishAsync(ServerFrame.ChatArchived(frame.ChatId, now), ct);
 	}
 
 	// ── Agent management ────────────────────────────────────────────
@@ -330,6 +480,39 @@ public sealed class WebChannelController(
 
 		await client.PublishAsync(
 			ServerFrame.AgentInfo(frame.ChatId, agent.Name, agent.DisplayName, agent.Model, agent.ThinkingEffort, agent.ToolProfile), ct);
+	}
+
+	// ── Abort ───────────────────────────────────────────────────────
+
+	private async Task HandleAbortAsync(ClientFrame frame) {
+		if (string.IsNullOrEmpty(frame.ChatId)) {
+			await client.PublishAsync(ServerFrame.Error("abort frame requires chat_id"), CancellationToken.None);
+			return;
+		}
+
+		if (conversationService is MessageDebouncer debouncer)
+			await debouncer.AbortAsync(frame.ChatId);
+	}
+
+	// ── Permission response ────────────────────────────────────────
+
+	private async Task HandlePermissionResponseAsync(ClientFrame frame, CancellationToken ct) {
+		if (string.IsNullOrEmpty(frame.ApprovalId) || string.IsNullOrEmpty(frame.Decision)) {
+			await client.PublishAsync(ServerFrame.Error("permission_response requires approval_id and decision", frame.ChatId), ct);
+			return;
+		}
+
+		ApprovalDecision decision = frame.Decision switch {
+			"once"   => ApprovalDecision.Once,
+			"always" => ApprovalDecision.Always,
+			"deny"   => ApprovalDecision.Deny,
+			_        => ApprovalDecision.Deny,
+		};
+
+		bool resolved = await approvalService.ResolveAsync(frame.ApprovalId, decision, "web");
+
+		if (!resolved)
+			await client.PublishAsync(ServerFrame.Error($"No pending approval with ID '{frame.ApprovalId}'", frame.ChatId), ct);
 	}
 
 	// ── Context breakdown ───────────────────────────────────────────

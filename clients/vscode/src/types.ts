@@ -59,16 +59,25 @@ export type ServerFrame =
 	| { type: 'error';           error: string; chat_id?: string }
 	| { type: 'chat_list';       chats: ChatSummary[] }
 	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] }
-	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[]; model: string; effort?: string };
+	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[]; model: string; effort?: string }
+	| { type: 'permission_request'; chat_id: string; approval_id: string; permission: string; patterns: string[]; metadata: Record<string, unknown>; always: string[] };
 
 // ── Client → Server frames ─────────────────────────────────────────
 
+export interface ClientImageAttachment {
+	filename:  string;
+	mime_type: string;
+	data_url:  string;
+}
+
 export type ClientFrame =
-	| { type: 'message';        chat_id: string; text: string; dispatch?: DispatchMode; model?: string; effort?: string; tool_profile?: string; thinking_mode?: string }
+	| { type: 'message';        chat_id: string; text: string; dispatch?: DispatchMode; model?: string; effort?: string; tool_profile?: string; thinking_mode?: string; attachments?: ClientImageAttachment[] }
 	| { type: 'history';        chat_id: string; limit?: number }
 	| { type: 'list_chats' }
 	| { type: 'set_agent';      chat_id: string; agent_name: string }
 	| { type: 'get_agent';      chat_id: string }
 	| { type: 'list_agents' }
 	| { type: 'save_overrides'; chat_id: string; model?: string; effort?: string; tool_profile?: string }
-	| { type: 'get_context';    chat_id: string; force_refresh?: boolean };
+	| { type: 'get_context';    chat_id: string; force_refresh?: boolean }
+	| { type: 'abort';          chat_id: string }
+	| { type: 'permission_response'; approval_id: string; decision: 'once' | 'always' | 'deny' };

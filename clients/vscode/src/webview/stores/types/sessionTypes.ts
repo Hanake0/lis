@@ -1,9 +1,14 @@
 export interface AttachedFile {
 	id: string;
-	name: string;
-	path: string;
-	mime?: string;
-	url?: string;
+	file: File;
+	filename: string;
+	mimeType: string;
+	size: number;
+	dataUrl: string;
+	source: 'local' | 'server' | 'vscode';
+	serverPath?: string;
+	vscodePath?: string;
+	vscodeSource?: 'file' | 'selection';
 }
 
 export interface SessionContextUsage {

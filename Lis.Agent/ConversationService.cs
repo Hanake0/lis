@@ -545,19 +545,31 @@ public sealed class ConversationService(
 
 	private async Task ProcessMediaAsync(LisDbContext db, IncomingMessage message, CancellationToken ct) {
 		try {
+			// Inline media (e.g. web channel image uploads) — already decoded, skip download
+			if (message.InlineMediaData is { Length: > 0 }) {
+				MessageEntity? entity = await db.Messages.FindAsync([message.DbId], ct);
+				if (entity is null) return;
+
+				entity.MediaData     = message.InlineMediaData;
+				entity.MediaMimeType = message.InlineMediaMimeType ?? "image/jpeg";
+				entity.MediaType     = message.MediaType;
+				await db.SaveChangesAsync(ct);
+				return;
+			}
+
 			ProcessedMedia? media = await mediaProcessor.ProcessAsync(message, ct);
 			if (media is null) return;
 
-			MessageEntity? entity = await db.Messages.FindAsync([message.DbId], ct);
-			if (entity is null) return;
+			MessageEntity? entity2 = await db.Messages.FindAsync([message.DbId], ct);
+			if (entity2 is null) return;
 
-			entity.MediaData     = media.Data;
-			entity.MediaMimeType = media.MimeType;
+			entity2.MediaData     = media.Data;
+			entity2.MediaMimeType = media.MimeType;
 
 			if (media.Transcription is { Length: > 0 } transcript)
-				entity.Body = $"<Audio transcript: {transcript}>";
+				entity2.Body = $"<Audio transcript: {transcript}>";
 			else if (message.MediaType is "audio" or "ptt")
-				entity.Body = "<Audio message>";
+				entity2.Body = "<Audio message>";
 
 			await db.SaveChangesAsync(ct);
 		} catch (Exception ex) {

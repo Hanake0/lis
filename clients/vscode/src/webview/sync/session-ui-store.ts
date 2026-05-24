@@ -32,17 +32,27 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	updateSessionTitle: asyncNoop,
 	shareSession: asyncNoop,
 	unshareSession: asyncNoop,
-	sendMessage: async (text: string, _providerId?: string, _modelId?: string) => {
+	sendMessage: async (text: string, _providerId?: string, _modelId?: string, _agentName?: string, attachments?: AttachedFile[]) => {
 		const trimmed = (text ?? '').trim();
-		if (!trimmed) return;
+		const hasAttachments = attachments && attachments.length > 0;
+		if (!trimmed && !hasAttachments) return;
+
 		const { composerModel, composerEffort, composerProfile, composerThinking } = useChatStore.getState();
+
+		const imageAttachments = hasAttachments
+			? attachments
+				.filter((f: AttachedFile) => f.mimeType.startsWith('image/') && f.dataUrl)
+				.map((f: AttachedFile) => ({ filename: f.filename, mime_type: f.mimeType, data_url: f.dataUrl }))
+			: undefined;
+
 		vscode.postMessage({
 			type: 'send',
-			text: trimmed,
+			text: trimmed || undefined,
 			model: composerModel || undefined,
 			effort: composerEffort || undefined,
 			tool_profile: composerProfile || undefined,
 			thinking_mode: composerThinking || undefined,
+			attachments: imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
 		});
 	},
 	forkFromMessage: asyncNoop,
@@ -67,5 +77,21 @@ export const useSessionUIStore = create<any>((set: any) => ({
 useChatStore.subscribe((state, prev) => {
 	if (state.chatId !== prev.chatId && state.chatId) {
 		useSessionUIStore.setState({ currentSessionId: state.chatId, newSessionDraft: null });
+	}
+
+	const ctx = state.contextData;
+	const prevCtx = prev.contextData;
+	if (ctx !== prevCtx) {
+		useSessionUIStore.setState({
+			getContextUsage: () => {
+				if (!ctx || ctx.budget <= 0) return null;
+				return {
+					totalTokens: ctx.total,
+					percentage: Math.round((ctx.total / ctx.budget) * 100),
+					contextLimit: ctx.budget,
+					thresholdLimit: ctx.budget,
+				};
+			},
+		});
 	}
 });

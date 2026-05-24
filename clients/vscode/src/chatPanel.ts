@@ -4,6 +4,12 @@ import { LisClient } from './lisClient';
 import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
+interface ImageAttachment {
+	filename:  string;
+	mime_type: string;
+	data_url:  string;
+}
+
 interface WebviewInbound {
 	type:           'ready' | 'send' | 'send_frame';
 	text?:          string;
@@ -11,6 +17,7 @@ interface WebviewInbound {
 	effort?:        string;
 	tool_profile?:  string;
 	thinking_mode?: string;
+	attachments?:   ImageAttachment[];
 	frame?:         Record<string, unknown>;
 }
 
@@ -87,11 +94,12 @@ export class ChatPanelManager {
 				break;
 
 			case 'send':
-				if (!msg.text) return;
+				if (!msg.text && !msg.attachments?.length) return;
 				this.client.send({
-					type: 'message', chat_id: entry.chatId, text: msg.text, dispatch: 'immediate',
+					type: 'message', chat_id: entry.chatId, text: msg.text ?? '', dispatch: 'immediate',
 					model: msg.model, effort: msg.effort, tool_profile: msg.tool_profile,
 					thinking_mode: msg.thinking_mode,
+					attachments: msg.attachments,
 				});
 				break;
 

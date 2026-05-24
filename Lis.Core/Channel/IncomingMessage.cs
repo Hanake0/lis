@@ -18,6 +18,14 @@ public sealed class IncomingMessage {
 	public string? MediaCaption { get; init; }
 	public string? MediaPath { get; init; }
 
+	/// <summary>Pre-loaded media bytes (e.g. inline image from the web channel). Skips the download path.</summary>
+	public byte[]? InlineMediaData { get; init; }
+	/// <summary>MIME type for <see cref="InlineMediaData"/>.</summary>
+	public string? InlineMediaMimeType { get; init; }
+
+	/// <summary>Source channel identifier (e.g. "web", "whatsapp"). Persisted on new chats.</summary>
+	public string? Channel { get; init; }
+
 	/// <summary>How the channel wants this message dispatched. Defaults to debounce (WhatsApp behavior).</summary>
 	public MessageDispatchMode Dispatch { get; init; } = MessageDispatchMode.Default;
 

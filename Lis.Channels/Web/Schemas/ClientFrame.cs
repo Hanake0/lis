@@ -36,6 +36,14 @@ public sealed class ClientFrame {
 	[JsonPropertyName("thinking_mode")]
 	public string? ThinkingMode { get; init; }
 
+	// Image attachments (base64 data URLs)
+	[JsonPropertyName("attachments")]
+	public List<ClientImageAttachment>? Attachments { get; init; }
+
+	// Session management
+	[JsonPropertyName("name")]
+	public string? Name { get; init; }
+
 	// Agent management
 	[JsonPropertyName("agent_name")]
 	public string? AgentName { get; init; }
@@ -44,4 +52,12 @@ public sealed class ClientFrame {
 	// count_tokens roundtrip for every text-to-token conversion.
 	[JsonPropertyName("force_refresh")]
 	public bool? ForceRefresh { get; init; }
+
+	// Permission response
+	[JsonPropertyName("approval_id")]
+	public string? ApprovalId { get; init; }
+
+	/// <summary>One of: "once", "always", "deny".</summary>
+	[JsonPropertyName("decision")]
+	public string? Decision { get; init; }
 }
