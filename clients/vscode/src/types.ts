@@ -22,6 +22,9 @@ export interface MessageRow {
 	cache_read_tokens?: number;
 	cache_creation_tokens?: number;
 	thinking_tokens?: number;
+	tool_name?: string;
+	tool_args?: string;
+	tool_is_error?: boolean;
 }
 
 export interface AgentSummary {

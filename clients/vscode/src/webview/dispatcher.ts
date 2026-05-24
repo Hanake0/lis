@@ -19,6 +19,7 @@ interface Message {
 	thinking_tokens?:      number;
 	tool_name?:            string;
 	tool_args?:            string;
+	tool_is_error?:        boolean;
 }
 
 let chatId: string | null = null;
@@ -124,7 +125,11 @@ function appendMessage(msg: Message): void {
 	if (msg.role === 'tool') {
 		if (msg.tool_name || msg.text) {
 			handleToolStart(msg.id, msg.tool_name ?? 'tool', msg.tool_args, msg.output_tokens);
-			handleToolResult(msg.id, msg.tool_name ?? 'tool', msg.text, undefined);
+			// On history restore we don't have a separate error payload — the result text
+			// IS the error message when tool_is_error is true (mirrors live behavior).
+			const errorText = msg.tool_is_error ? (msg.text ?? '(error)') : undefined;
+			const okText    = msg.tool_is_error ? undefined : msg.text;
+			handleToolResult(msg.id, msg.tool_name ?? 'tool', okText, errorText);
 		}
 		messages.push(msg);
 		return;

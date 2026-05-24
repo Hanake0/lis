@@ -202,8 +202,9 @@ public sealed class WebChannelController(
 			CacheReadTokens     = m.CacheReadTokens,
 			CacheCreationTokens = m.CacheCreationTokens,
 			ThinkingTokens      = m.ThinkingTokens,
-			ToolName            = m.Role == "tool" ? ExtractToolName(m.SkContent) : null,
-			ToolArgs            = m.Role == "tool" ? ExtractToolArgs(m.SkContent) : null,
+			ToolName            = m.Role == "tool" ? ExtractToolName(m.SkContent)   : null,
+			ToolArgs            = m.Role == "tool" ? ExtractToolArgs(m.SkContent)   : null,
+			ToolIsError         = m.Role == "tool" ? ExtractToolIsError(m.SkContent) : null,
 		}).ToList();
 
 		await client.PublishAsync(ServerFrame.ChatHistory(frame.ChatId, rows), ct);
@@ -397,6 +398,22 @@ public sealed class WebChannelController(
 			if (doc.RootElement.TryGetProperty("Metadata", out JsonElement meta)
 			 && meta.TryGetProperty("ToolArgs", out JsonElement args))
 				return args.GetString();
+		} catch { /* malformed JSON — return null */ }
+		return null;
+	}
+
+	/// <summary>
+	/// Reads <c>Metadata.IsError</c> from a persisted tool message's SkContent — populated
+	/// by ToolRunner so history can render failed calls in their original failed state.
+	/// </summary>
+	private static bool? ExtractToolIsError(string? skContent) {
+		if (string.IsNullOrEmpty(skContent)) return null;
+		try {
+			using JsonDocument doc = JsonDocument.Parse(skContent);
+			if (doc.RootElement.TryGetProperty("Metadata", out JsonElement meta)
+			 && meta.TryGetProperty("IsError", out JsonElement flag)
+			 && (flag.ValueKind == JsonValueKind.True || flag.ValueKind == JsonValueKind.False))
+				return flag.GetBoolean();
 		} catch { /* malformed JSON — return null */ }
 		return null;
 	}

@@ -54,19 +54,22 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 				if (streamSink is not null && streamChatId is not null)
 					await streamSink.SendToolStartAsync(streamChatId, toolId, toolName, argsJson, ct);
 
-				FunctionResultContent funcResult = await this.InvokeFunctionAsync(kernel, call, ct);
-				string resultText = funcResult.Result?.ToString() ?? "";
+				ToolInvocation invocation = await this.InvokeFunctionAsync(kernel, call, ct);
+				string resultText = invocation.Result.Result?.ToString() ?? "";
 
 				if (streamSink is not null && streamChatId is not null)
-					await streamSink.SendToolResultAsync(streamChatId, toolId, toolName, resultText, null, ct);
+					await streamSink.SendToolResultAsync(streamChatId, toolId, toolName,
+						resultText, invocation.IsError ? resultText : null, ct);
 
-				ChatMessageContent toolMsg = funcResult.ToChatMessage();
+				ChatMessageContent toolMsg = invocation.Result.ToChatMessage();
 				// Stash the call args + the WS frame id on the persisted message.
 				// Args let history recover the parameters the agent used; ToolWsId lets the
 				// conversation service push backfilled token counts to the same UI block.
+				// IsError lets history restore the failure state so failed calls stay red.
 				toolMsg.Metadata = new Dictionary<string, object?> {
 					["ToolArgs"] = argsJson,
 					["ToolWsId"] = toolId,
+					["IsError"]  = invocation.IsError,
 				};
 				history.Add(toolMsg);
 				yield return toolMsg;
@@ -168,7 +171,7 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 	}
 
 	[Trace("ToolRunner > InvokeFunctionAsync")]
-	private async Task<FunctionResultContent> InvokeFunctionAsync(
+	private async Task<ToolInvocation> InvokeFunctionAsync(
 		Kernel kernel, FunctionCallContent call, CancellationToken ct) {
 		try {
 			// Authorization gate
@@ -176,7 +179,7 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 
 			if (level == ToolAuthLevel.OwnerOnly && !ToolContext.IsOwner) {
 				logger.LogWarning("Non-owner tried to invoke owner-only tool '{Tool}'", call.FunctionName);
-				return new FunctionResultContent(call, "This tool requires owner authorization.");
+				return new ToolInvocation(new FunctionResultContent(call, "This tool requires owner authorization."), IsError: true);
 			}
 
 			if (level == ToolAuthLevel.ApprovalRequired) {
@@ -197,12 +200,12 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 						string reason = approvalResult.Decision == ApprovalDecision.Timeout
 							? "Approval timed out."
 							: "Command execution denied by owner.";
-						return new FunctionResultContent(call, reason);
+						return new ToolInvocation(new FunctionResultContent(call, reason), IsError: true);
 					}
 				}
 			}
 
-			return await call.InvokeAsync(kernel, ct);
+			return new ToolInvocation(await call.InvokeAsync(kernel, ct), IsError: false);
 		} catch (Exception ex) {
 			if (ex is KeyNotFoundException)
 				logger.LogWarning(ex, "Tried to execute tool '{Tool}' but it does not exist", call.FunctionName);
@@ -212,7 +215,9 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 			else
 				logger.LogError(ex, "Error executing tool '{Tool}'", call.FunctionName);
 
-			return new FunctionResultContent(call, ex.Message);
+			return new ToolInvocation(new FunctionResultContent(call, ex.Message), IsError: true);
 		}
 	}
+
+	private readonly record struct ToolInvocation(FunctionResultContent Result, bool IsError);
 }

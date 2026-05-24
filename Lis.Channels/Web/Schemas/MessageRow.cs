@@ -35,4 +35,7 @@ public sealed class MessageRow {
 
 	[JsonPropertyName("tool_args")]
 	public string? ToolArgs { get; init; }
+
+	[JsonPropertyName("tool_is_error")]
+	public bool? ToolIsError { get; init; }
 }
