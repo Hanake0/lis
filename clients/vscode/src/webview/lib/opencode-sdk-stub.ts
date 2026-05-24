@@ -5,6 +5,8 @@ export interface Session {
 	directory?: string | null;
 	createdAt?: number;
 	updatedAt?: number;
+	time?: { created?: number; updated?: number; archived?: number };
+	share?: { url?: string };
 }
 
 export interface Message {

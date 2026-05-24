@@ -33,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('lis.newChat', () => {
 			const chatId = `web:${crypto.randomUUID()}`;
 			sessions?.addLocalChat(chatId);
+			client?.send({ type: 'create_session', chat_id: chatId, name: 'New Chat' });
 			panels?.openOrFocus(chatId, 'New Chat');
 		}),
 

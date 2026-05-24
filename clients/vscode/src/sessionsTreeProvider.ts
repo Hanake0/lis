@@ -88,8 +88,35 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionItem
 				this._changeEmitter.fire();
 				break;
 
+			case 'chat_created':
+				this.sessions.set(frame.chat_id, {
+					chat_id:    frame.chat_id,
+					name:       frame.name,
+					updated_at: frame.timestamp,
+				});
+				this._changeEmitter.fire();
+				break;
+
+			case 'chat_deleted':
+				this.sessions.delete(frame.chat_id);
+				this._changeEmitter.fire();
+				break;
+
+			case 'chat_renamed': {
+				const existing = this.sessions.get(frame.chat_id);
+				if (existing) {
+					this.sessions.set(frame.chat_id, { ...existing, name: frame.name });
+					this._changeEmitter.fire();
+				}
+				break;
+			}
+
+			case 'chat_archived':
+				this.sessions.delete(frame.chat_id);
+				this._changeEmitter.fire();
+				break;
+
 			case 'message':
-				// Bump (or insert) the chat on any new message so updated_at stays fresh.
 				this.sessions.set(frame.chat_id, {
 					chat_id:    frame.chat_id,
 					name:       this.sessions.get(frame.chat_id)?.name,

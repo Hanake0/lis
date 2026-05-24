@@ -11,7 +11,7 @@ interface ImageAttachment {
 }
 
 interface WebviewInbound {
-	type:           'ready' | 'send' | 'send_frame';
+	type:           'ready' | 'send' | 'send_frame' | 'create_session' | 'delete_session' | 'rename_session' | 'archive_session';
 	text?:          string;
 	model?:         string;
 	effort?:        string;
@@ -19,6 +19,8 @@ interface WebviewInbound {
 	thinking_mode?: string;
 	attachments?:   ImageAttachment[];
 	frame?:         Record<string, unknown>;
+	chat_id?:       string;
+	name?:          string;
 }
 
 interface ChatPanel {
@@ -91,6 +93,7 @@ export class ChatPanelManager {
 				this.client.send({ type: 'history', chat_id: entry.chatId });
 				this.client.send({ type: 'get_agent', chat_id: entry.chatId });
 				this.client.send({ type: 'list_agents' });
+				this.client.send({ type: 'list_chats' });
 				break;
 
 			case 'send':
@@ -106,14 +109,32 @@ export class ChatPanelManager {
 			case 'send_frame':
 				if (msg.frame) this.client.send(msg.frame as never);
 				break;
+
+			case 'create_session':
+				if (msg.chat_id) this.client.send({ type: 'create_session', chat_id: msg.chat_id, name: msg.name });
+				break;
+
+			case 'delete_session':
+				if (msg.chat_id) this.client.send({ type: 'delete_session', chat_id: msg.chat_id });
+				break;
+
+			case 'rename_session':
+				if (msg.chat_id && msg.name) this.client.send({ type: 'rename_session', chat_id: msg.chat_id, name: msg.name });
+				break;
+
+			case 'archive_session':
+				if (msg.chat_id) this.client.send({ type: 'archive_session', chat_id: msg.chat_id });
+				break;
 		}
 	}
 
 	private onFrame(frame: ServerFrame): void {
-		if (frame.type === 'chat_list' || frame.type === 'connected') return;
+		if (frame.type === 'connected') return;
 
-		// agent_list is global — broadcast to all panels
-		if (frame.type === 'agent_list') {
+		// Global frames — broadcast to all panels
+		if (frame.type === 'agent_list' || frame.type === 'chat_list'
+			|| frame.type === 'chat_created' || frame.type === 'chat_deleted'
+			|| frame.type === 'chat_renamed' || frame.type === 'chat_archived') {
 			for (const entry of this.panels.values()) this.post(entry, { type: 'frame', frame });
 			return;
 		}

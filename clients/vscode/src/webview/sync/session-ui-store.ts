@@ -24,12 +24,30 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	closeNewSessionDraft: () => set({ newSessionDraft: null }),
 	clearError: () => set({ error: null }),
 
-	createSession: asyncNoop,
-	deleteSession: asyncNoop,
-	deleteSessions: asyncNoop,
-	archiveSession: asyncNoop,
-	archiveSessions: asyncNoop,
-	updateSessionTitle: asyncNoop,
+	createSession: async (title?: string) => {
+		const chatId = `web:${crypto.randomUUID()}`;
+		vscode.postMessage({ type: 'create_session', chat_id: chatId, name: title ?? 'New Chat' });
+		return chatId;
+	},
+	deleteSession: async (sessionId: string) => {
+		vscode.postMessage({ type: 'delete_session', chat_id: sessionId });
+		return true;
+	},
+	deleteSessions: async (ids: string[]) => {
+		for (const id of ids) vscode.postMessage({ type: 'delete_session', chat_id: id });
+		return { deletedIds: ids, failedIds: [] as string[] };
+	},
+	archiveSession: async (sessionId: string) => {
+		vscode.postMessage({ type: 'archive_session', chat_id: sessionId });
+		return true;
+	},
+	archiveSessions: async (ids: string[]) => {
+		for (const id of ids) vscode.postMessage({ type: 'archive_session', chat_id: id });
+		return { archivedIds: ids, failedIds: [] as string[] };
+	},
+	updateSessionTitle: async (sessionId: string, title: string) => {
+		vscode.postMessage({ type: 'rename_session', chat_id: sessionId, name: title });
+	},
 	shareSession: asyncNoop,
 	unshareSession: asyncNoop,
 	sendMessage: async (text: string, _providerId?: string, _modelId?: string, _agentName?: string, attachments?: AttachedFile[]) => {

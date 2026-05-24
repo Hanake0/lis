@@ -45,6 +45,15 @@ public sealed class ChatEntity {
 	[JsonPropertyName("agent_id")]
 	public long? AgentId { get; set; }
 
+	[MaxLength(32)]
+	[Column("channel", TypeName = "varchar(32)")]
+	[JsonPropertyName("channel")]
+	public string? Channel { get; set; }
+
+	[Column("archived_at")]
+	[JsonPropertyName("archived_at")]
+	public DateTimeOffset? ArchivedAt { get; set; }
+
 	[Column("enabled")]
 	[JsonPropertyName("enabled")]
 	public bool Enabled { get; set; } = true;

@@ -215,6 +215,17 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("agent_id")
                         .HasJsonPropertyName("agent_id");
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at")
+                        .HasJsonPropertyName("archived_at");
+
+                    b.Property<string>("Channel")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("channel")
+                        .HasJsonPropertyName("channel");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")

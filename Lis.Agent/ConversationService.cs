@@ -432,6 +432,7 @@ public sealed class ConversationService(
 			chat = new ChatEntity {
 				ExternalId     = message.ChatId,
 				Name           = chatName ?? message.SenderName,
+				Channel        = message.Channel,
 				IsGroup        = message.IsGroup,
 				RequireMention = message.IsGroup,
 				GroupTopic     = message.IsGroup ? message.ChatTopic : null,

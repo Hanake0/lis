@@ -11,4 +11,7 @@ public sealed class ChatSummary {
 
 	[JsonPropertyName("updated_at")]
 	public DateTimeOffset UpdatedAt { get; init; }
+
+	[JsonPropertyName("archived_at")]
+	public DateTimeOffset? ArchivedAt { get; init; }
 }
