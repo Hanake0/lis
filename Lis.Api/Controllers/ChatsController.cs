@@ -174,6 +174,52 @@ public sealed class ChatsController(
 		return this.NoContent();
 	}
 
+	/// <summary>
+	/// Returns the chat's transcript, newest-message-last (oldest-first within
+	/// the limited window). <c>limit</c> is clamped 1-500 with a default of 100
+	/// — matches the legacy WS <c>history</c> frame so the OC chat-view's
+	/// initial-load behaviour is unchanged.
+	/// </summary>
+	[HttpGet("{chatExternalId}/messages")]
+	[ProducesResponseType(typeof(MessageDto[]),   StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<MessageDto[]>> ListMessages(
+		[FromRoute] string  chatExternalId,
+		[FromQuery] int?    limit,
+		CancellationToken   ct
+	) {
+		// 404 the chat itself so callers can distinguish "no chat" from "empty chat".
+		_ = await this.FindByExternalIdAsync(chatExternalId, includeProject: false, ct);
+
+		int take = Math.Clamp(limit ?? 100, 1, 500);
+
+		// Take the LAST `take` rows by id, then re-sort ascending so the wire
+		// order is oldest→newest (what the renderer expects). Materialise raw
+		// (no JSON parsing inside the EF projection — that runs on strings
+		// after the round-trip).
+		List<MessageRowRaw> raw = await db.Messages
+			.Where(m => m.Chat.ExternalId == chatExternalId && !m.Queued)
+			.OrderByDescending(m => m.Id)
+			.Take(take)
+			.OrderBy(m => m.Id)
+			.Select(m => new MessageRowRaw(
+				m.ExternalId ?? m.Id.ToString(),
+				m.Role ?? (m.IsFromMe ? "assistant" : "user"),
+				m.Body,
+				m.Timestamp,
+				m.InputTokens,
+				m.OutputTokens,
+				m.CacheReadTokens,
+				m.CacheCreationTokens,
+				m.ThinkingTokens,
+				m.SkContent
+			))
+			.ToListAsync(ct);
+
+		MessageDto[] dtos = raw.Select(MessageDto.FromRaw).ToArray();
+		return this.Ok(dtos);
+	}
+
 	// ── Agent assignment + overrides ───────────────────────────────
 
 	/// <summary>

@@ -312,6 +312,113 @@ public class ChatsControllerTests :IDisposable {
 		Assert.Equal(ChatEventNames.Deleted, this.bus.Captured[0].Name);
 	}
 
+	// ── List messages (history) ───────────────────────────────────
+
+	[Fact]
+	public async Task ListMessages_Empty_Chat_Returns_Ok_With_Empty_Array() {
+		await this.SeedChatAsync("c1", updatedHoursAgo: 0);
+		ActionResult<MessageDto[]> result = await this.sut.ListMessages("c1", limit: null, default);
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Empty(dtos);
+	}
+
+	[Fact]
+	public async Task ListMessages_Missing_Chat_Throws_KeyNotFoundException() {
+		await Assert.ThrowsAsync<KeyNotFoundException>(() => this.sut.ListMessages("ghost", limit: null, default));
+	}
+
+	[Fact]
+	public async Task ListMessages_Returns_Rows_Oldest_First_With_Token_Counts_Filled() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		await this.SeedMessageAsync(chat, role: "user",      body: "first",  inputTokens: 12, outputTokens: 0);
+		await this.SeedMessageAsync(chat, role: "assistant", body: "second", inputTokens: 0,  outputTokens: 34, cacheRead: 7, cacheCreate: 3, thinkingTokens: 2);
+
+		ActionResult<MessageDto[]> result = await this.sut.ListMessages("c1", limit: null, default);
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+
+		Assert.Equal(2, dtos.Length);
+		Assert.Equal("first",     dtos[0].Text);
+		Assert.Equal("user",      dtos[0].Role);
+		Assert.Equal(12,          dtos[0].InputTokens);
+		Assert.Equal("second",    dtos[1].Text);
+		Assert.Equal("assistant", dtos[1].Role);
+		Assert.Equal(34,          dtos[1].OutputTokens);
+		Assert.Equal(7,           dtos[1].CacheReadTokens);
+		Assert.Equal(3,           dtos[1].CacheCreationTokens);
+		Assert.Equal(2,           dtos[1].ThinkingTokens);
+	}
+
+	[Fact]
+	public async Task ListMessages_Skips_Queued_Rows() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		await this.SeedMessageAsync(chat, role: "user",      body: "live");
+		await this.SeedMessageAsync(chat, role: "user",      body: "queued", queued: true);
+
+		ActionResult<MessageDto[]> result = await this.sut.ListMessages("c1", limit: null, default);
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Single(dtos);
+		Assert.Equal("live", dtos[0].Text);
+	}
+
+	[Fact]
+	public async Task ListMessages_Limit_Takes_The_Most_Recent_Rows() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		for (int i = 0; i < 5; i++) await this.SeedMessageAsync(chat, role: "user", body: $"msg-{i}");
+
+		ActionResult<MessageDto[]> result = await this.sut.ListMessages("c1", limit: 2, default);
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		// Latest two ids, oldest-first ordering => msg-3, msg-4
+		Assert.Equal(["msg-3", "msg-4"], dtos.Select(d => d.Text));
+	}
+
+	[Fact]
+	public async Task ListMessages_Limit_Is_Clamped_Above_500() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		await this.SeedMessageAsync(chat, role: "user", body: "x");
+		// Any oversized limit just returns whatever exists (clamping is upper-bound only —
+		// no exception, the user gets a normal response).
+		ActionResult<MessageDto[]> result = await this.sut.ListMessages("c1", limit: 9999, default);
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(result.Result).Value);
+		Assert.Single(dtos);
+	}
+
+	[Fact]
+	public async Task ListMessages_Tool_Row_Extracts_Name_And_Args_And_IsError_From_SkContent() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		string skContent = "{\"FunctionName\":\"my_tool\",\"Metadata\":{\"ToolArgs\":\"{\\\"k\\\":\\\"v\\\"}\",\"IsError\":true}}";
+		await this.SeedMessageAsync(chat, role: "tool", body: "tool output", skContent: skContent);
+
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(
+			(await this.sut.ListMessages("c1", limit: null, default)).Result).Value);
+		MessageDto dto = Assert.Single(dtos);
+		Assert.Equal("my_tool",       dto.ToolName);
+		Assert.Equal("{\"k\":\"v\"}", dto.ToolArgs);
+		Assert.True (dto.ToolIsError);
+	}
+
+	[Fact]
+	public async Task ListMessages_Assistant_Row_Extracts_LisThinking_From_SkContent() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		string skContent = "{\"Metadata\":{\"LisThinking\":\"I think therefore I am\"}}";
+		await this.SeedMessageAsync(chat, role: "assistant", body: "answer", skContent: skContent);
+
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(
+			(await this.sut.ListMessages("c1", limit: null, default)).Result).Value);
+		Assert.Equal("I think therefore I am", dtos[0].ThinkingContent);
+	}
+
+	[Fact]
+	public async Task ListMessages_Malformed_SkContent_Falls_Back_To_Null_Extracted_Fields() {
+		ChatEntity chat = await this.SeedChatAndReturnAsync("c1");
+		await this.SeedMessageAsync(chat, role: "tool", body: "x", skContent: "not json");
+
+		MessageDto[] dtos = Assert.IsType<MessageDto[]>(Assert.IsType<OkObjectResult>(
+			(await this.sut.ListMessages("c1", limit: null, default)).Result).Value);
+		Assert.Null(dtos[0].ToolName);
+		Assert.Null(dtos[0].ToolArgs);
+		Assert.Null(dtos[0].ToolIsError);
+	}
+
 	// ── Agent: get/set/overrides ──────────────────────────────────
 
 	[Fact]
@@ -523,6 +630,53 @@ public class ChatsControllerTests :IDisposable {
 			UpdatedAt  = now.AddHours(-updatedHoursAgo),
 			ArchivedAt = archivedHoursAgo is null ? null : now.AddHours(-archivedHoursAgo.Value),
 			Enabled    = true,
+		});
+		await this.db.SaveChangesAsync();
+	}
+
+	private async Task<ChatEntity> SeedChatAndReturnAsync(string externalId) {
+		ChatEntity chat = new() {
+			ExternalId = externalId,
+			Name       = externalId,
+			Channel    = "web",
+			CreatedAt  = this.time.GetUtcNow(),
+			UpdatedAt  = this.time.GetUtcNow(),
+			Enabled    = true,
+		};
+		this.db.Chats.Add(chat);
+		await this.db.SaveChangesAsync();
+		return chat;
+	}
+
+	private async Task SeedMessageAsync(
+		ChatEntity chat,
+		string     role,
+		string?    body            = null,
+		int?       inputTokens     = null,
+		int?       outputTokens    = null,
+		int?       cacheRead       = null,
+		int?       cacheCreate     = null,
+		int?       thinkingTokens  = null,
+		string?    skContent       = null,
+		bool       queued          = false
+	) {
+		this.db.Messages.Add(new MessageEntity {
+			Chat                = chat,
+			ChatId              = chat.Id,
+			ExternalId          = Guid.NewGuid().ToString("N"),
+			Role                = role,
+			Body                = body,
+			Timestamp           = this.time.GetUtcNow(),
+			IsFromMe            = role == "assistant",
+			SenderId            = "tester",
+			InputTokens         = inputTokens,
+			OutputTokens        = outputTokens,
+			CacheReadTokens     = cacheRead,
+			CacheCreationTokens = cacheCreate,
+			ThinkingTokens      = thinkingTokens,
+			SkContent           = skContent,
+			Queued              = queued,
+			CreatedAt           = this.time.GetUtcNow(),
 		});
 		await this.db.SaveChangesAsync();
 	}
