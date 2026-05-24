@@ -1,0 +1,75 @@
+using Lis.Api.Schemas.Chats;
+using Lis.Api.Schemas.Events;
+using Lis.Core.Events;
+using Lis.Persistence;
+using Lis.Persistence.Entities;
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Lis.Api.Controllers;
+
+/// <summary>
+/// Chats REST surface. Stage 13 is the full migration of every WebChannel
+/// chat operation onto this controller; today the create endpoint is wired
+/// because the multi-run orchestrator (Stage 7 backend, Stage 10 frontend)
+/// needs to mint chats from the webview without going through WebChannel.
+///
+/// Re-using an existing chat id (e.g. a deterministic id the client minted
+/// before realising it already POSTed) is treated as idempotent — the
+/// existing row is returned with 200 OK and no SSE event is re-emitted.
+/// </summary>
+[ApiController]
+[Route("api/chats")]
+[Tags("Chats")]
+[Produces("application/json")]
+public sealed class ChatsController(
+	LisDbContext  db,
+	IEventBus     events,
+	TimeProvider  time
+) :ControllerBase {
+
+	[HttpPost]
+	[ProducesResponseType(typeof(ChatDto), StatusCodes.Status201Created)]
+	[ProducesResponseType(typeof(ChatDto), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(StatusCodes.Status404NotFound)]
+	public async Task<ActionResult<ChatDto>> Create([FromBody] CreateChatRequest request, CancellationToken ct) {
+		string chatId = string.IsNullOrWhiteSpace(request.ChatId)
+			? $"web:{Guid.NewGuid():N}"
+			: request.ChatId.Trim();
+
+		// Idempotent on caller-supplied id — repeat POSTs return the existing row.
+		ChatEntity? existing = await db.Chats
+			.Include(c => c.Project)
+			.FirstOrDefaultAsync(c => c.ExternalId == chatId, ct);
+		if (existing is not null) return this.Ok(ChatDto.From(existing));
+
+		long? projectFkId = null;
+		ProjectEntity? boundProject = null;
+		if (!string.IsNullOrWhiteSpace(request.ProjectExternalId)) {
+			boundProject = await db.Projects.FirstOrDefaultAsync(p => p.ExternalId == request.ProjectExternalId, ct)
+				?? throw new KeyNotFoundException($"Project '{request.ProjectExternalId}' not found");
+			projectFkId = boundProject.Id;
+		}
+
+		DateTimeOffset now = time.GetUtcNow();
+		ChatEntity chat = new() {
+			ExternalId = chatId,
+			Name       = string.IsNullOrWhiteSpace(request.Name) ? "New Chat" : request.Name.Trim(),
+			Channel    = string.IsNullOrWhiteSpace(request.Channel) ? "web" : request.Channel.Trim(),
+			ProjectId  = projectFkId,
+			Project    = boundProject,
+			CreatedAt  = now,
+			UpdatedAt  = now,
+			Enabled    = true,
+		};
+		db.Chats.Add(chat);
+		await db.SaveChangesAsync(ct);
+
+		ChatDto dto = ChatDto.From(chat);
+		await events.PublishAsync(new ServerEvent(0, ChatEventNames.Created, new ChatCreatedPayload(dto), now), ct);
+
+		return this.CreatedAtAction(nameof(this.Create), new { chatId = dto.ChatId }, dto);
+	}
+}
