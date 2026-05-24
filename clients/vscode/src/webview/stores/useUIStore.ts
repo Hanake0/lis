@@ -48,7 +48,7 @@ export const useUIStore = create<any>((set: any) => ({
 
 	mermaidRenderingMode: 'svg',
 	userMessageRenderingMode: 'markdown',
-	chatRenderMode: 'sorted',
+	chatRenderMode: 'standard',
 	activityRenderMode: 'collapsed',
 	diffViewMode: 'unified',
 	diffFileLayout: 'list',
