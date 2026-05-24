@@ -61,28 +61,3 @@ public sealed class ServerFrame {
 	public static ServerFrame ChatHistory(string chatId, IReadOnlyList<MessageRow> messages) =>
 		new() { Type = "chat_history", ChatId = chatId, Messages = messages };
 }
-
-public sealed class ChatSummary {
-	[JsonPropertyName("chat_id")]
-	public required string ChatId { get; init; }
-
-	[JsonPropertyName("name")]
-	public string? Name { get; init; }
-
-	[JsonPropertyName("updated_at")]
-	public DateTimeOffset UpdatedAt { get; init; }
-}
-
-public sealed class MessageRow {
-	[JsonPropertyName("id")]
-	public required string Id { get; init; }
-
-	[JsonPropertyName("role")]
-	public required string Role { get; init; }
-
-	[JsonPropertyName("text")]
-	public string? Text { get; init; }
-
-	[JsonPropertyName("timestamp")]
-	public DateTimeOffset Timestamp { get; init; }
-}
