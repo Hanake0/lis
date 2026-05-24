@@ -105,6 +105,9 @@ if (Env("LIS_COMPACTION_PROVIDER") is { Length: > 0 } compProvider
 // Embedding (optional — enables vector search for memories)
 if (Env("MEMORIES_EMBEDDING_ENABLED") == "true") builder.Services.AddEmbedding();
 
+// Default HttpClient factory (needed by plugins like WebPlugin regardless of channel choice).
+builder.Services.AddHttpClient();
+
 // Channels
 if (Env("GOWA_ENABLED")        == "true") builder.Services.AddWhatsApp();
 if (Env("WEB_CHANNEL_ENABLED") == "true") builder.Services.AddWebChannel();
