@@ -32,6 +32,10 @@ public sealed class ClientFrame {
 	[JsonPropertyName("tool_profile")]
 	public string? ToolProfile { get; init; }
 
+	/// <summary>One of: "budget", "adaptive", "auto". Forces the thinking config shape.</summary>
+	[JsonPropertyName("thinking_mode")]
+	public string? ThinkingMode { get; init; }
+
 	// Agent management
 	[JsonPropertyName("agent_name")]
 	public string? AgentName { get; init; }

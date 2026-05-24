@@ -22,9 +22,10 @@ public sealed class IncomingMessage {
 	public MessageDispatchMode Dispatch { get; init; } = MessageDispatchMode.Default;
 
 	// Per-message overrides (web channel only — override agent defaults for this turn)
-	public string? ModelOverride       { get; init; }
-	public string? EffortOverride      { get; init; }
-	public string? ToolProfileOverride { get; init; }
+	public string? ModelOverride        { get; init; }
+	public string? EffortOverride       { get; init; }
+	public string? ToolProfileOverride  { get; init; }
+	public string? ThinkingModeOverride { get; init; } // "budget" | "adaptive" | "auto"
 
 	/// <summary>Set after ingestion — the DB-generated primary key.</summary>
 	public long DbId { get; set; }

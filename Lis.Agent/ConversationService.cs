@@ -222,11 +222,10 @@ public sealed class ConversationService(
 
 		Dictionary<string, object> extensionData = new() { ["max_tokens"] = agentModelSettings.MaxTokens };
 		if (agentModelSettings.ThinkingEffort is { Length: > 0 } effort) {
-			extensionData["thinking"] = new Dictionary<string, object> {
-				["type"]          = "enabled",
-				["budget_tokens"] = ResolveThinkingBudget(effort, agentModelSettings.Model),
-				["display"]       = "summarized"
-			};
+			string mode = ResolveThinkingMode(message.ThinkingModeOverride, agentModelSettings.Model, effort);
+			extensionData["thinking"] = mode == "adaptive"
+				? BuildAdaptiveThinking(effort)
+				: BuildBudgetThinking(effort, agentModelSettings.Model);
 		}
 
 		// Clone kernel and strip plugins not in the agent's tool policy.
@@ -542,26 +541,82 @@ public sealed class ConversationService(
 		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
 
 	/// <summary>
-	/// Resolves thinking budget tokens by effort level. "max" is model-dependent
-	/// to match Claude Code's behavior — Opus gets a higher ceiling than Sonnet/Haiku.
-	/// Numeric strings are passed through verbatim (raw budget_tokens).
+	/// Picks between "budget" and "adaptive" thinking modes. Opus 4.7+ requires adaptive
+	/// — fixed-budget thinking is removed on that model. Older models accept either,
+	/// with budget mode being the historical default.
 	/// </summary>
-	private static int ResolveThinkingBudget(string effort, string model) {
-		return effort.ToLowerInvariant() switch {
+	internal static string ResolveThinkingMode(string? overrideMode, string model, string effort) {
+		bool requiresAdaptive = ModelRequiresAdaptive(model);
+
+		string mode = overrideMode?.ToLowerInvariant() switch {
+			"adaptive" => "adaptive",
+			"budget"   => "budget",
+			_          => "auto"
+		};
+
+		// auto: adaptive for 4.7+, budget otherwise (matching Claude Code defaults)
+		if (mode == "auto") mode = requiresAdaptive ? "adaptive" : "budget";
+
+		// xhigh has no adaptive equivalent — force budget mode
+		if (effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase)) mode = "budget";
+
+		// Opus 4.7+ must use adaptive — cannot fall back to budget
+		if (requiresAdaptive && mode == "budget") mode = "adaptive";
+
+		return mode;
+	}
+
+	private static bool ModelRequiresAdaptive(string model) {
+		string m = model.ToLowerInvariant();
+		return m.Contains("opus-4-7") || m.Contains("opus-4.7");
+	}
+
+	/// <summary>
+	/// Adaptive thinking — Opus 4.7+ shape. output_config.effort takes only
+	/// low/medium/high/max; xhigh is mapped to high (use budget mode for xhigh instead).
+	/// </summary>
+	private static Dictionary<string, object> BuildAdaptiveThinking(string effort) {
+		string adaptiveEffort = effort.ToLowerInvariant() switch {
+			"low"    => "low",
+			"medium" => "medium",
+			"high"   => "high",
+			"xhigh"  => "high",  // no adaptive equivalent
+			"max"    => "max",
+			_        => "medium"
+		};
+		return new Dictionary<string, object> {
+			["type"]          = "adaptive",
+			["display"]       = "summarized",
+			["output_config"] = new Dictionary<string, object> { ["effort"] = adaptiveEffort }
+		};
+	}
+
+	/// <summary>
+	/// Fixed-budget thinking — works on Claude 4.6 and older. Deprecated on 4.6.
+	/// Budget values match Claude Code's defaults; max is model-dependent.
+	/// </summary>
+	private static Dictionary<string, object> BuildBudgetThinking(string effort, string model) {
+		int budget = effort.ToLowerInvariant() switch {
 			"low"    => 1024,
-			"medium" => 8000,
+			"medium" => 4096,
 			"high"   => 16000,
+			"xhigh"  => 32000,
 			"max"    => ModelMaxBudget(model),
 			_        => int.TryParse(effort, out int t) ? t : 4096
+		};
+		return new Dictionary<string, object> {
+			["type"]          = "enabled",
+			["budget_tokens"] = budget,
+			["display"]       = "summarized"
 		};
 	}
 
 	private static int ModelMaxBudget(string model) {
 		string m = model.ToLowerInvariant();
-		if (m.Contains("opus"))   return 32000;
-		if (m.Contains("sonnet")) return 24576;
+		if (m.Contains("opus"))   return 64000;
+		if (m.Contains("sonnet")) return 32000;
 		if (m.Contains("haiku"))  return 8192;
-		return 24576;
+		return 32000;
 	}
 
 	// ── Mention denormalization (outgoing) ──────────────────────────

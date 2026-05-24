@@ -123,16 +123,17 @@ public sealed class WebChannelController(
 		MessageDispatchMode dispatch = ParseDispatch(frame.Dispatch);
 
 		IncomingMessage incoming = new() {
-			ExternalId          = $"web:{Guid.NewGuid():N}",
-			ChatId              = frame.ChatId,
-			SenderId            = options.Value.OwnerId,
-			SenderName          = options.Value.OwnerName,
-			Timestamp           = DateTimeOffset.UtcNow,
-			Body                = frame.Text,
-			Dispatch            = dispatch,
-			ModelOverride       = frame.Model,
-			EffortOverride      = frame.Effort,
-			ToolProfileOverride = frame.ToolProfile,
+			ExternalId           = $"web:{Guid.NewGuid():N}",
+			ChatId               = frame.ChatId,
+			SenderId             = options.Value.OwnerId,
+			SenderName           = options.Value.OwnerName,
+			Timestamp            = DateTimeOffset.UtcNow,
+			Body                 = frame.Text,
+			Dispatch             = dispatch,
+			ModelOverride        = frame.Model,
+			EffortOverride       = frame.Effort,
+			ToolProfileOverride  = frame.ToolProfile,
+			ThinkingModeOverride = frame.ThinkingMode,
 		};
 
 		// Echo the user's own message back so other connected clients (and the sender on reload) see it.
