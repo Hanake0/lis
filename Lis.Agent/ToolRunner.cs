@@ -11,7 +11,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Lis.Agent;
 
-public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService approvalService, IUsageExtractor usageExtractor, ILogger<ToolRunner> logger) {
+public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService approvalService, IUsageExtractor usageExtractor, IReasoningExtractor reasoningExtractor, ILogger<ToolRunner> logger) {
 	internal const string UsageMetadataKey = "LisTokenUsage";
 
 	private static int MaxIterations =>
@@ -92,19 +92,10 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 
 			role ??= chunk.Role;
 
-			// Detect thinking content (M.E.AI TextReasoningContent via Anthropic SDK).
-			// The thinking text lives on TextReasoningContent.Text, NOT chunk.Content.
-			string? thinkingText = null;
-			if (chunk.InnerContent is Microsoft.Extensions.AI.TextReasoningContent rc1) {
-				thinkingText = rc1.Text;
-			} else {
-				foreach (StreamingKernelContent item in chunk.Items) {
-					if (item.InnerContent is Microsoft.Extensions.AI.TextReasoningContent rc2) {
-						thinkingText = rc2.Text;
-						break;
-					}
-				}
-			}
+			// The SK→M.E.AI bridge strips reasoning content from chunk.Items, but the
+			// raw provider event lives on chunk.InnerContent. The provider-specific
+			// IReasoningExtractor reads the delta from there.
+			string? thinkingText = reasoningExtractor.ExtractReasoningDelta(chunk.InnerContent);
 			bool isThinking = thinkingText is not null;
 
 			if (isThinking) {

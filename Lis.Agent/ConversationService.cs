@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 using Lis.Agent.Commands;
@@ -221,12 +222,14 @@ public sealed class ConversationService(
 		IChatCompletionService chatService = kernel.GetRequiredService<IChatCompletionService>();
 
 		Dictionary<string, object> extensionData = new() { ["max_tokens"] = agentModelSettings.MaxTokens };
+
+		// SK→M.E.AI does not forward ExtensionData["thinking"] to the wire — flow it via
+		// AsyncLocal so the provider's HTTP handler can inject it directly into the request body.
+		JsonNode? thinkingNode = null;
 		if (agentModelSettings.ThinkingEffort is { Length: > 0 } effort) {
-			string mode = ResolveThinkingMode(message.ThinkingModeOverride, agentModelSettings.Model, effort);
-			extensionData["thinking"] = mode == "adaptive"
-				? BuildAdaptiveThinking(effort)
-				: BuildBudgetThinking(effort, agentModelSettings.Model);
+			thinkingNode = BuildThinkingNode(message.ThinkingModeOverride, agentModelSettings.Model, effort, logger);
 		}
+		ThinkingContext.Pending.Value = thinkingNode;
 
 		// Clone kernel and strip plugins not in the agent's tool policy.
 		// FunctionChoiceBehavior.Auto(functions:) breaks Anthropic SDK serialization,
@@ -541,29 +544,32 @@ public sealed class ConversationService(
 		tokens >= 1000 ? $"{tokens / 1000.0:0.#}k" : $"{tokens}";
 
 	/// <summary>
-	/// Picks between "budget" and "adaptive" thinking modes. Opus 4.7+ requires adaptive
-	/// — fixed-budget thinking is removed on that model. Older models accept either,
-	/// with budget mode being the historical default.
+	/// Builds the <c>thinking</c> JSON node injected into the Anthropic request body.
+	/// Returns null when thinking should be disabled for this turn (e.g. xhigh requested
+	/// on a non-Opus-4.7 model — xhigh is exclusive to that model family).
 	/// </summary>
-	internal static string ResolveThinkingMode(string? overrideMode, string model, string effort) {
+	internal static JsonNode? BuildThinkingNode(string? overrideMode, string model, string effort, ILogger logger) {
 		bool requiresAdaptive = ModelRequiresAdaptive(model);
+		bool isXhigh          = effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase);
+
+		// xhigh is only valid on Opus 4.7+ (per user requirement). Drop thinking on older models.
+		if (isXhigh && !requiresAdaptive) {
+			logger.LogWarning("xhigh effort requested on model '{Model}' but it is exclusive to Opus 4.7+ — disabling thinking", model);
+			return null;
+		}
 
 		string mode = overrideMode?.ToLowerInvariant() switch {
 			"adaptive" => "adaptive",
 			"budget"   => "budget",
-			_          => "auto"
+			_          => requiresAdaptive ? "adaptive" : "budget"
 		};
 
-		// auto: adaptive for 4.7+, budget otherwise (matching Claude Code defaults)
-		if (mode == "auto") mode = requiresAdaptive ? "adaptive" : "budget";
+		// Opus 4.7+ does not support fixed-budget — force adaptive regardless of override.
+		if (requiresAdaptive) mode = "adaptive";
 
-		// xhigh has no adaptive equivalent — force budget mode
-		if (effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase)) mode = "budget";
-
-		// Opus 4.7+ must use adaptive — cannot fall back to budget
-		if (requiresAdaptive && mode == "budget") mode = "adaptive";
-
-		return mode;
+		return mode == "adaptive"
+			? BuildAdaptiveThinking(effort)
+			: BuildBudgetThinking(effort, model);
 	}
 
 	private static bool ModelRequiresAdaptive(string model) {
@@ -572,22 +578,19 @@ public sealed class ConversationService(
 	}
 
 	/// <summary>
-	/// Adaptive thinking — Opus 4.7+ shape. output_config.effort takes only
-	/// low/medium/high/max; xhigh is mapped to high (use budget mode for xhigh instead).
+	/// Adaptive thinking — Opus 4.7+ shape. The Anthropic SDK enum lists low/medium/high/max,
+	/// but the wire accepts <c>xhigh</c> (Claude Code uses it). Since we inject JSON directly
+	/// (bypassing the SDK enum), pass xhigh through.
 	/// </summary>
-	private static Dictionary<string, object> BuildAdaptiveThinking(string effort) {
+	private static JsonObject BuildAdaptiveThinking(string effort) {
 		string adaptiveEffort = effort.ToLowerInvariant() switch {
-			"low"    => "low",
-			"medium" => "medium",
-			"high"   => "high",
-			"xhigh"  => "high",  // no adaptive equivalent
-			"max"    => "max",
-			_        => "medium"
+			"low" or "medium" or "high" or "xhigh" or "max" => effort.ToLowerInvariant(),
+			_ => "medium"
 		};
-		return new Dictionary<string, object> {
+		return new JsonObject {
 			["type"]          = "adaptive",
 			["display"]       = "summarized",
-			["output_config"] = new Dictionary<string, object> { ["effort"] = adaptiveEffort }
+			["output_config"] = new JsonObject { ["effort"] = adaptiveEffort }
 		};
 	}
 
@@ -595,7 +598,7 @@ public sealed class ConversationService(
 	/// Fixed-budget thinking — works on Claude 4.6 and older. Deprecated on 4.6.
 	/// Budget values match Claude Code's defaults; max is model-dependent.
 	/// </summary>
-	private static Dictionary<string, object> BuildBudgetThinking(string effort, string model) {
+	private static JsonObject BuildBudgetThinking(string effort, string model) {
 		int budget = effort.ToLowerInvariant() switch {
 			"low"    => 1024,
 			"medium" => 4096,
@@ -604,7 +607,7 @@ public sealed class ConversationService(
 			"max"    => ModelMaxBudget(model),
 			_        => int.TryParse(effort, out int t) ? t : 4096
 		};
-		return new Dictionary<string, object> {
+		return new JsonObject {
 			["type"]          = "enabled",
 			["budget_tokens"] = budget,
 			["display"]       = "summarized"
