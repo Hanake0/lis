@@ -80,6 +80,9 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 	public Task SendToolResultAsync(string chatId, string messageId, string toolName, string result, string? error, CancellationToken ct = default) =>
 		this.PublishAsync(ServerFrame.ToolResult(chatId, messageId, toolName, result, error), ct);
 
+	public Task SendErrorAsync(string chatId, string error, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.Error(error, chatId), ct);
+
 	// ── Publishing ──────────────────────────────────────────────────
 
 	public async Task PublishAsync(ServerFrame frame, CancellationToken ct = default) {

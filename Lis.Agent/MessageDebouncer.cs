@@ -252,6 +252,7 @@ public sealed class MessageDebouncer(
 			} catch (Exception ex) {
 				logger.LogError(ex, "Error responding to {MessageId} in {ChatId}",
 					message.ExternalId, message.ChatId);
+				await this.NotifyErrorAsync(message.ChatId, ex);
 			} finally {
 				Interlocked.CompareExchange(ref state.ActiveCts, null, cts);
 			}
@@ -272,6 +273,7 @@ public sealed class MessageDebouncer(
 					// Intentionally swallowed — cancellation is expected from /abort
 				} catch (Exception ex) {
 					logger.LogError(ex, "Error responding in {ChatId}", message.ChatId);
+					await this.NotifyErrorAsync(message.ChatId, ex);
 				} finally {
 					Interlocked.CompareExchange(ref state.ActiveCts, null, cts2);
 				}
@@ -280,6 +282,41 @@ public sealed class MessageDebouncer(
 			state.IsResponding = false;
 			state.Gate.Release();
 		}
+	}
+
+	/// <summary>
+	/// Surfaces a backend exception to the chat so the user sees it instead of a silent
+	/// hang. Best-effort — failing to notify is itself logged and swallowed.
+	/// </summary>
+	private async Task NotifyErrorAsync(string chatId, Exception ex) {
+		try {
+			using IServiceScope scope   = scopeFactory.CreateScope();
+			IChannelClient      channel = GetChannelClient(scope);
+			await channel.StopTypingAsync(chatId);
+			await channel.SendErrorAsync(chatId, FormatUserMessage(ex));
+		} catch (Exception notifyEx) {
+			logger.LogWarning(notifyEx, "Failed to forward error to chat {ChatId}", chatId);
+		}
+	}
+
+	/// <summary>
+	/// Strips noisy framing from provider errors. Anthropic returns an HTTP body like
+	/// <c>{"type":"error","error":{"type":"...","message":"..."}}</c> embedded in the
+	/// exception message — extract the inner <c>message</c> field when present.
+	/// </summary>
+	private static string FormatUserMessage(Exception ex) {
+		string raw = ex.Message ?? "Unknown error";
+		int braceIdx = raw.IndexOf('{');
+		if (braceIdx >= 0) {
+			try {
+				using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(raw[braceIdx..]);
+				if (doc.RootElement.TryGetProperty("error", out System.Text.Json.JsonElement err)
+				 && err.TryGetProperty("message", out System.Text.Json.JsonElement msg)
+				 && msg.GetString() is { Length: > 0 } extracted)
+					return extracted;
+			} catch { /* fall through to raw */ }
+		}
+		return raw;
 	}
 
 	private async Task<bool> FlushQueueAsync(string chatId, ChatState state) {

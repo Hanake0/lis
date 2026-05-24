@@ -17,4 +17,11 @@ public interface IChannelClient {
 		=> Task.CompletedTask;
 	Task SendToolResultAsync(string chatId, string messageId, string toolName, string result, string? error, CancellationToken ct = default)
 		=> Task.CompletedTask;
+
+	/// <summary>
+	/// Surfaces a backend error to the user in the chat UI. Channels without a dedicated
+	/// error frame (e.g. WhatsApp) can override this to send a regular text message.
+	/// </summary>
+	Task SendErrorAsync(string chatId, string error, CancellationToken ct = default)
+		=> Task.CompletedTask;
 }
