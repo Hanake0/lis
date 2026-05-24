@@ -32,6 +32,11 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 		this.post({ type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token });
 	}
 
+	/** Called on activation + when the VS Code workspace folders change. */
+	notifyWorkspaceChange(): void {
+		this.post(buildWorkspaceMessage());
+	}
+
 	resolveWebviewView(
 		webviewView: vscode.WebviewView,
 		_context: vscode.WebviewViewResolveContext,
@@ -52,6 +57,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					// New webview booted; push the current config so the LisRpcClient can wire up.
 					const cfg = this.getConfig();
 					this.post({ type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
+					this.post(buildWorkspaceMessage());
 					return;
 				}
 
@@ -137,4 +143,23 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
 	}
+}
+
+/**
+ * Build the `lis.workspace` envelope sent to webviews so their `useDirectoryStore`
+ * can mirror the host's workspace + home directory. Pulled out of the provider
+ * so the chat-panel path can reuse it without duplicating the os/vscode wiring.
+ */
+export function buildWorkspaceMessage(): { type: 'lis.workspace'; workspaceRoot?: string; homeDirectory: string } {
+	const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+	// Read home from process.env so we don't need a `node:os` import (esbuild's
+	// `platform: 'browser'` config can't resolve `node:*` modules). The vars
+	// are populated by Node in the extension host.
+	const env  = (typeof process !== 'undefined' && process.env) ? process.env : {} as NodeJS.ProcessEnv;
+	const home = env.HOME ?? env.USERPROFILE ?? (env.HOMEDRIVE && env.HOMEPATH ? `${env.HOMEDRIVE}${env.HOMEPATH}` : '');
+	return {
+		type:          'lis.workspace',
+		workspaceRoot: folder,
+		homeDirectory: home,
+	};
 }

@@ -83,6 +83,13 @@ export function activate(context: vscode.ExtensionContext): void {
 			sidebar?.notifyConfigChange();
 			panels?.notifyConfigChange();
 		}),
+
+		// Mirror VS Code workspace changes into the webview's useDirectoryStore so
+		// `currentDirectory` follows the user when they open a different folder.
+		vscode.workspace.onDidChangeWorkspaceFolders(() => {
+			sidebar?.notifyWorkspaceChange();
+			panels?.notifyWorkspaceChange();
+		}),
 	);
 
 	// First-run UX: if the user has never set a token, surface a one-shot notification

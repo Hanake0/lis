@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
 import type { LisClient } from './lisClient';
+import { buildWorkspaceMessage } from './sidebarWebviewProvider';
 import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
@@ -56,6 +57,12 @@ export class ChatPanelManager {
 		for (const entry of this.panels.values()) entry.panel.webview.postMessage(msg);
 	}
 
+	/** Push the current VS Code workspace root + home directory to every open panel. */
+	notifyWorkspaceChange(): void {
+		const msg = buildWorkspaceMessage();
+		for (const entry of this.panels.values()) entry.panel.webview.postMessage(msg);
+	}
+
 	openOrFocus(chatId: string, title?: string): void {
 		const existing = this.panels.get(chatId);
 		if (existing) {
@@ -94,9 +101,10 @@ export class ChatPanelManager {
 	private onWebviewMessage(entry: ChatPanel, msg: WebviewInbound & { type: string }): void {
 		switch (msg.type) {
 			case 'lis.ready': {
-				// Webview booted; send the current REST/SSE config.
+				// Webview booted; send the current REST/SSE config + workspace info.
 				const cfg = this.getConfig();
 				this.post(entry, { type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
+				this.post(entry, buildWorkspaceMessage());
 				return;
 			}
 
