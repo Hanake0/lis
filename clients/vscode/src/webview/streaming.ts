@@ -62,11 +62,11 @@ export function handleThinkingChunk(id: string, delta: string, done: boolean): v
 	scrollToBottom();
 }
 
-export function finalizeStreamedMessage(id: string, text: string): void {
-	const el = streamingElements.get(id);
-	if (el) {
-		el.textContent = text;
-		el.classList.remove('streaming');
-		streamingElements.delete(id);
+export function finalizeStreamedMessage(_id: string, _text: string): void {
+	// Remove ALL active streaming elements — the final message frame may have
+	// a different ID than the streaming chunks (backend generates IDs separately).
+	for (const [sid, el] of streamingElements) {
+		el.remove();
+		streamingElements.delete(sid);
 	}
 }

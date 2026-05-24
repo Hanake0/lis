@@ -100,9 +100,14 @@ export class ChatPanelManager {
 	}
 
 	private onFrame(frame: ServerFrame): void {
-		// Route frames to the panel they belong to. chat_list/connected aren't chat-scoped;
-		// errors may or may not be (broadcast errors have no chat_id and we drop them here).
 		if (frame.type === 'chat_list' || frame.type === 'connected') return;
+
+		// agent_list is global — broadcast to all panels
+		if (frame.type === 'agent_list') {
+			for (const entry of this.panels.values()) this.post(entry, { type: 'frame', frame });
+			return;
+		}
+
 		const chatId = (frame as { chat_id?: string }).chat_id;
 		if (!chatId) return;
 

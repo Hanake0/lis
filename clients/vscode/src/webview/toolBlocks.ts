@@ -10,16 +10,18 @@ export function handleToolStart(id: string, toolName: string, toolArgs?: string)
 	el.className = 'tool-block';
 	el.dataset.toolId = id;
 
+	const displayName = formatToolName(toolName);
 	const header = document.createElement('div');
 	header.className = 'tool-header';
-	header.innerHTML = `<span class="tool-icon">⚙</span> <span class="tool-name">${escapeHtml(toolName)}</span> <span class="tool-status running">running</span>`;
+	header.innerHTML = `<span class="tool-icon">⚙</span> <span class="tool-name">${escapeHtml(displayName)}</span> <span class="tool-status running">running</span>`;
 	header.addEventListener('click', () => el.classList.toggle('collapsed'));
 	el.appendChild(header);
 
 	if (toolArgs && toolArgs !== '{}') {
 		const args = document.createElement('pre');
 		args.className = 'tool-args';
-		args.textContent = toolArgs;
+		try { args.textContent = JSON.stringify(JSON.parse(toolArgs), null, 2); }
+		catch { args.textContent = toolArgs; }
 		el.appendChild(args);
 	}
 
@@ -46,6 +48,12 @@ export function handleToolResult(id: string, _toolName: string, result?: string,
 	el.classList.add('collapsed');
 	toolElements.delete(id);
 	scrollToBottom();
+}
+
+function formatToolName(name: string): string {
+	const parts = name.split('_');
+	if (parts.length >= 2) return `${parts[0]}:${parts.slice(1).join('_')}`;
+	return name;
 }
 
 function escapeHtml(s: string): string {
