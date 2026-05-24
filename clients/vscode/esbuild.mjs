@@ -50,7 +50,7 @@ const webviewConfig = {
 	platform: 'browser',
 	target: 'es2022',
 	sourcemap: true,
-	minify: false,
+	minify: !watch,
 	logLevel: 'info',
 	jsx: 'automatic',
 	plugins: [aliasPlugin],

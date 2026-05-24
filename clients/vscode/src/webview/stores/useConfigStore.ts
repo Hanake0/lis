@@ -120,10 +120,14 @@ useChatStore.subscribe((state) => {
 		name: a.display_name ?? a.name,
 		model: a.model,
 	}));
+	const currentAgent = state.currentAgent;
 	useConfigStore.setState({
 		isConnected: connected,
 		isInitialized: connected,
 		agents,
+		currentProviderId: state.composerModel ? 'default' : '',
+		currentModelId: state.composerModel || '',
+		currentAgentName: currentAgent?.name || '',
 		providers: state.composerModel ? [{
 			id: 'default',
 			name: 'Provider',

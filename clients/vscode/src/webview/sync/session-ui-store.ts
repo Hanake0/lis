@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useChatStore } from '@/store';
+import { vscode } from '@/vscodeApi';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 
 export type { AttachedFile };
@@ -31,7 +32,19 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	updateSessionTitle: asyncNoop,
 	shareSession: asyncNoop,
 	unshareSession: asyncNoop,
-	sendMessage: asyncNoop,
+	sendMessage: async (text: string, _providerId?: string, _modelId?: string) => {
+		const trimmed = (text ?? '').trim();
+		if (!trimmed) return;
+		const { composerModel, composerEffort, composerProfile, composerThinking } = useChatStore.getState();
+		vscode.postMessage({
+			type: 'send',
+			text: trimmed,
+			model: composerModel || undefined,
+			effort: composerEffort || undefined,
+			tool_profile: composerProfile || undefined,
+			thinking_mode: composerThinking || undefined,
+		});
+	},
 	forkFromMessage: asyncNoop,
 	revertToMessage: asyncNoop,
 	createSessionFromAssistantMessage: asyncNoop,
