@@ -33,7 +33,8 @@ export function ThinkingBlock({ msg }: { msg: ThinkingMsg }) {
 				class="thinking-header"
 				onClick={() => setCollapsed(c => !c)}
 			>
-				<span class="thinking-chevron">{collapsed ? '▶' : '▼'}</span>
+				<i class={`codicon ${collapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'} thinking-chevron`} />
+				<i class="codicon codicon-lightbulb thinking-icon" />
 				<span class={`thinking-label${msg.streaming ? ' thinking-label--streaming' : ''}`}>
 					{msg.streaming ? 'Thinking' : 'Thought'}
 				</span>

@@ -36,22 +36,20 @@ export function ToolBlock({ msg }: { msg: ToolMsg }) {
 		: 'tool-block--done';
 
 	const statusIcon = msg.status === 'running'
-		? <span class="tool-spinner" aria-label="Running" />
+		? <i class="codicon codicon-loading codicon-modifier-spin tool-spinner" aria-label="Running" />
 		: msg.status === 'done'
-		? <svg class="tool-done-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Done"><polyline points="3 8 6.5 11.5 13 5" /></svg>
-		: <svg class="tool-error-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-label="Error"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>;
+		? <i class="codicon codicon-check tool-done-icon" aria-label="Done" />
+		: <i class="codicon codicon-close tool-error-icon" aria-label="Error" />;
 
 	return (
 		<div class={`tool-block ${statusClass}`}>
 			<button type="button" class="tool-header" onClick={() => setCollapsed(c => !c)}>
-				<svg class="tool-icon-svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-					<path d="M9.1 1.7a1 1 0 0 0-2.2 0l-.2.9a5 5 0 0 0-.9.5l-.9-.3a1 1 0 0 0-1.1.5L2.7 4.5a1 1 0 0 0 .2 1.2l.7.6v1l-.7.6a1 1 0 0 0-.2 1.2l1.1 1.2a1 1 0 0 0 1.1.5l.9-.3c.3.2.6.4.9.5l.2.9a1 1 0 0 0 2.2 0l.2-.9c.3-.1.6-.3.9-.5l.9.3a1 1 0 0 0 1.1-.5l1.1-1.2a1 1 0 0 0-.2-1.2l-.7-.6v-1l.7-.6a1 1 0 0 0 .2-1.2L12.1 3.3a1 1 0 0 0-1.1-.5l-.9.3a5 5 0 0 0-.9-.5l-.1-.9zM8 6a2 2 0 1 1 0 4A2 2 0 0 1 8 6z"/>
-				</svg>
+				<i class="codicon codicon-gear tool-icon-codicon" aria-hidden="true" />
 				<span class="tool-name">{formatName(msg.name)}</span>
 				<span class="tool-spacer" />
 				{msg.tokens !== undefined && <span class="tool-tokens">{formatTok(msg.tokens)}</span>}
 				{statusIcon}
-				<span class="tool-chevron">{collapsed ? '▶' : '▼'}</span>
+				<i class={`codicon ${collapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'} tool-chevron`} />
 			</button>
 
 			{!collapsed && (

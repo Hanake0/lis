@@ -35,7 +35,7 @@ export function Chip({ label, dirty, children }: Props) {
 				onClick={() => setOpen(v => !v)}
 			>
 				<span class="chip-label">{label}</span>
-				<span class="chip-arrow">▾</span>
+				<i class={`codicon ${open ? 'codicon-chevron-up' : 'codicon-chevron-down'} chip-arrow`} />
 			</button>
 			{open && (
 				<div class="dropdown-panel">

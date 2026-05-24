@@ -62,7 +62,7 @@ export function Composer() {
 					title="Context window"
 					onClick={() => { contextOpen.value = !contextOpen.value; }}
 				>
-					<span class="chip-label">ctx</span>
+					<i class="codicon codicon-pulse" />
 				</button>
 			</div>
 

@@ -24,7 +24,7 @@ export function SaveButton({ dirty, onClick }: Props) {
 			title="Save overrides to agent"
 			aria-label="Save overrides"
 		>
-			{saved ? '✓' : '↓'}
+			<i class={`codicon ${saved ? 'codicon-check' : 'codicon-save'}`} aria-hidden="true" />
 		</button>
 	);
 }

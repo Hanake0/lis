@@ -60,6 +60,7 @@ export class ChatPanelManager {
 				localResourceRoots: [
 						vscode.Uri.joinPath(this.context.extensionUri, 'media'),
 						vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+						vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist'),
 					],
 			},
 		);
@@ -129,17 +130,20 @@ export class ChatPanelManager {
 	}
 
 	private buildHtml(webview: vscode.Webview): string {
-		const mediaRoot = vscode.Uri.joinPath(this.context.extensionUri, 'media');
-		const distRoot  = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
-		const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'chat.css'));
-		const jsUri  = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.js'));
-		const nonce  = generateNonce();
+		const mediaRoot     = vscode.Uri.joinPath(this.context.extensionUri, 'media');
+		const distRoot      = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
+		const codiconsRoot  = vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist');
+		const cssUri        = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'chat.css'));
+		const jsUri         = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.js'));
+		const codiconsUri   = webview.asWebviewUri(vscode.Uri.joinPath(codiconsRoot, 'codicon.css'));
+		const nonce         = generateNonce();
 
 		return BUNDLED_HTML
-			.replace(/\$\{nonce\}/g,     nonce)
-			.replace(/\$\{cspSource\}/g, webview.cspSource)
-			.replace(/\$\{cssUri\}/g,    cssUri.toString())
-			.replace(/\$\{jsUri\}/g,     jsUri.toString());
+			.replace(/\$\{nonce\}/g,        nonce)
+			.replace(/\$\{cspSource\}/g,    webview.cspSource)
+			.replace(/\$\{cssUri\}/g,       cssUri.toString())
+			.replace(/\$\{jsUri\}/g,        jsUri.toString())
+			.replace(/\$\{codiconsUri\}/g,  codiconsUri.toString());
 	}
 }
 
@@ -147,7 +151,8 @@ const BUNDLED_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src \${cspSource} 'unsafe-inline'; script-src 'nonce-\${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src \${cspSource}; style-src \${cspSource} 'unsafe-inline'; script-src 'nonce-\${nonce}';">
+	<link rel="stylesheet" href="\${codiconsUri}">
 	<link rel="stylesheet" href="\${cssUri}">
 	<title>Lis Chat</title>
 </head>

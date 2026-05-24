@@ -24,7 +24,7 @@ html, body {
 	font-family:    var(--vscode-font-family);
 	font-size:      var(--vscode-font-size, 13px);
 	color:          var(--vscode-foreground);
-	background:     var(--vscode-sideBar-background, var(--vscode-editor-background));
+	background:     var(--vscode-editor-background);
 	overflow:       hidden;
 }
 
@@ -171,7 +171,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	transition:    background var(--lis-anim-fast);
 }
 .thinking-header:hover { background: rgba(186,128,233,0.09); }
-.thinking-chevron { font-size: 9px; opacity: 0.55; flex-shrink: 0; }
+.thinking-chevron { font-size: 11px; opacity: 0.55; flex-shrink: 0; }
+.thinking-icon    { font-size: 12px; color: rgba(186,128,233,0.7); flex-shrink: 0; }
 .thinking-label   { font-style: italic; color: rgba(186,128,233,0.9); font-size: 11.5px; }
 .thinking-tokens  {
 	margin-left:   auto;
@@ -217,11 +218,11 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 }
 .thinking-fade--top {
 	top: 0;
-	background: linear-gradient(to bottom, var(--vscode-sideBar-background, var(--vscode-editor-background)), transparent);
+	background: linear-gradient(to bottom, var(--vscode-editor-background), transparent);
 }
 .thinking-fade--bot {
 	bottom: 0;
-	background: linear-gradient(to top, var(--vscode-sideBar-background, var(--vscode-editor-background)), transparent);
+	background: linear-gradient(to top, var(--vscode-editor-background), transparent);
 }
 
 /* ── Tool block ───────────────────────────────────────────────────── */
@@ -254,7 +255,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	transition:  background var(--lis-anim-fast);
 }
 .tool-header:hover { background: rgba(128,128,128,0.1); }
-.tool-icon-svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.65; }
+.tool-icon-codicon { font-size: 13px; flex-shrink: 0; opacity: 0.6; }
 .tool-name  { font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; }
 .tool-spacer { flex: 1; }
 .tool-tokens {
@@ -264,18 +265,10 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	background:    rgba(128,128,128,0.12);
 	border-radius: var(--lis-r-pill);
 }
-.tool-spinner {
-	display:          inline-block;
-	width:            12px; height: 12px;
-	border:           2px solid rgba(229,192,123,0.25);
-	border-top-color: var(--lis-run);
-	border-radius:    50%;
-	animation:        spin 0.65s linear infinite;
-	flex-shrink:      0;
-}
-.tool-done-icon  { width: 14px; height: 14px; flex-shrink: 0; color: var(--lis-done); }
-.tool-error-icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--lis-err); }
-.tool-chevron    { font-size: 9px; opacity: 0.5; flex-shrink: 0; }
+.tool-spinner   { font-size: 13px; flex-shrink: 0; color: var(--lis-run); }
+.tool-done-icon  { font-size: 13px; flex-shrink: 0; color: var(--lis-done); }
+.tool-error-icon { font-size: 13px; flex-shrink: 0; color: var(--lis-err); }
+.tool-chevron    { font-size: 11px; opacity: 0.45; flex-shrink: 0; }
 
 .tool-body-wrap { position: relative; }
 .tool-body {
@@ -290,7 +283,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	left: 0; right: 0;
 	height:         28px;
 	pointer-events: none;
-	background:     linear-gradient(to top, var(--vscode-sideBar-background, var(--vscode-editor-background)), transparent);
+	background:     linear-gradient(to top, var(--vscode-editor-background), transparent);
 }
 .tool-section          { border-top: 1px solid var(--lis-border); }
 .tool-section--error .tool-result { color: var(--lis-err); }
@@ -450,7 +443,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 	box-shadow:    0 0 4px rgba(229,192,123,0.7);
 }
 .chip--icon { padding: 0 10px; }
-.chip-arrow { font-size: 8px; opacity: 0.45; margin-left: 1px; }
+.chip-arrow { font-size: 11px; opacity: 0.45; margin-left: 1px; }
 
 /* ── Dropdown panel ───────────────────────────────────────────────── */
 .dropdown-panel {

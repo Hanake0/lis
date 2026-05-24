@@ -109,6 +109,7 @@
   },
   "dependencies": {
     "@preact/signals": "^2.9.0",
+    "@vscode/codicons": "^0.0.45",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4",
     "preact": "^10.29.2"
