@@ -256,7 +256,8 @@ public sealed class ConversationService(
 
 		TokenUsage? lastUsage = null;
 		TokenUsage? prevUsage = null;
-		List<long>  pendingToolMsgIds = new();
+		List<long>                 pendingToolMsgIds = new();
+		Dictionary<long, string>   toolEntityToWsId  = new();
 		bool        sentAnyMessage    = false;
 		string      streamMessageId   = $"msg:{Guid.NewGuid():N}";
 
@@ -278,21 +279,34 @@ public sealed class ConversationService(
 				}
 			}
 
-			// Back-fill tool result token counts from the API input delta
+			// Back-fill tool result token counts from the API input delta, then push
+			// live updates to the UI so each tool block can show its own cost.
 			if (msgUsage is not null && prevUsage is not null && pendingToolMsgIds.Count > 0) {
 				int contentOutput = prevUsage.OutputTokens - prevUsage.ThinkingTokens;
 				int delta = msgUsage.TotalInputTokens - prevUsage.TotalInputTokens - contentOutput;
-				if (delta > 0)
-					await BackfillToolTokensAsync(db, pendingToolMsgIds, delta, ct);
+				if (delta > 0) {
+					Dictionary<long, int> backfilled = await BackfillToolTokensAsync(db, pendingToolMsgIds, delta, ct);
+					foreach ((long entityId, int tokens) in backfilled) {
+						if (!toolEntityToWsId.TryGetValue(entityId, out string? wsId)) continue;
+						await channelClient.SendMessageTokensAsync(
+							message.ChatId, wsId,
+							new TokenUsage(InputTokens: 0, OutputTokens: tokens, CacheReadTokens: 0, CacheCreationTokens: 0, ThinkingTokens: 0),
+							ct);
+					}
+				}
 				pendingToolMsgIds.Clear();
 			}
 
 			if (msgUsage is not null) { prevUsage = msgUsage; lastUsage = msgUsage; }
 
-			long entityId = await PersistSkMessageAsync(db, chat, session, msg, msgUsage, externalId, ct);
+			long savedEntityId = await PersistSkMessageAsync(db, chat, session, msg, msgUsage, externalId, ct);
 
-			if (msg.Role == AuthorRole.Tool)
-				pendingToolMsgIds.Add(entityId);
+			if (msg.Role == AuthorRole.Tool) {
+				pendingToolMsgIds.Add(savedEntityId);
+				// ToolRunner stashed the WS frame id on Metadata so we can target the live UI block.
+				if (msg.Metadata?.TryGetValue("ToolWsId", out object? wsIdObj) == true && wsIdObj is string wsId)
+					toolEntityToWsId[savedEntityId] = wsId;
+			}
 		}
 
 		// Clear typing indicator if no message was sent (NO_RESPONSE)
@@ -502,9 +516,10 @@ public sealed class ConversationService(
 
 	/// <summary>
 	/// Distributes the API input token delta proportionally among tool result messages
-	/// using a local BPE tokenizer for relative weights.
+	/// using a local BPE tokenizer for relative weights. Returns the per-entity counts
+	/// so callers can push live updates to the UI.
 	/// </summary>
-	private static async Task BackfillToolTokensAsync(
+	private static async Task<Dictionary<long, int>> BackfillToolTokensAsync(
 		LisDbContext db, List<long> toolMsgIds, int totalDelta, CancellationToken ct) {
 		List<MessageEntity> toolMsgs = await db.Messages
 			.Where(m => toolMsgIds.Contains(m.Id))
@@ -515,13 +530,17 @@ public sealed class ConversationService(
 			.ToArray();
 		int rawTotal = rawCounts.Sum();
 
+		Dictionary<long, int> result = new();
 		for (int i = 0; i < toolMsgs.Count; i++) {
-			toolMsgs[i].OutputTokens = rawTotal > 0
+			int count = rawTotal > 0
 				? (int)((long)totalDelta * rawCounts[i] / rawTotal)
 				: toolMsgs.Count > 0 ? totalDelta / toolMsgs.Count : totalDelta;
+			toolMsgs[i].OutputTokens = count;
+			result[toolMsgs[i].Id] = count;
 		}
 
 		await db.SaveChangesAsync(ct);
+		return result;
 	}
 
 	private async Task ProcessMediaAsync(LisDbContext db, IncomingMessage message, CancellationToken ct) {

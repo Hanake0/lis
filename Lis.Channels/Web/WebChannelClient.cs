@@ -94,6 +94,15 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 	public Task SendErrorAsync(string chatId, string error, CancellationToken ct = default) =>
 		this.PublishAsync(ServerFrame.Error(error, chatId), ct);
 
+	public Task SendMessageTokensAsync(string chatId, string id, TokenUsage usage, CancellationToken ct = default) =>
+		this.PublishAsync(ServerFrame.MessageTokens(
+			chatId, id,
+			inputTokens:         usage.InputTokens,
+			outputTokens:        usage.OutputTokens,
+			cacheReadTokens:     usage.CacheReadTokens,
+			cacheCreationTokens: usage.CacheCreationTokens,
+			thinkingTokens:      usage.ThinkingTokens), ct);
+
 	// ── Publishing ──────────────────────────────────────────────────
 
 	public async Task PublishAsync(ServerFrame frame, CancellationToken ct = default) {

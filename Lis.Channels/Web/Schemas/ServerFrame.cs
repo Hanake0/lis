@@ -101,6 +101,21 @@ public sealed class ServerFrame {
 			ThinkingTokens = thinkingTokens
 		};
 
+	/// <summary>
+	/// Late-arriving token counts for an existing message (typically a tool result, whose
+	/// cost is only known after the next assistant turn returns usage with an input delta).
+	/// The id is the original frame id the client used to identify the bubble/block.
+	/// </summary>
+	public static ServerFrame MessageTokens(string chatId, string id,
+		int? inputTokens = null, int? outputTokens = null, int? cacheReadTokens = null,
+		int? cacheCreationTokens = null, int? thinkingTokens = null) =>
+		new() {
+			Type = "message_tokens", ChatId = chatId, Id = id,
+			InputTokens = inputTokens, OutputTokens = outputTokens,
+			CacheReadTokens = cacheReadTokens, CacheCreationTokens = cacheCreationTokens,
+			ThinkingTokens = thinkingTokens
+		};
+
 	public static ServerFrame Typing(string chatId) =>
 		new() { Type = "typing", ChatId = chatId };
 

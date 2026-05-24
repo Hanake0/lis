@@ -61,10 +61,13 @@ public sealed class ToolRunner(ToolAuthRegistry authRegistry, IApprovalService a
 					await streamSink.SendToolResultAsync(streamChatId, toolId, toolName, resultText, null, ct);
 
 				ChatMessageContent toolMsg = funcResult.ToChatMessage();
-				// Stash the call args on the persisted message so history can recover
-				// the parameters the agent used — SkContent for tool messages otherwise
-				// only carries the result.
-				toolMsg.Metadata = new Dictionary<string, object?> { ["ToolArgs"] = argsJson };
+				// Stash the call args + the WS frame id on the persisted message.
+				// Args let history recover the parameters the agent used; ToolWsId lets the
+				// conversation service push backfilled token counts to the same UI block.
+				toolMsg.Metadata = new Dictionary<string, object?> {
+					["ToolArgs"] = argsJson,
+					["ToolWsId"] = toolId,
+				};
 				history.Add(toolMsg);
 				yield return toolMsg;
 			}

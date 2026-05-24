@@ -32,4 +32,12 @@ public interface IChannelClient {
 	/// </summary>
 	Task SendErrorAsync(string chatId, string error, CancellationToken ct = default)
 		=> Task.CompletedTask;
+
+	/// <summary>
+	/// Pushes late-arriving token counts for a message/tool block already on screen —
+	/// useful for tool messages whose cost is only known after the next assistant turn.
+	/// Default no-op for channels without per-message metadata UI.
+	/// </summary>
+	Task SendMessageTokensAsync(string chatId, string id, TokenUsage usage, CancellationToken ct = default)
+		=> Task.CompletedTask;
 }
