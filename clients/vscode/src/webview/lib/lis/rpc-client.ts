@@ -117,6 +117,21 @@ export class LisRpcClient {
 	removeProjectIcon(id: string):                                    Promise<unknown>   { return this.delete(`/projects/${encodeURIComponent(id)}/icon`); }
 	moveChat(chatId: string, projectId: string | null):               Promise<void>      { return this.post(`/chats/${encodeURIComponent(chatId)}/move`, { project_external_id: projectId }); }
 
+	// ── Project metadata (per-project KV: notes, todos, setup commands, plan file) ──
+
+	listProjectMetadata(projectId: string): Promise<{ key: string; value: string; updated_at: string }[]> {
+		return this.get(`/projects/${encodeURIComponent(projectId)}/metadata`);
+	}
+	getProjectMetadata(projectId: string, key: string): Promise<{ key: string; value: string | null; found: boolean; updated_at: string | null }> {
+		return this.get(`/projects/${encodeURIComponent(projectId)}/metadata/${encodeURIComponent(key)}`);
+	}
+	setProjectMetadata(projectId: string, key: string, value: string): Promise<{ key: string; value: string; updated_at: string }> {
+		return this.put(`/projects/${encodeURIComponent(projectId)}/metadata/${encodeURIComponent(key)}`, { value });
+	}
+	deleteProjectMetadata(projectId: string, key: string): Promise<void> {
+		return this.delete(`/projects/${encodeURIComponent(projectId)}/metadata/${encodeURIComponent(key)}`);
+	}
+
 	// ── Agents ─────────────────────────────────────────────────────
 
 	listAgents():                Promise<unknown[]> { return this.get('/agents'); }
