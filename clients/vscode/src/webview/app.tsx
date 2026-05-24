@@ -27,16 +27,16 @@ export function App() {
 	}, []);
 
 	return (
-		<ErrorBoundary>
-			<I18nProvider>
+		<I18nProvider>
+			<ErrorBoundary>
 				<TooltipProvider delayDuration={300} skipDelayDuration={150}>
 					<div className="h-full w-full text-foreground bg-background dark">
 						<MainLayout />
 						<Toaster />
 					</div>
 				</TooltipProvider>
-			</I18nProvider>
-		</ErrorBoundary>
+			</ErrorBoundary>
+		</I18nProvider>
 	);
 }
 
