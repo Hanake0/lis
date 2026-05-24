@@ -1,2 +1,7 @@
 import { create } from 'zustand';
-export const useTodosPersistStore = create(() => ({ todos: [] }));
+const noop: any = () => {};
+export const useTodosPersistStore = create<any>(() => ({
+	todos: [],
+	sessions: {} as Record<string, { todos?: unknown[] }>,
+	setTodos: noop,
+}));

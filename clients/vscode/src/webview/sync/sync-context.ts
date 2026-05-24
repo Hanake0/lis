@@ -6,10 +6,12 @@ export type DirectorySyncState = {
 	session_status: Record<string, { type: string; message?: string; confirmedAt?: number } | undefined>;
 	permission: Record<string, unknown[]>;
 	question: Record<string, unknown[]>;
+	message: Record<string, unknown[]>;
 };
 
 const EMPTY_PERMISSION: Record<string, unknown[]> = {};
 const EMPTY_QUESTION: Record<string, unknown[]> = {};
+const EMPTY_MESSAGE: Record<string, unknown[]> = {};
 
 export function useDirectorySync<T>(selector: (state: DirectorySyncState) => T): T {
 	const chatId = useChatStore((s) => s.chatId);
@@ -19,6 +21,8 @@ export function useDirectorySync<T>(selector: (state: DirectorySyncState) => T):
 		session_status: chatId ? { [chatId]: { type: isTyping ? 'busy' : 'idle' } } : {},
 		permission: EMPTY_PERMISSION,
 		question: EMPTY_QUESTION,
+		message: EMPTY_MESSAGE,
+		todo: {},
 	}), [chatId, isTyping]);
 	return selector(state);
 }

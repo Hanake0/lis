@@ -14,4 +14,6 @@ export const useSelectionStore = create<any>((set: any) => ({
 	getAgentModelVariantForSession: () => null,
 	getSessionAgentSelection: () => null,
 	lastUsedProvider: null,
+	sessionAgentSelections: new Map<string, string>(),
+	sessionModelSelections: new Map<string, string>(),
 }));
