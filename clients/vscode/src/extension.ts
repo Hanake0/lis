@@ -1,25 +1,50 @@
 import * as vscode from 'vscode';
 
+import { ChatPanelManager } from './chatPanel';
+import { DEFAULT_SERVER_URL, deriveWsUrl, readConfigFrom } from './config';
 import { LisClient } from './lisClient';
 import { Logger } from './logger';
+import { LisStatusBar } from './statusBar';
 import { SidebarWebviewProvider } from './sidebarWebviewProvider';
-import { ChatPanelManager } from './chatPanel';
 
-let client:   LisClient | null            = null;
-let sidebar:  SidebarWebviewProvider | null = null;
-let panels:   ChatPanelManager | null     = null;
-let logger:   Logger | null               = null;
+const FIRST_RUN_KEY = 'lis.firstRunNotificationDismissed';
+
+let client:    LisClient | null = null;
+let sidebar:   SidebarWebviewProvider | null = null;
+let panels:    ChatPanelManager | null = null;
+let logger:    Logger | null = null;
+let statusBar: LisStatusBar | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
-	const cfg = readConfig();
+	const cfg = readConfigFrom(vscode.workspace.getConfiguration('lis'));
 
 	const channel = vscode.window.createOutputChannel('Lis');
-	logger   = new Logger(channel, cfg.verbose);
+	logger = new Logger(channel, cfg.verbose);
 	logger.info('extension activated');
 
-	client   = new LisClient(cfg.url, cfg.token, logger);
-	sidebar  = new SidebarWebviewProvider(context.extensionUri, client);
-	panels   = new ChatPanelManager(context, client);
+	// One-shot migration: rewrite legacy ws://…/web/ws to the canonical base origin
+	// so the settings UI reflects the new shape. Fire-and-forget; it can't block activation.
+	if (cfg.isLegacyUrl) {
+		void vscode.workspace.getConfiguration('lis').update(
+			'serverUrl',
+			cfg.baseOrigin,
+			vscode.ConfigurationTarget.Global,
+		).then(() => {
+			logger?.info(`migrated lis.serverUrl to base origin: ${cfg.baseOrigin}`);
+		});
+	}
+
+	const wsUrl = deriveWsUrl(cfg.baseOrigin);
+	client    = new LisClient(wsUrl, cfg.token, logger);
+	sidebar   = new SidebarWebviewProvider(context.extensionUri, client);
+	panels    = new ChatPanelManager(context, client);
+	statusBar = new LisStatusBar();
+
+	statusBar.update(client.currentState, cfg.baseOrigin);
+	client.onState((state) => {
+		const current = readConfigFrom(vscode.workspace.getConfiguration('lis'));
+		statusBar?.update(state, current.baseOrigin);
+	});
 
 	sidebar.setOpenSessionHandler((chatId, title) => {
 		panels?.openOrFocus(chatId, title);
@@ -27,11 +52,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(
 		channel,
+		statusBar,
 		vscode.window.registerWebviewViewProvider('lis.sidebar', sidebar),
 
 		vscode.commands.registerCommand('lis.connect',    () => client?.connect()),
 		vscode.commands.registerCommand('lis.disconnect', () => client?.disconnect()),
 		vscode.commands.registerCommand('lis.showOutput', () => logger?.show()),
+		vscode.commands.registerCommand('lis.configure',  () =>
+			vscode.commands.executeCommand('workbench.action.openSettings', '@ext:lis.lis-vscode')),
 
 		vscode.commands.registerCommand('lis.newChat', () => {
 			const chatId = `web:${crypto.randomUUID()}`;
@@ -44,30 +72,48 @@ export function activate(context: vscode.ExtensionContext): void {
 			panels?.openOrFocus(chatId, title);
 		}),
 
-		vscode.workspace.onDidChangeConfiguration(e => {
+		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (!e.affectsConfiguration('lis')) return;
-			const next = readConfig();
+			const next = readConfigFrom(vscode.workspace.getConfiguration('lis'));
 			logger?.setVerbose(next.verbose);
-			client?.updateConfig(next.url, next.token);
+			client?.updateConfig(deriveWsUrl(next.baseOrigin), next.token);
+			statusBar?.update(client?.currentState ?? 'disconnected', next.baseOrigin);
 		}),
 	);
 
+	// First-run UX: if the user has never set a token, surface a one-shot notification
+	// with a direct path to settings. Default serverUrl is good enough to skip if
+	// they really want to point at localhost without auth, but most installs need
+	// the token to connect successfully.
+	if (!cfg.isConfigured && !context.globalState.get<boolean>(FIRST_RUN_KEY)) {
+		void promptFirstRun(context, cfg.baseOrigin || DEFAULT_SERVER_URL);
+	}
+
+	// Connect regardless — if no token is set the user can opt in to "Connect anyway"
+	// from the notification, and the WS layer will surface auth failures via the status bar.
 	client.connect();
 }
 
 export function deactivate(): void {
 	client?.disconnect();
+	statusBar?.dispose();
 	logger?.dispose();
-	client   = null;
-	sessions = null;
-	panels   = null;
-	logger   = null;
+	client    = null;
+	sidebar   = null;
+	panels    = null;
+	statusBar = null;
+	logger    = null;
 }
 
-function readConfig(): { url: string; token: string; verbose: boolean } {
-	const cfg     = vscode.workspace.getConfiguration('lis');
-	const url     = cfg.get<string>('serverUrl', 'ws://localhost:3010/web/ws');
-	const token   = cfg.get<string>('authToken', '');
-	const verbose = cfg.get<boolean>('verboseLogging', false);
-	return { url, token, verbose };
+async function promptFirstRun(context: vscode.ExtensionContext, serverUrl: string): Promise<void> {
+	const choice = await vscode.window.showInformationMessage(
+		`Lis is not fully configured (server: ${serverUrl}, token: missing). Set the auth token to connect.`,
+		'Open Settings',
+		'Dismiss',
+	);
+	if (choice === 'Open Settings') {
+		void vscode.commands.executeCommand('lis.configure');
+	}
+	// Either choice (or dismissal) marks the prompt seen so we don't nag on every reload.
+	await context.globalState.update(FIRST_RUN_KEY, true);
 }

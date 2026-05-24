@@ -56,6 +56,10 @@
       {
         "command": "lis.showOutput",
         "title": "Lis: Show Output"
+      },
+      {
+        "command": "lis.configure",
+        "title": "Lis: Configure"
       }
     ],
     "configuration": {
@@ -63,8 +67,8 @@
       "properties": {
         "lis.serverUrl": {
           "type": "string",
-          "default": "ws://localhost:3010/web/ws",
-          "description": "WebSocket URL of the Lis server."
+          "default": "http://localhost:3010",
+          "description": "Base origin of the Lis server (e.g. http://localhost:3010 or https://lis.example.com). The extension derives REST, SSE, and (legacy) WebSocket URLs from this. Old ws://…/web/ws values are auto-migrated."
         },
         "lis.authToken": {
           "type": "string",
@@ -82,7 +86,8 @@
   "scripts": {
     "build": "tailwindcss -i src/webview/styles.css -o dist/chat.css && node esbuild.mjs",
     "watch": "concurrently \"tailwindcss -i src/webview/styles.css -o dist/chat.css --watch\" \"node esbuild.mjs --watch\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src/**/*.test.ts"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.0.0",
