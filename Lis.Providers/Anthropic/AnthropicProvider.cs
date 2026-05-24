@@ -58,14 +58,17 @@ public static class AnthropicProvider {
 		services.AddSingleton<IUsageExtractor, AnthropicUsageExtractor>();
 		services.AddSingleton<IReasoningExtractor, AnthropicReasoningExtractor>();
 
-		// Token counter (free endpoint for accurate post-compaction counts)
+		// Token counter (free endpoint for accurate post-compaction counts, with a
+		// real messages.create fallback on the small/fast model if it fails).
 		HttpClient tokenHttp = useBearer
 			? new(new BearerAuthHandler(opts.ApiKey) { InnerHandler = new HttpClientHandler() })
 			: new();
 		if (!useBearer)
 			tokenHttp.DefaultRequestHeaders.Add("x-api-key", opts.ApiKey);
 		tokenHttp.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-		services.AddSingleton<ITokenCounter>(new AnthropicTokenCounter(tokenHttp));
+		services.AddSingleton<ITokenCounter>(sp =>
+			new AnthropicTokenCounter(tokenHttp,
+				sp.GetService<Microsoft.Extensions.Logging.ILogger<AnthropicTokenCounter>>()));
 
 		return services;
 	}
