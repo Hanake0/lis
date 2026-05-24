@@ -216,5 +216,19 @@ public sealed class GitIdentitiesControllerTests {
 		public Task<WorktreeMetadata> CreateWorktreeAsync(string projectPath, string newPath, string branch, CancellationToken ct = default) => throw new NotImplementedException();
 		public Task                   RemoveWorktreeAsync(string projectPath, string worktreePath, bool force = false, CancellationToken ct = default) => throw new NotImplementedException();
 		public Task<RemoteRef?>       GetRemoteRefAsync(string path, string branch, CancellationToken ct = default) => throw new NotImplementedException();
+
+		public Task<BranchRef> CreateBranchAsync(string path, string name, string? startPoint, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task            DeleteBranchAsync(string path, string name, bool   force,       CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<BranchRef> RenameBranchAsync(string path, string oldName, string newName,  CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<IReadOnlyList<StashEntryInfo>> ListStashesAsync(string path, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<StashSaveResult> SaveStashAsync(string path, string? message, bool includeUntracked, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task ApplyStashAsync(string path, string stashRef, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task PopStashAsync  (string path, string stashRef, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task DropStashAsync (string path, string stashRef, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<IReadOnlyDictionary<string, int>> CountStashFilesAsync(string path, IReadOnlyList<string> refs, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<CommitFileDiff>           GetCommitFileDiffAsync(string path, string commitSha, string filePath, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<MergeConflictDetails?>    GetConflictDetailsAsync(string path, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task<WorktreeBootstrapStatus>  GetWorktreeBootstrapStatusAsync(string worktreePath, CancellationToken ct = default) => throw new NotImplementedException();
+		public Task                           SetWorktreeBootstrapStatusAsync(string worktreePath, WorktreeBootstrapStatus status, CancellationToken ct = default) => throw new NotImplementedException();
 	}
 }

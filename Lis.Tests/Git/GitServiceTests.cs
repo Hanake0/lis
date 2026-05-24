@@ -225,7 +225,326 @@ public sealed class GitServiceTests :IDisposable {
 		Assert.Null(GitService.ParseGitHubUrl(url));
 	}
 
+	// ── CreateBranchAsync / RenameBranchAsync / DeleteBranchAsync ──
+
+	[Fact]
+	public async Task CreateBranchAsync_From_HEAD_When_StartPoint_Null() {
+		(string head, _) = SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+
+		BranchRef created = await this.sut.CreateBranchAsync(this.repoDir, "feature/x", startPoint: null);
+
+		Assert.Equal("feature/x", created.Name);
+		Assert.Equal(head,        created.Tip);
+	}
+
+	[Fact]
+	public async Task CreateBranchAsync_Resolves_StartPoint_As_Branch_Or_Sha() {
+		(string head, _) = SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		using (Repository repo = new(this.repoDir)) repo.CreateBranch("base");
+
+		BranchRef fromBranch = await this.sut.CreateBranchAsync(this.repoDir, "from-branch", "base");
+		BranchRef fromSha    = await this.sut.CreateBranchAsync(this.repoDir, "from-sha",    head);
+
+		Assert.Equal(head, fromBranch.Tip);
+		Assert.Equal(head, fromSha.Tip);
+	}
+
+	[Fact]
+	public async Task CreateBranchAsync_Throws_When_Branch_Already_Exists() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await this.sut.CreateBranchAsync(this.repoDir, "dup", null);
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			this.sut.CreateBranchAsync(this.repoDir, "dup", null));
+	}
+
+	[Fact]
+	public async Task RenameBranchAsync_Renames_And_Returns_New_Ref() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await this.sut.CreateBranchAsync(this.repoDir, "old-name", null);
+
+		BranchRef renamed = await this.sut.RenameBranchAsync(this.repoDir, "old-name", "new-name");
+
+		Assert.Equal("new-name", renamed.Name);
+		using Repository repo = new(this.repoDir);
+		Assert.Null   (repo.Branches["old-name"]);
+		Assert.NotNull(repo.Branches["new-name"]);
+	}
+
+	[Fact]
+	public async Task RenameBranchAsync_Throws_When_NewName_Exists() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await this.sut.CreateBranchAsync(this.repoDir, "a", null);
+		await this.sut.CreateBranchAsync(this.repoDir, "b", null);
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			this.sut.RenameBranchAsync(this.repoDir, "a", "b"));
+	}
+
+	[Fact]
+	public async Task DeleteBranchAsync_Removes_Local_Branch() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await this.sut.CreateBranchAsync(this.repoDir, "tmp", null);
+
+		await this.sut.DeleteBranchAsync(this.repoDir, "tmp", force: false);
+
+		using Repository repo = new(this.repoDir);
+		Assert.Null(repo.Branches["tmp"]);
+	}
+
+	[Fact]
+	public async Task DeleteBranchAsync_Throws_On_Current_Branch() {
+		(_, string current) = SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			this.sut.DeleteBranchAsync(this.repoDir, current, force: false));
+	}
+
+	[Fact]
+	public async Task DeleteBranchAsync_Throws_Not_Fully_Merged_When_Branch_Has_Unique_Commit() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		// Add a commit on a side branch so it diverges from HEAD.
+		using (Repository repo = new(this.repoDir)) {
+			string defaultBranch = GetDefaultBranchName(repo);
+			Branch side = repo.CreateBranch("side");
+			Commands.Checkout(repo, side);
+			#pragma warning disable CA1849 // sync inside using-block keeps the test linear
+			File.WriteAllText(Path.Combine(this.repoDir, "side.txt"), "side");
+			#pragma warning restore CA1849
+			Commands.Stage(repo, "side.txt");
+			Signature sig = new("Test", "test@example.com", DateTimeOffset.UtcNow);
+			repo.Commit("side commit", sig, sig);
+			Commands.Checkout(repo, repo.Branches[defaultBranch]);
+		}
+
+		InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			this.sut.DeleteBranchAsync(this.repoDir, "side", force: false));
+		Assert.Contains("not fully merged", ex.Message);
+	}
+
+	[Fact]
+	public async Task DeleteBranchAsync_Forces_Through_Unmerged_When_Force_True() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		using (Repository repo = new(this.repoDir)) {
+			string defaultBranch = GetDefaultBranchName(repo);
+			Branch side = repo.CreateBranch("side");
+			Commands.Checkout(repo, side);
+			#pragma warning disable CA1849 // sync inside using-block keeps the test linear
+			File.WriteAllText(Path.Combine(this.repoDir, "side.txt"), "side");
+			#pragma warning restore CA1849
+			Commands.Stage(repo, "side.txt");
+			Signature sig = new("Test", "test@example.com", DateTimeOffset.UtcNow);
+			repo.Commit("side commit", sig, sig);
+			Commands.Checkout(repo, repo.Branches[defaultBranch]);
+		}
+
+		await this.sut.DeleteBranchAsync(this.repoDir, "side", force: true);
+
+		using Repository repo2 = new(this.repoDir);
+		Assert.Null(repo2.Branches["side"]);
+	}
+
+	// ── Stash ─────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task SaveStashAsync_Returns_Created_False_On_Clean_Tree() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+
+		StashSaveResult result = await this.sut.SaveStashAsync(this.repoDir, message: null, includeUntracked: false);
+
+		Assert.False(result.Created);
+		Assert.Null (result.Ref);
+	}
+
+	[Fact]
+	public async Task SaveStashAsync_Then_ListStashes_Returns_One_Entry() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await File.WriteAllTextAsync(Path.Combine(this.repoDir, "README.md"), "updated");
+
+		StashSaveResult save = await this.sut.SaveStashAsync(this.repoDir, message: "wip", includeUntracked: false);
+
+		Assert.True(save.Created);
+		Assert.Equal("stash@{0}", save.Ref);
+
+		IReadOnlyList<StashEntryInfo> list = await this.sut.ListStashesAsync(this.repoDir);
+		StashEntryInfo entry = Assert.Single(list);
+		Assert.Equal(0,          entry.Index);
+		Assert.Equal("stash@{0}", entry.Ref);
+		Assert.Contains("wip",    entry.Message);
+	}
+
+	[Fact]
+	public async Task ApplyStashAsync_Restores_Working_Tree_Changes() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		string file = Path.Combine(this.repoDir, "README.md");
+		await File.WriteAllTextAsync(file, "modified");
+
+		await this.sut.SaveStashAsync(this.repoDir, message: null, includeUntracked: false);
+		Assert.Equal("hello", await File.ReadAllTextAsync(file)); // stash reverted
+
+		await this.sut.ApplyStashAsync(this.repoDir, "stash@{0}");
+
+		Assert.Equal("modified", await File.ReadAllTextAsync(file));
+		// Apply doesn't drop, so the entry should still be listed.
+		Assert.Single(await this.sut.ListStashesAsync(this.repoDir));
+	}
+
+	[Fact]
+	public async Task PopStashAsync_Restores_And_Removes() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await File.WriteAllTextAsync(Path.Combine(this.repoDir, "README.md"), "modified");
+		await this.sut.SaveStashAsync(this.repoDir, null, false);
+
+		await this.sut.PopStashAsync(this.repoDir, "stash@{0}");
+
+		Assert.Empty(await this.sut.ListStashesAsync(this.repoDir));
+	}
+
+	[Fact]
+	public async Task DropStashAsync_Removes_Without_Applying() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		string file = Path.Combine(this.repoDir, "README.md");
+		await File.WriteAllTextAsync(file, "modified");
+		await this.sut.SaveStashAsync(this.repoDir, null, false);
+
+		await this.sut.DropStashAsync(this.repoDir, "stash@{0}");
+
+		Assert.Empty(await this.sut.ListStashesAsync(this.repoDir));
+		Assert.Equal("hello", await File.ReadAllTextAsync(file)); // unchanged
+	}
+
+	[Fact]
+	public async Task CountStashFilesAsync_Counts_Files_Per_Ref() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await File.WriteAllTextAsync(Path.Combine(this.repoDir, "README.md"), "x");
+		await File.WriteAllTextAsync(Path.Combine(this.repoDir, "a.txt"),     "a");
+		// "a.txt" is untracked, so we need includeUntracked for the count to include it.
+		await this.sut.SaveStashAsync(this.repoDir, null, includeUntracked: true);
+
+		IReadOnlyDictionary<string, int> counts = await this.sut.CountStashFilesAsync(
+			this.repoDir, ["stash@{0}", "stash@{9}"]);
+
+		Assert.Equal(2, counts["stash@{0}"]); // README.md + a.txt
+		Assert.Equal(0, counts["stash@{9}"]); // out of range → 0
+	}
+
+	[Fact]
+	public async Task ApplyStashAsync_Throws_On_Out_Of_Range_Ref() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+		await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+			this.sut.ApplyStashAsync(this.repoDir, "stash@{5}"));
+	}
+
+	// ── GetCommitFileDiffAsync ────────────────────────────────────
+
+	[Fact]
+	public async Task GetCommitFileDiffAsync_Returns_Original_And_Modified() {
+		(_, _) = SeedRepoWithCommit(this.repoDir, "code.cs", "v1", "first");
+		string sha2;
+		using (Repository repo = new(this.repoDir)) {
+			#pragma warning disable CA1849
+			File.WriteAllText(Path.Combine(this.repoDir, "code.cs"), "v2");
+			#pragma warning restore CA1849
+			Commands.Stage(repo, "code.cs");
+			Signature sig = new("Test", "test@example.com", DateTimeOffset.UtcNow);
+			sha2 = repo.Commit("second", sig, sig).Sha;
+		}
+
+		CommitFileDiff diff = await this.sut.GetCommitFileDiffAsync(this.repoDir, sha2, "code.cs");
+
+		Assert.Equal("v1", diff.Original);
+		Assert.Equal("v2", diff.Modified);
+		Assert.False(diff.IsBinary);
+	}
+
+	[Fact]
+	public async Task GetCommitFileDiffAsync_Throws_For_Missing_Commit() {
+		SeedRepoWithCommit(this.repoDir, "code.cs", "v1", "first");
+		await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+			this.sut.GetCommitFileDiffAsync(this.repoDir, "0000000000000000000000000000000000000000", "code.cs"));
+	}
+
+	// ── GetConflictDetailsAsync ───────────────────────────────────
+
+	[Fact]
+	public async Task GetConflictDetailsAsync_Returns_Null_When_Clean() {
+		SeedRepoWithCommit(this.repoDir, "README.md", "hello", "init");
+
+		MergeConflictDetails? d = await this.sut.GetConflictDetailsAsync(this.repoDir);
+
+		Assert.Null(d);
+	}
+
+	[Fact]
+	public async Task GetConflictDetailsAsync_Detects_Active_Merge_With_Conflicts() {
+		SeedRepoWithCommit(this.repoDir, "file.txt", "base", "init");
+
+		using (Repository repo = new(this.repoDir)) {
+			string defaultBranch = GetDefaultBranchName(repo);
+
+			// Branch A: change file → "A"
+			Branch a = repo.CreateBranch("branch-a");
+			Commands.Checkout(repo, a);
+			#pragma warning disable CA1849
+			File.WriteAllText(Path.Combine(this.repoDir, "file.txt"), "A");
+			#pragma warning restore CA1849
+			Commands.Stage(repo, "file.txt");
+			Signature sig = new("Test", "test@example.com", DateTimeOffset.UtcNow);
+			repo.Commit("change-a", sig, sig);
+
+			// Branch B (from base): change same file → "B"
+			Commands.Checkout(repo, repo.Branches[defaultBranch]);
+			Branch b = repo.CreateBranch("branch-b");
+			Commands.Checkout(repo, b);
+			#pragma warning disable CA1849
+			File.WriteAllText(Path.Combine(this.repoDir, "file.txt"), "B");
+			#pragma warning restore CA1849
+			Commands.Stage(repo, "file.txt");
+			repo.Commit("change-b", sig, sig);
+
+			// On branch-b, merge branch-a → produces conflict on file.txt
+			MergeResult result = repo.Merge(repo.Branches["branch-a"], sig);
+			Assert.Equal(MergeStatus.Conflicts, result.Status);
+		}
+
+		MergeConflictDetails? d = await this.sut.GetConflictDetailsAsync(this.repoDir);
+
+		Assert.NotNull(d);
+		Assert.Equal("merge", d!.Operation);
+		Assert.Contains("file.txt", d.UnmergedFiles);
+		Assert.False(string.IsNullOrEmpty(d.StatusPorcelain));
+	}
+
+	// ── Worktree bootstrap sidecar ────────────────────────────────
+
+	[Fact]
+	public async Task GetWorktreeBootstrapStatusAsync_Returns_Ready_When_No_Sidecar() {
+		WorktreeBootstrapStatus s = await this.sut.GetWorktreeBootstrapStatusAsync(this.repoDir);
+		Assert.Equal("ready", s.Status);
+		Assert.Null (s.Error);
+	}
+
+	[Fact]
+	public async Task SetWorktreeBootstrapStatus_Then_Get_Roundtrips() {
+		WorktreeBootstrapStatus seed = new("pending", null, DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+		await this.sut.SetWorktreeBootstrapStatusAsync(this.repoDir, seed);
+
+		WorktreeBootstrapStatus read = await this.sut.GetWorktreeBootstrapStatusAsync(this.repoDir);
+		Assert.Equal("pending", read.Status);
+		Assert.Equal(seed.UpdatedAt, read.UpdatedAt);
+	}
+
+	[Fact]
+	public async Task SetWorktreeBootstrapStatus_Throws_When_Worktree_Dir_Missing() {
+		string ghost = Path.Combine(Path.GetTempPath(), $"lis-git-ghost-{Guid.NewGuid():N}");
+		await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+			this.sut.SetWorktreeBootstrapStatusAsync(ghost, new WorktreeBootstrapStatus("ready", null, DateTimeOffset.UtcNow)));
+	}
+
 	// ── Helpers ────────────────────────────────────────────────────
+
+	private static string GetDefaultBranchName(Repository repo) {
+		// LibGit2Sharp's `Repository.Init` defaults to "master" on older libgit2, "main" on newer.
+		// Just use whatever the current HEAD reports.
+		return repo.Head.FriendlyName;
+	}
 
 	private static (string head, string branch) SeedRepoWithCommit(string dir, string fileName, string content, string message) {
 		Repository.Init(dir);

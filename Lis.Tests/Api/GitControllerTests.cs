@@ -5,6 +5,7 @@ using Lis.Git.Services;
 using LibGit2Sharp;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Lis.Tests.Api;
 
@@ -15,7 +16,7 @@ public sealed class GitControllerTests :IDisposable {
 	public GitControllerTests() {
 		this.repoDir = Path.Combine(Path.GetTempPath(), $"lis-git-ctrl-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(this.repoDir);
-		this.sut = new GitController(new GitService());
+		this.sut = new GitController(new GitService(), new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z")));
 	}
 
 	public void Dispose() {
