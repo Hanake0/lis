@@ -164,6 +164,10 @@ export class LisRpcClient {
 	getPrStatus(keys: { owner: string; repo: string; branch: string }[]): Promise<unknown> {
 		return this.post('/github/pr-status', { keys });
 	}
+	/** Resolve PR status by directory+branch (backend reads `.git/config` to find the GitHub coordinates). */
+	getPrStatusByDirectory(keys: { directory: string; branch: string }[]): Promise<unknown> {
+		return this.post('/github/pr-status/by-directory', { keys });
+	}
 
 	// ── Internals ──────────────────────────────────────────────────
 
