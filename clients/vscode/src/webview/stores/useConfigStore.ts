@@ -62,9 +62,15 @@ export const useConfigStore = create<any>((set: any) => ({
 	speechPitch: 1,
 	speechVolume: 1,
 	showMessageTTSButtons: false,
+	_contextBudget: 0,
 	getCurrentModel: () => {
-		const model = useChatStore.getState().composerModel;
-		return model ? { id: model, name: model } : undefined;
+		const state = useConfigStore.getState();
+		const model = state.currentModelId;
+		if (!model) return undefined;
+		const limit = state._contextBudget > 0
+			? { context: state._contextBudget, output: 0 }
+			: undefined;
+		return { id: model, name: model, limit };
 	},
 	getCurrentAgent: () => {
 		const agent = useChatStore.getState().currentAgent;
@@ -124,17 +130,25 @@ useChatStore.subscribe((state) => {
 		model: a.model,
 	}));
 	const currentAgent = state.currentAgent;
+	const model = state.composerModel || '';
+	const budget = state.contextData?.budget ?? 0;
 	useConfigStore.setState({
 		isConnected: connected,
 		isInitialized: connected,
 		agents,
-		currentProviderId: state.composerModel ? 'default' : '',
-		currentModelId: state.composerModel || '',
+		currentProviderId: model ? 'default' : '',
+		currentModelId: model,
 		currentAgentName: currentAgent?.name || '',
-		providers: state.composerModel ? [{
+		_contextBudget: budget,
+		getCurrentModel: () => {
+			if (!model) return undefined;
+			const limit = budget > 0 ? { context: budget, output: 0 } : undefined;
+			return { id: model, name: model, limit };
+		},
+		providers: model ? [{
 			id: 'default',
 			name: 'Provider',
-			models: [{ id: state.composerModel, name: state.composerModel }],
+			models: [{ id: model, name: model }],
 		}] : [],
 	});
 });

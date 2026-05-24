@@ -445,6 +445,20 @@ public sealed class MessageDebouncer(
 		}
 	}
 
+	/// <summary>
+	/// Cancels the active AI response for a chat, triggered by the abort WebSocket frame.
+	/// </summary>
+	public async Task AbortAsync(string chatId) {
+		ChatState state = this.GetChatState(chatId);
+		if (state.ActiveCts is { } activeCts) await activeCts.CancelAsync();
+		CancelPendingDebounce(state);
+
+		try {
+			using IServiceScope scope = scopeFactory.CreateScope();
+			await GetChannelClient(scope).StopTypingAsync(chatId);
+		} catch { /* best effort */ }
+	}
+
 	public void Dispose() {
 		foreach (ChatState state in this._chats.Values)
 			state.Dispose();

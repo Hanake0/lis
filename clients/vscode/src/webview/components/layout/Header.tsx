@@ -808,7 +808,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, [desktopServicesTab, isDesktopApp]);
 
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
-  const showDesktopHeaderContextUsage = !isVSCode && activeMainTab === 'chat' && !!stableDesktopContextUsage && stableDesktopContextUsage.totalTokens > 0;
+  const showDesktopHeaderContextUsage = activeMainTab === 'chat' && !!stableDesktopContextUsage && stableDesktopContextUsage.totalTokens > 0;
   const desktopHeaderDisplayPercentage = stableDesktopContextUsage && stableDesktopContextUsage.contextLimit > 0
     ? Math.min(999, (stableDesktopContextUsage.totalTokens / stableDesktopContextUsage.contextLimit) * 100)
     : 0;
