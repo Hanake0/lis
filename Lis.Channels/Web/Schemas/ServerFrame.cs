@@ -98,6 +98,28 @@ public sealed class ServerFrame {
 	[JsonPropertyName("segments")]
 	public IReadOnlyList<ContextSegment>? Segments { get; init; }
 
+	// Permission request fields
+	[JsonPropertyName("approval_id")]
+	public string? ApprovalId { get; init; }
+
+	[JsonPropertyName("permission")]
+	public string? Permission { get; init; }
+
+	[JsonPropertyName("patterns")]
+	public IReadOnlyList<string>? Patterns { get; init; }
+
+	[JsonPropertyName("metadata")]
+	public IReadOnlyDictionary<string, object?>? Metadata { get; init; }
+
+	[JsonPropertyName("always")]
+	public IReadOnlyList<string>? Always { get; init; }
+
+	[JsonPropertyName("name")]
+	public string? Name { get; init; }
+
+	[JsonPropertyName("archived_at")]
+	public DateTimeOffset? ArchivedAt { get; init; }
+
 	public static ServerFrame Connected() =>
 		new() { Type = "connected" };
 
@@ -175,4 +197,30 @@ public sealed class ServerFrame {
 
 	public static ServerFrame AgentList(IReadOnlyList<AgentSummary> agents) =>
 		new() { Type = "agent_list", Agents = agents };
+
+	public static ServerFrame PermissionRequest(string chatId, string approvalId, string toolName,
+		IReadOnlyList<string>? patterns = null, IReadOnlyDictionary<string, object?>? metadata = null,
+		IReadOnlyList<string>? always = null) =>
+		new() {
+			Type       = "permission_request",
+			ChatId     = chatId,
+			ApprovalId = approvalId,
+			Permission = toolName,
+			Patterns   = patterns ?? Array.Empty<string>(),
+			Metadata   = metadata,
+			Always     = always ?? Array.Empty<string>(),
+		};
+
+	// Session CRUD factories
+	public static ServerFrame ChatCreated(string chatId, string? name, DateTimeOffset updatedAt) =>
+		new() { Type = "chat_created", ChatId = chatId, Name = name, Timestamp = updatedAt };
+
+	public static ServerFrame ChatDeleted(string chatId) =>
+		new() { Type = "chat_deleted", ChatId = chatId };
+
+	public static ServerFrame ChatRenamed(string chatId, string name) =>
+		new() { Type = "chat_renamed", ChatId = chatId, Name = name };
+
+	public static ServerFrame ChatArchived(string chatId, DateTimeOffset archivedAt) =>
+		new() { Type = "chat_archived", ChatId = chatId, ArchivedAt = archivedAt };
 }

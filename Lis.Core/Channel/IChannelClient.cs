@@ -40,4 +40,16 @@ public interface IChannelClient {
 	/// </summary>
 	Task SendMessageTokensAsync(string chatId, string id, TokenUsage usage, CancellationToken ct = default)
 		=> Task.CompletedTask;
+
+	/// <summary>
+	/// Sends a permission/approval request to the UI so the user can approve or deny
+	/// a tool invocation inline. Returns true if the request was surfaced interactively
+	/// (so the caller can skip a text-based fallback notification).
+	/// Default returns false for channels without interactive approval
+	/// (e.g. WhatsApp uses text-based /approve commands instead).
+	/// </summary>
+	Task<bool> SendPermissionRequestAsync(string chatId, string approvalId, string toolName,
+		string? command = null, string? cwd = null, string? description = null,
+		CancellationToken ct = default)
+		=> Task.FromResult(false);
 }

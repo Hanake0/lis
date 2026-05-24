@@ -9,29 +9,46 @@ export type DirectorySyncState = {
 	message: Record<string, unknown[]>;
 };
 
-const EMPTY_PERMISSION: Record<string, unknown[]> = {};
-const EMPTY_QUESTION: Record<string, unknown[]> = {};
 const EMPTY_MESSAGE: Record<string, unknown[]> = {};
 
 export function useDirectorySync<T>(selector: (state: DirectorySyncState) => T): T {
-	const chatId = useChatStore((s) => s.chatId);
-	const isTyping = useChatStore((s) => s.isTyping);
+	const chatId      = useChatStore((s) => s.chatId);
+	const sessions    = useChatStore((s) => s.sessions);
+	const isTyping    = useChatStore((s) => s.isTyping);
+	const permissions = useChatStore((s) => s.permissions);
+	const questions   = useChatStore((s) => s.questions);
+
 	const state = useMemo<DirectorySyncState>(() => ({
-		session: chatId ? [{ id: chatId, title: 'Chat' }] : [],
+		session: sessions.length > 0
+			? sessions.map(s => ({ id: s.chat_id, title: s.name }))
+			: chatId ? [{ id: chatId, title: 'Chat' }] : [],
 		session_status: chatId ? { [chatId]: { type: isTyping ? 'busy' : 'idle' } } : {},
-		permission: EMPTY_PERMISSION,
-		question: EMPTY_QUESTION,
+		permission: chatId && permissions.length > 0 ? { [chatId]: permissions } : {},
+		question: chatId && questions.length > 0 ? { [chatId]: questions } : {},
 		message: EMPTY_MESSAGE,
 		todo: {},
-	}), [chatId, isTyping]);
+	}), [chatId, sessions, isTyping, permissions, questions]);
 	return selector(state);
 }
 
 export function useSyncDirectory(): string { return ''; }
 
-export function useSessions(): Array<{ id: string; title?: string; parentID?: string }> {
-	const chatId = useChatStore((s) => s.chatId);
-	return useMemo(() => chatId ? [{ id: chatId, title: 'Chat' }] : [], [chatId]);
+export function useSessions(): Array<{ id: string; title?: string; parentID?: string; time?: { created?: number; updated?: number; archived?: number } }> {
+	const sessions = useChatStore((s) => s.sessions);
+	const chatId   = useChatStore((s) => s.chatId);
+	return useMemo(() => {
+		if (sessions.length === 0) {
+			return chatId ? [{ id: chatId, title: 'Chat' }] : [];
+		}
+		return sessions.map(s => ({
+			id:    s.chat_id,
+			title: s.name,
+			time: {
+				updated: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
+				archived: s.archived_at ? new Date(s.archived_at).getTime() : undefined,
+			},
+		}));
+	}, [sessions, chatId]);
 }
 
 function convertMessages(messages: ChatMessage[]): Array<{ info: any; parts: any[] }> {
@@ -131,7 +148,22 @@ export class SyncProvider {
 }
 
 export function buildSessionMessageRecordsSnapshot(..._args: any[]): any { return EMPTY_SESSIONS; }
-export function useAllLiveSessions(): any[] { return EMPTY_SESSIONS; }
+
+export function useAllLiveSessions(): any[] {
+	const sessions = useChatStore((s) => s.sessions);
+	return useMemo(() => {
+		if (sessions.length === 0) return EMPTY_SESSIONS;
+		return sessions.map(s => ({
+			id: s.chat_id,
+			title: s.name,
+			time: {
+				updated: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
+				archived: s.archived_at ? new Date(s.archived_at).getTime() : undefined,
+			},
+		}));
+	}, [sessions]);
+}
+
 export function useAllSessionStatuses(): any { return EMPTY_STATUSES; }
 export function useDirectoryStore(..._args: any[]): any { return null; }
 export function useEnsureSessionMessages(..._args: any[]): any { return null; }

@@ -75,24 +75,32 @@ public sealed class ApprovalService(
 		TaskCompletionSource<ApprovalResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		this.pending[approvalId] = tcs;
 
-		// Send notification via WhatsApp
+		// Send notification to channel(s)
 		string? messageExternalId = null;
 		if (ToolContext.Channel is not null && ToolContext.ChatId is not null) {
-			string cwdLine = request.Cwd is not null ? $"\nCWD: {request.Cwd}" : "";
-			string notification =
-				$"🔒 *Exec approval required*\n" +
-				$"ID: `{approvalId}`\n" +
-				$"Command: `{request.Command}`{cwdLine}\n" +
-				$"Expires in: {request.TimeoutSeconds}s\n\n" +
-				$"Reply: `/approve {approvalId}`\n" +
-				$"Or react: 👍 once | ✅ always | ❌ deny";
+			// Try interactive permission request first (web UI)
+			bool interactive = await ToolContext.Channel.SendPermissionRequestAsync(
+				ToolContext.ChatId, approvalId, "bash",
+				command: request.Command, cwd: request.Cwd, ct: ct);
 
-			messageExternalId = await ToolContext.Channel.SendMessageAsync(ToolContext.ChatId, notification, null, ct);
+			// Send text-based fallback for non-interactive channels (WhatsApp)
+			if (!interactive) {
+				string cwdLine = request.Cwd is not null ? $"\nCWD: {request.Cwd}" : "";
+				string notification =
+					$"🔒 *Exec approval required*\n" +
+					$"ID: `{approvalId}`\n" +
+					$"Command: `{request.Command}`{cwdLine}\n" +
+					$"Expires in: {request.TimeoutSeconds}s\n\n" +
+					$"Reply: `/approve {approvalId}`\n" +
+					$"Or react: 👍 once | ✅ always | ❌ deny";
 
-			// Store the message ID for reaction-based approval
-			if (messageExternalId is not null) {
-				entity.MessageExternalId = messageExternalId;
-				await db.SaveChangesAsync(ct);
+				messageExternalId = await ToolContext.Channel.SendMessageAsync(ToolContext.ChatId, notification, null, ct);
+
+				// Store the message ID for reaction-based approval
+				if (messageExternalId is not null) {
+					entity.MessageExternalId = messageExternalId;
+					await db.SaveChangesAsync(ct);
+				}
 			}
 		}
 

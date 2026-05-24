@@ -191,7 +191,19 @@ function handleFrame(frame: { type: string; [k: string]: unknown }): void {
 		}
 
 		case 'typing':         store.setIsTyping(true);  break;
-		case 'typing_stopped': store.setIsTyping(false); break;
+		case 'typing_stopped': {
+			store.setIsTyping(false);
+			const hasStreaming = store.messages.some(m =>
+				(m.kind === 'assistant' && m.streaming) || (m.kind === 'thinking' && m.streaming));
+			if (hasStreaming) {
+				store.setMessages(store.messages.map(m => {
+					if (m.kind === 'assistant' && m.streaming) return { ...m, streaming: false };
+					if (m.kind === 'thinking'  && m.streaming) return { ...m, streaming: false, collapsed: true };
+					return m;
+				}));
+			}
+			break;
+		}
 
 		case 'chat_history': {
 			const hist = frame.messages as Array<{
@@ -266,6 +278,46 @@ function handleFrame(frame: { type: string; [k: string]: unknown }): void {
 			});
 			break;
 
+		case 'chat_list':
+			store.setSessions(frame.chats as typeof store.sessions);
+			break;
+
+		case 'chat_created': {
+			const chatId = frame.chat_id as string;
+			if (!store.sessions.some(s => s.chat_id === chatId)) {
+				store.setSessions([{
+					chat_id: chatId,
+					name: frame.name as string | undefined,
+					updated_at: (frame.timestamp as string) ?? new Date().toISOString(),
+				}, ...store.sessions]);
+			}
+			break;
+		}
+
+		case 'chat_deleted': {
+			const deletedId = frame.chat_id as string;
+			store.setSessions(store.sessions.filter(s => s.chat_id !== deletedId));
+			break;
+		}
+
+		case 'chat_renamed': {
+			const renamedId = frame.chat_id as string;
+			const newName = frame.name as string;
+			store.setSessions(store.sessions.map(s =>
+				s.chat_id === renamedId ? { ...s, name: newName } : s
+			));
+			break;
+		}
+
+		case 'chat_archived': {
+			const archivedId = frame.chat_id as string;
+			const archivedAt = frame.archived_at as string;
+			store.setSessions(store.sessions.map(s =>
+				s.chat_id === archivedId ? { ...s, archived_at: archivedAt } : s
+			));
+			break;
+		}
+
 		case 'error':
 			store.setIsTyping(false);
 			store.setMessages([...store.messages, {
@@ -274,5 +326,19 @@ function handleFrame(frame: { type: string; [k: string]: unknown }): void {
 				text: (frame.error as string | undefined) ?? 'Unknown error',
 			}]);
 			break;
+
+		case 'permission_request': {
+			const chatId = frame.chat_id as string;
+			if (chatId !== store.chatId) break;
+			store.addPermission({
+				id:         frame.approval_id as string,
+				sessionID:  chatId,
+				permission: frame.permission as string,
+				patterns:   (frame.patterns as string[]) ?? [],
+				metadata:   (frame.metadata as Record<string, unknown>) ?? {},
+				always:     (frame.always as string[]) ?? [],
+			});
+			break;
+		}
 	}
 }

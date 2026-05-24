@@ -10,6 +10,7 @@ export interface ChatSummary {
 	chat_id: string;
 	name?: string;
 	updated_at: string;
+	archived_at?: string;
 }
 
 export interface MessageRow {
@@ -58,6 +59,10 @@ export type ServerFrame =
 	| { type: 'agent_list';      agents: AgentSummary[] }
 	| { type: 'error';           error: string; chat_id?: string }
 	| { type: 'chat_list';       chats: ChatSummary[] }
+	| { type: 'chat_created';    chat_id: string; name?: string; timestamp: string }
+	| { type: 'chat_deleted';    chat_id: string }
+	| { type: 'chat_renamed';    chat_id: string; name: string }
+	| { type: 'chat_archived';   chat_id: string; archived_at: string }
 	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] }
 	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[]; model: string; effort?: string }
 	| { type: 'permission_request'; chat_id: string; approval_id: string; permission: string; patterns: string[]; metadata: Record<string, unknown>; always: string[] };
@@ -74,6 +79,10 @@ export type ClientFrame =
 	| { type: 'message';        chat_id: string; text: string; dispatch?: DispatchMode; model?: string; effort?: string; tool_profile?: string; thinking_mode?: string; attachments?: ClientImageAttachment[] }
 	| { type: 'history';        chat_id: string; limit?: number }
 	| { type: 'list_chats' }
+	| { type: 'create_session';  chat_id: string; name?: string }
+	| { type: 'delete_session';  chat_id: string }
+	| { type: 'rename_session';  chat_id: string; name: string }
+	| { type: 'archive_session'; chat_id: string }
 	| { type: 'set_agent';      chat_id: string; agent_name: string }
 	| { type: 'get_agent';      chat_id: string }
 	| { type: 'list_agents' }

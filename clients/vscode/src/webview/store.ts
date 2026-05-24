@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import type { ConnectionState, AgentSummary, ContextSegment } from '../types';
+import type { ChatSummary, ConnectionState, AgentSummary, ContextSegment } from '../types';
+import type { PermissionRequest } from './types/permission';
+import type { QuestionRequest } from './types/question';
 
 export interface TokenMeta {
 	input_tokens?:          number;
@@ -28,6 +30,7 @@ interface ChatStore {
 	chatId:           string | null;
 	connection:       ConnectionState;
 	messages:         ChatMessage[];
+	sessions:         ChatSummary[];
 	agents:           AgentSummary[];
 	currentAgent:     AgentSummary | null;
 	contextData:      ContextData | null;
@@ -37,7 +40,10 @@ interface ChatStore {
 	composerEffort:   string;
 	composerProfile:  string;
 	composerThinking: string;
+	permissions:       PermissionRequest[];
+	questions:         QuestionRequest[];
 
+	setSessions:         (s: ChatSummary[]) => void;
 	setChatId:           (id: string) => void;
 	setConnection:       (s: ConnectionState) => void;
 	setMessages:         (msgs: ChatMessage[]) => void;
@@ -50,6 +56,10 @@ interface ChatStore {
 	setComposerEffort:   (v: string) => void;
 	setComposerProfile:  (v: string) => void;
 	setComposerThinking: (v: string) => void;
+	addPermission:       (p: PermissionRequest) => void;
+	removePermission:    (id: string) => void;
+	addQuestion:         (q: QuestionRequest) => void;
+	removeQuestion:      (id: string) => void;
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -65,7 +75,11 @@ export const useChatStore = create<ChatStore>((set) => ({
 	composerEffort:   '',
 	composerProfile:  '',
 	composerThinking: '',
+	sessions:          [],
+	permissions:       [],
+	questions:         [],
 
+	setSessions:         (sessions)         => set({ sessions }),
 	setChatId:           (chatId)           => set({ chatId }),
 	setConnection:       (connection)       => set({ connection }),
 	setMessages:         (messages)         => set({ messages }),
@@ -78,4 +92,8 @@ export const useChatStore = create<ChatStore>((set) => ({
 	setComposerEffort:   (composerEffort)   => set({ composerEffort }),
 	setComposerProfile:  (composerProfile)  => set({ composerProfile }),
 	setComposerThinking: (composerThinking) => set({ composerThinking }),
+	addPermission:       (p)                => set((s) => ({ permissions: [...s.permissions, p] })),
+	removePermission:    (id)               => set((s) => ({ permissions: s.permissions.filter((p) => p.id !== id) })),
+	addQuestion:         (q)                => set((s) => ({ questions: [...s.questions, q] })),
+	removeQuestion:      (id)               => set((s) => ({ questions: s.questions.filter((q) => q.id !== id) })),
 }));

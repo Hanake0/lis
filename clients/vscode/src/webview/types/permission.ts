@@ -1,7 +1,10 @@
+export type PermissionResponse = 'once' | 'always' | 'reject';
+
 export interface PermissionRequest {
 	id: string;
-	sessionId: string;
-	tool: string;
-	args?: string;
-	description?: string;
+	sessionID: string;
+	permission: string;
+	patterns: string[];
+	metadata: Record<string, unknown>;
+	always: string[];
 }

@@ -167,6 +167,7 @@ public sealed class WebChannelController(
 			SenderName           = options.Value.OwnerName,
 			Timestamp            = DateTimeOffset.UtcNow,
 			Body                 = frame.Text,
+			Channel              = "web",
 			Dispatch             = dispatch,
 			ModelOverride        = frame.Model,
 			EffortOverride       = frame.Effort,

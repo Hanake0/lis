@@ -103,6 +103,23 @@ public sealed class WebChannelClient(ILogger<WebChannelClient> logger) : IChanne
 			cacheCreationTokens: usage.CacheCreationTokens,
 			thinkingTokens:      usage.ThinkingTokens), ct);
 
+	public async Task<bool> SendPermissionRequestAsync(string chatId, string approvalId, string toolName,
+		string? command = null, string? cwd = null, string? description = null,
+		CancellationToken ct = default) {
+		Dictionary<string, object?> metadata = new();
+		if (command is not null) metadata["command"] = command;
+		if (cwd is not null) metadata["cwd"] = cwd;
+		if (description is not null) metadata["description"] = description;
+
+		await this.PublishAsync(
+			ServerFrame.PermissionRequest(chatId, approvalId, toolName,
+				patterns: command is not null ? [command] : null,
+				metadata: metadata,
+				always: command is not null ? [command] : null),
+			ct);
+		return true;
+	}
+
 	// ── Publishing ──────────────────────────────────────────────────
 
 	public async Task PublishAsync(ServerFrame frame, CancellationToken ct = default) {
