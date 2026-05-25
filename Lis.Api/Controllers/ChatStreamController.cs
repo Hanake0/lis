@@ -32,6 +32,13 @@ public sealed class ChatStreamController(IEventBus events) :ControllerBase {
 		// Disable nginx buffering — SSE needs immediate flush per event.
 		this.Response.Headers["X-Accel-Buffering"] = "no";
 
+		// Flush headers immediately so EventSource transitions to OPEN — see EventsController
+		// for the rationale. Without this the per-chat stream sits in CONNECTING until the
+		// first turn event publishes.
+		await this.Response.StartAsync(ct);
+		await this.Response.WriteAsync(": connected\n\n", ct);
+		await this.Response.Body.FlushAsync(ct);
+
 		string subject = $"chat:{chatExternalId}";
 		await using IEventSubscription sub = events.Subscribe(filter: ev => ev.Subject == subject);
 		try {

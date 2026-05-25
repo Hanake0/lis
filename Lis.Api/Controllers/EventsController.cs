@@ -32,6 +32,15 @@ public sealed class EventsController(IEventBus events) :ControllerBase {
 		// Disable nginx buffering — SSE needs immediate flush per event.
 		this.Response.Headers["X-Accel-Buffering"] = "no";
 
+		// Flush the response line + headers BEFORE the first event so the browser sees
+		// `200 OK` immediately and EventSource transitions to OPEN. Without this Kestrel
+		// holds back the status line until the first body write, which here can be
+		// arbitrarily delayed waiting for a publish. The result is an EventSource that
+		// hangs in CONNECTING until it times out → onerror → auto-reconnect loop.
+		await this.Response.StartAsync(ct);
+		await this.Response.WriteAsync(": connected\n\n", ct);
+		await this.Response.Body.FlushAsync(ct);
+
 		// Replay anything the client missed across the reconnect.
 		if (long.TryParse(lastEventId, out long since)) {
 			foreach (ServerEvent ev in events.ReplaySince(since))

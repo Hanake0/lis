@@ -43,7 +43,8 @@ builder.Services.AddControllers(o => o.Filters.Add<ApiExceptionFilter>())
 // Error handling
 builder.Services.AddProblemDetails();
 
-// CORS — required so the VS Code webview (origin `vscode-webview://*`) and any
+// CORS — required so the VS Code webview (origin `vscode-webview://*` on desktop,
+// `https://<random>.vscode-cdn.net` on vscode.dev / serve-web) and any
 // browser-based test fixtures can hit /api/* directly. Extra origins are read
 // from `LIS_CORS_ALLOWED_ORIGINS` (comma-separated) for local dev workflows
 // like the `python -m http.server` test-sidebar fixture.
@@ -51,10 +52,24 @@ string[] extraOrigins = Env("LIS_CORS_ALLOWED_ORIGINS")
 	.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
 	.SetIsOriginAllowed(origin => origin.StartsWith("vscode-webview://", StringComparison.OrdinalIgnoreCase)
+	                              || origin.EndsWith(".vscode-cdn.net", StringComparison.OrdinalIgnoreCase)
 	                              || extraOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
 	.AllowAnyMethod()
 	.AllowAnyHeader()
 	.WithExposedHeaders("Last-Event-ID")));
+
+// Private Network Access — Chromium blocks fetches from a PUBLIC origin
+// (https://*.vscode-cdn.net for serve-web / vscode.dev webviews) to a PRIVATE
+// loopback address (127.0.0.1 / localhost) unless the server explicitly opts
+// in by echoing `Access-Control-Allow-Private-Network: true` on the preflight
+// (when the browser sends `Access-Control-Request-Private-Network: true`).
+// AspNetCore's built-in CORS middleware doesn't handle PNA, so we splice it in
+// before MapControllers — only when the request matches an allowed origin we
+// already approved above.
+//
+// Spec: https://wicg.github.io/private-network-access/
+// Allowed-Origin-Echo done in a separate inline middleware after UseCors so
+// the response already carries Access-Control-Allow-Origin; we just append PNA.
 
 // Time + event bus (singletons — the bus holds in-memory subscriber state and a replay ring)
 builder.Services.AddSingleton(TimeProvider.System);
@@ -207,6 +222,22 @@ if (app.Services.GetService<IConversationService>() is MessageDebouncer debounce
 
 // Middleware
 app.UseExceptionHandler();
+
+// Private Network Access opt-in must be installed BEFORE UseCors so its
+// OnStarting callback registers before UseCors short-circuits preflight
+// requests. When the CORS layer below approves the origin (response gets
+// `Access-Control-Allow-Origin`), we echo `Access-Control-Allow-Private-Network`
+// so Chromium permits the public→loopback fetch from https://*.vscode-cdn.net
+// to http://127.0.0.1.
+app.Use(async (ctx, next) => {
+	ctx.Response.OnStarting(() => {
+		if (ctx.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+			ctx.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
+		return Task.CompletedTask;
+	});
+	await next();
+});
+
 app.UseCors();
 
 // Endpoints
