@@ -30,6 +30,19 @@ mountChatEventsBridge();
 // project_created/updated/deleted.
 installProjectsSync();
 
+// Wire useConfigStore: initial /api/providers load on rpc ready and on every
+// config refresh. The store's own module-bottom bootstrap relied on
+// useConfigStore being imported BEFORE the rpc.ready() resolved, which only
+// happens for the sidebar (its components transitively touch useConfigStore
+// early). The chat panel imports useConfigStore via ChatInput, which mounts
+// AFTER rpc.ready() — by then the `.ready().then()` is a no-op race. Wiring
+// here matches `installProjectsSync` so providers always load on this side
+// regardless of import order.
+void import('./stores/useConfigStore').then(({ useConfigStore }) => {
+	rpc.ready().then(() => { void useConfigStore.getState().loadProviders(); });
+	rpc.onConfigure(() => { void useConfigStore.getState().loadProviders(); });
+});
+
 const isSidebarMode = (window as any).__LIS_SIDEBAR_MODE === true;
 const appRoot       = document.getElementById('app')!;
 

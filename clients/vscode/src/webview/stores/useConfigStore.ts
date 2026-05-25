@@ -256,13 +256,7 @@ useChatStore.subscribe((state) => {
 	});
 });
 
-// Bootstrap providers as soon as the rpc client signals ready. Safe to call
-// repeatedly — `_loadProvidersInFlight` dedups.
-try {
-	const rpc = LisRpcClient.instance();
-	rpc.ready().then(() => { void useConfigStore.getState().loadProviders(); });
-	rpc.onConfigure(() => { void useConfigStore.getState().loadProviders(); });
-} catch {
-	// LisRpcClient may not be installed in unit-test environments; tests can
-	// drive loadProviders() directly.
-}
+// Bootstrap is wired from `webview/index.ts` so the call happens
+// deterministically after `LisRpcClient.install` regardless of which
+// component first imports this module (the chat panel touches it lazily
+// via ChatInput, which mounts AFTER rpc.ready() has already resolved).
