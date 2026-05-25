@@ -64,10 +64,12 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 	providers:        [] as ProviderEntry[],
 	defaultProviders: { model: null, agent: null } as ProviderDefaults,
 	agents:           [] as AgentEntry[],
-	// ModelPickerList calls `.get('providerId/modelId')` on this — Map shape
-	// is non-negotiable. Lis doesn't pull from models.dev today so this stays
-	// empty; once a remote metadata fetcher lands it populates the same Map.
-	modelsMetadata:   new Map<string, any>(),
+	// Keyed by `${providerId}/${modelId}` and consumed by ModelPickerList's
+	// per-row cost/limit chips. Populated from the `/api/providers` payload
+	// during `loadProviders` — every field ModelPickerList reads (reasoning
+	// efforts, cost, limit, attachment caps, release date) is already on the
+	// provider entry, so we don't need a separate models.dev fetch.
+	modelsMetadata:   new Map<string, ProviderModel>(),
 	currentAgentName:   '',
 	currentModelId:     '',
 	currentProviderId:  '',
@@ -152,8 +154,20 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 					models: Object.values(p.models ?? {}),
 				}));
 				const defaults: ProviderDefaults = result.default ?? { model: null, agent: null };
+
+				// Build the modelsMetadata Map ModelPickerList reads from. Same
+				// rows as `providers`, just keyed `${providerId}/${modelId}` so
+				// per-row lookups stay O(1) without scanning the providers array
+				// for every render.
+				const modelsMetadata = new Map<string, ProviderModel>();
+				for (const provider of providers) {
+					for (const model of provider.models) {
+						modelsMetadata.set(`${provider.id}/${model.id}`, model);
+					}
+				}
+
 				set((prev: any) => {
-					const next: any = { providers, defaultProviders: defaults };
+					const next: any = { providers, defaultProviders: defaults, modelsMetadata };
 					// Resolve currentProviderId: if the user (or the agent-loader)
 					// has already picked a model but the provider isn't set yet,
 					// walk providers to find which one owns it. This also covers
