@@ -26,20 +26,13 @@ import { useUIStore } from '@/stores/useUIStore';
 import { useDeviceInfo } from '@/lib/device';
 import { sessionEvents } from '@/lib/sessionEvents';
 import { useI18n } from '@/lib/i18n';
+import { normalizePath } from './sidebar/utils';
 
 const renderToastDescription = (text?: string) =>
     text ? <span className="text-foreground/80 dark:text-foreground/70">{text}</span> : undefined;
 
-const normalizeProjectDirectory = (path: string | null | undefined): string => {
-    if (!path) {
-        return '';
-    }
-    const replaced = path.replace(/\\/g, '/');
-    if (replaced === '/') {
-        return '/';
-    }
-    return replaced.replace(/\/+$/, '');
-};
+const normalizeProjectDirectory = (path: string | null | undefined): string =>
+    normalizePath(path) ?? '';
 
 type DeleteDialogState = {
     sessions: Session[];
@@ -51,7 +44,6 @@ type DeleteDialogState = {
 export const SessionDialogs: React.FC = () => {
     const { t } = useI18n();
     const [isDirectoryDialogOpen, setIsDirectoryDialogOpen] = React.useState(false);
-    const [hasShownInitialDirectoryPrompt, setHasShownInitialDirectoryPrompt] = React.useState(false);
     const [deleteDialog, setDeleteDialog] = React.useState<DeleteDialogState | null>(null);
     const [deleteDialogSummaries, setDeleteDialogSummaries] = React.useState<Array<{ session: Session; metadata: WorktreeMetadata }>>([]);
     const [deleteDialogShouldRemoveRemote, setDeleteDialogShouldRemoveRemote] = React.useState(false);
@@ -115,19 +107,11 @@ export const SessionDialogs: React.FC = () => {
 
     // Session loading is handled by sync bootstrap — no manual loadSessions needed.
 
-    React.useEffect(() => {
-        if (hasShownInitialDirectoryPrompt || !isHomeReady || projects.length > 0) {
-            return;
-        }
-
-        setHasShownInitialDirectoryPrompt(true);
-
-        setIsDirectoryDialogOpen(true);
-    }, [
-        hasShownInitialDirectoryPrompt,
-        isHomeReady,
-        projects.length,
-    ]);
+    // Auto-opening the directory dialog on first launch (OC behaviour) is wrong
+    // for the VS Code sidebar: it pops up every time the view mounts before the
+    // user has done anything. Project creation is initiated explicitly via the
+    // toolbar "+ Add project" button. The state hook stays so the picker still
+    // opens manually via sessionEvents.requestDirectoryDialog().
 
     const openDeleteDialog = React.useCallback((payload: { sessions: Session[]; dateLabel?: string; mode?: 'session' | 'worktree'; worktree?: WorktreeMetadata | null }) => {
         setDeleteDialog({

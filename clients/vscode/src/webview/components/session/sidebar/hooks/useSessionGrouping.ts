@@ -200,6 +200,11 @@ export const useSessionGrouping = (args: Args) => {
 
       sortedWorktrees.forEach((meta) => {
         const directory = normalizePath(meta.path) ?? meta.path;
+        // Skip the worktree row when it points at the project root — the root
+        // group already renders the same sessions. Otherwise the user sees the
+        // chat duplicated under "lis" and "(main)", and the row "..." menu
+        // fires twice in parallel.
+        if (directory === normalizedProjectRoot) return;
         const currentBranch = args.gitBranches.get(directory)?.trim() || null;
         const metadataBranch = meta.branch?.trim() || null;
         const shouldSyncLabelWithBranch = Boolean(

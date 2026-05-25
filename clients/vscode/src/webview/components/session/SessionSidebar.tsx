@@ -817,6 +817,8 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
     projectRootBranches,
     lastRepoStatus: lastRepoStatusRef.current,
     buildGroupedSessions,
+    allActiveSessions: globalActiveSessions,
+    allArchivedSessions: archivedSessions,
     hasSessionSearchQuery,
     normalizedSessionSearchQuery,
     filterSessionNodesForSearch,

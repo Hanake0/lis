@@ -367,6 +367,8 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.grouping.projectRootWithBranch": "корінь проєкту: {branch}",
   "sessions.sidebar.grouping.archived": "заархівований",
   "sessions.sidebar.grouping.archivedDescription": "Заархівовані та непризначені сесії",
+  "sessions.sidebar.grouping.unbound": "Інші",
+  "sessions.sidebar.grouping.unboundDescription": "Сесії, не призначені жодному проєкту",
   "sessions.sidebar.folderItem.expandAria": "Розгорнути папку {folderName}",
   "sessions.sidebar.folderItem.collapseAria": "Згорнути папку {folderName}",
   "sessions.sidebar.folderItem.namePlaceholder": "Назва папки",

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 import type { Session } from '@/lib/opencode-sdk-stub';
 import { LisRpcClient, type LisChatSummary } from '@/lib/lis/rpc-client';
+import { useProjectsStore } from '@/stores/useProjectsStore';
+import { normalizePath } from '@/components/session/sidebar/utils';
 
 /**
  * Aggregate view of every chat Lis knows about, regardless of project.
@@ -46,22 +48,24 @@ interface GlobalSessionsState {
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
-function normalizePath(value?: string | null): string | null {
-	if (typeof value !== 'string') return null;
-	const trimmed = value.trim();
-	if (!trimmed) return null;
-	const replaced = trimmed.replace(/\\/g, '/');
-	if (replaced === '/') return '/';
-	return replaced.length > 1 ? replaced.replace(/\/+$/, '') : replaced;
-}
-
 export function resolveGlobalSessionDirectory(session: Session): string | null {
 	const record = session as Session & {
-		directory?: string | null;
-		project?:   { worktree?: string | null } | null;
+		directory?:  string | null;
+		project?:    { worktree?: string | null } | null;
+		projectId?:  string | null;
 	};
-	return normalizePath(record.directory ?? null)
+	const direct = normalizePath(record.directory ?? null)
 		?? normalizePath(record.project?.worktree ?? null);
+	if (direct) return direct;
+	// Lis chats track their project via `project_id` (external_id), not a directory
+	// string. Resolve it against the live projects store so sessions group under
+	// their project bucket in the OC sidebar.
+	if (record.projectId) {
+		const projects = useProjectsStore.getState().projects;
+		const match = projects.find((p) => p.id === record.projectId);
+		if (match?.path) return normalizePath(match.path);
+	}
+	return null;
 }
 
 function buildSessionsByDirectory(sessions: Session[]): Map<string, Session[]> {
@@ -115,17 +119,25 @@ export function chatSummaryToSession(row: LisChatSummary): Session {
 	const createdMs  = row.created_at  ? Date.parse(row.created_at)  : undefined;
 	const updatedMs  = row.updated_at  ? Date.parse(row.updated_at)  : undefined;
 	const archivedMs = row.archived_at ? Date.parse(row.archived_at) : undefined;
+	// Resolve project_id → project.path so the OC sidebar's directory-based
+	// grouping (useProjectSessionLists) buckets the chat under its project.
+	// If the project hasn't loaded yet we leave it null and re-map via the
+	// projects-store subscription below once they do. Chats with no project
+	// binding fall back to the active workspace directory so they're at
+	// least visible somewhere — otherwise the user has 41 invisible chats.
+	const { projects } = useProjectsStore.getState();
+	const projectPath = row.project_id
+		? normalizePath(projects.find((p) => p.id === row.project_id)?.path ?? null)
+		: null;
 	return {
 		id:        row.chat_id,
 		title:     row.name ?? undefined,
-		// Lis currently has no per-chat directory concept — leave null and the
-		// sidebar falls back to its "Other" bucket. Stage 5+ may surface a per-chat
-		// directory once projects expose worktree paths through the chat wire.
-		directory: null,
+		directory: projectPath,
+		projectId: row.project_id,
 		createdAt: createdMs,
 		updatedAt: updatedMs,
 		time:      { created: createdMs, updated: updatedMs, archived: archivedMs },
-	};
+	} as Session;
 }
 
 function mergeSessionLists(existing: Session[], incoming?: Session[]): Session[] {
@@ -287,6 +299,41 @@ export const useGlobalSessionsStore = create<GlobalSessionsState>((set, get) => 
 		});
 	},
 }));
+
+// Projects load asynchronously, often after the first `loadSessions` call. When
+// the projects array transitions (e.g. empty → populated, or a project path
+// changes), re-resolve `directory` on every cached session so the OC sidebar
+// re-buckets them under the right project. We keep the original Session list
+// and only patch the directory; this is cheap and avoids a network round-trip.
+let lastProjectsSig: string | null = null;
+useProjectsStore.subscribe((state) => {
+	const sig = state.projects.map((p) => `${p.id}@${p.path}`).join('|');
+	if (sig === lastProjectsSig) return;
+	lastProjectsSig = sig;
+	const byId = new Map(state.projects.map((p) => [p.id, normalizePath(p.path)] as const));
+	const remap = (list: Session[]): Session[] => {
+		let mutated = false;
+		const next = list.map((s) => {
+			const projectId = (s as Session & { projectId?: string | null }).projectId ?? null;
+			if (!projectId) return s;
+			const newDir = byId.get(projectId) ?? null;
+			const curDir = (s as Session & { directory?: string | null }).directory ?? null;
+			if (newDir === curDir) return s;
+			mutated = true;
+			return { ...s, directory: newDir } as Session;
+		});
+		return mutated ? next : list;
+	};
+	const store = useGlobalSessionsStore.getState();
+	const nextActive   = remap(store.activeSessions);
+	const nextArchived = remap(store.archivedSessions);
+	if (nextActive === store.activeSessions && nextArchived === store.archivedSessions) return;
+	useGlobalSessionsStore.setState({
+		activeSessions:      nextActive,
+		archivedSessions:    nextArchived,
+		sessionsByDirectory: buildSessionsByDirectory(nextActive),
+	});
+});
 
 export async function ensureGlobalSessionsLoaded(fallbackActive?: Session[]): Promise<LoadResult> {
 	const state = useGlobalSessionsStore.getState();

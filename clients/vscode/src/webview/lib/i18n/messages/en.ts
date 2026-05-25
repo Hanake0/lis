@@ -366,6 +366,8 @@ export const dict = {
   'sessions.sidebar.grouping.projectRootWithBranch': 'project root: {branch}',
   'sessions.sidebar.grouping.archived': 'archived',
   'sessions.sidebar.grouping.archivedDescription': 'Archived and unassigned sessions',
+  'sessions.sidebar.grouping.unbound': 'Other',
+  'sessions.sidebar.grouping.unboundDescription': 'Sessions not assigned to a project',
   'sessions.sidebar.folderItem.expandAria': 'Expand folder {folderName}',
   'sessions.sidebar.folderItem.collapseAria': 'Collapse folder {folderName}',
   'sessions.sidebar.folderItem.namePlaceholder': 'Folder name',

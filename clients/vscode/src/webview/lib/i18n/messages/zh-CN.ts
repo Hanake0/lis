@@ -367,6 +367,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.grouping.projectRootWithBranch': '项目根目录：{branch}',
   'sessions.sidebar.grouping.archived': '已归档',
   'sessions.sidebar.grouping.archivedDescription': '已归档且未分配的会话',
+  'sessions.sidebar.grouping.unbound': '其他',
+  'sessions.sidebar.grouping.unboundDescription': '未分配到项目的会话',
   'sessions.sidebar.folderItem.expandAria': '展开文件夹 {folderName}',
   'sessions.sidebar.folderItem.collapseAria': '折叠文件夹 {folderName}',
   'sessions.sidebar.folderItem.namePlaceholder': '文件夹名称',

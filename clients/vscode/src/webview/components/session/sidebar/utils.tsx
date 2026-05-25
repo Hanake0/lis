@@ -77,8 +77,13 @@ export const normalizePath = (value?: string | null) => {
   if (!value) {
     return null;
   }
-  const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
-  return normalized.length === 0 ? '/' : normalized;
+  let normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (normalized.length === 0) return '/';
+  // Windows: lowercase the drive letter so C:/foo and c:/foo compare equal.
+  if (/^[A-Z]:\//.test(normalized)) {
+    normalized = normalized[0].toLowerCase() + normalized.slice(1);
+  }
+  return normalized;
 };
 
 export const isPathWithinProject = (directory?: string | null, projectPath?: string | null): boolean => {

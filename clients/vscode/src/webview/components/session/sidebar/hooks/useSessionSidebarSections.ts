@@ -4,6 +4,7 @@ import type { SessionGroup, SessionNode, GroupSearchData } from '../types';
 import { dedupeSessionsById, normalizePath } from '../utils';
 import type { WorktreeMetadata } from '@/types/worktree';
 import type { SessionFoldersMap } from '@/stores/useSessionFoldersStore';
+import { useI18n } from '@/lib/i18n';
 
 type ProjectItem = {
   id: string;
@@ -36,6 +37,8 @@ type Args = {
     rootBranch: string | null,
     isRepo: boolean,
   ) => SessionGroup[];
+  allActiveSessions: Session[];
+  allArchivedSessions: Session[];
   hasSessionSearchQuery: boolean;
   normalizedSessionSearchQuery: string;
   filterSessionNodesForSearch: (nodes: SessionNode[], query: string) => SessionNode[];
@@ -60,8 +63,11 @@ export const useSessionSidebarSections = (args: Args) => {
     foldersMap,
   } = args;
 
+  const { allActiveSessions, allArchivedSessions } = args;
+  const { t } = useI18n();
+
   const projectSections = React.useMemo<ProjectSection[]>(() => {
-    return normalizedProjects.map((project) => {
+    const sections = normalizedProjects.map((project) => {
       const projectSessions = dedupeSessionsById([
         ...getSessionsForProject(project),
         ...getArchivedSessionsForProject(project),
@@ -79,6 +85,43 @@ export const useSessionSidebarSections = (args: Args) => {
       );
       return { project, groups };
     });
+
+    // Unbound sessions (no directory / no project) render in a synthetic
+    // "Other" section at the bottom so they're always visible.
+    const allProjectDirs = new Set(normalizedProjects.map((p) => p.normalizedPath));
+    const isUnbound = (s: Session) => {
+      const dir = normalizePath((s as Session & { directory?: string | null }).directory ?? null);
+      return !dir || !allProjectDirs.has(dir);
+    };
+    const unboundActive   = allActiveSessions.filter(isUnbound);
+    const unboundArchived = allArchivedSessions.filter(isUnbound);
+    const unboundAll      = dedupeSessionsById([...unboundActive, ...unboundArchived]);
+    if (unboundAll.length > 0) {
+      const nodes: SessionNode[] = unboundAll.map((session) => ({ session, children: [], worktree: null }));
+      const group: SessionGroup = {
+        id: 'root',
+        label: null,
+        branch: null,
+        description: null,
+        isMain: true,
+        isArchivedBucket: false,
+        worktree: null,
+        directory: null,
+        folderScopeKey: null,
+        sessions: nodes,
+      };
+      sections.push({
+        project: {
+          id: '__unbound__',
+          path: '',
+          label: t('sessions.sidebar.grouping.unbound'),
+          normalizedPath: '',
+        },
+        groups: [group],
+      });
+    }
+
+    return sections;
   }, [
     normalizedProjects,
     getSessionsForProject,
@@ -88,6 +131,9 @@ export const useSessionSidebarSections = (args: Args) => {
     lastRepoStatus,
     buildGroupedSessions,
     projectRootBranches,
+    allActiveSessions,
+    allArchivedSessions,
+    t,
   ]);
 
   const visibleProjectSections = React.useMemo(() => {

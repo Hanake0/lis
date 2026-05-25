@@ -367,6 +367,8 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.grouping.projectRootWithBranch": "raiz do projeto: {branch}",
   "sessions.sidebar.grouping.archived": "archivado",
   "sessions.sidebar.grouping.archivedDescription": "Sessões arquivadas e não atribuídas",
+  "sessions.sidebar.grouping.unbound": "Outras",
+  "sessions.sidebar.grouping.unboundDescription": "Sessões não atribuídas a um projeto",
   "sessions.sidebar.folderItem.expandAria": "Expandir pasta {folderName}",
   "sessions.sidebar.folderItem.collapseAria": "Recolher pasta {folderName}",
   "sessions.sidebar.folderItem.namePlaceholder": "Nome de pasta",

@@ -367,6 +367,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.grouping.projectRootWithBranch': '프로젝트 루트: {branch}',
   'sessions.sidebar.grouping.archived': '보관됨',
   'sessions.sidebar.grouping.archivedDescription': '보관됨 및 미분류 세션',
+  'sessions.sidebar.grouping.unbound': '기타',
+  'sessions.sidebar.grouping.unboundDescription': '프로젝트에 할당되지 않은 세션',
   'sessions.sidebar.folderItem.expandAria': '펼치기 폴더 {folderName}',
   'sessions.sidebar.folderItem.collapseAria': '접기 폴더 {folderName}',
   'sessions.sidebar.folderItem.namePlaceholder': '폴더 이름',

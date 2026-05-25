@@ -367,6 +367,8 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.grouping.projectRootWithBranch": "raíz del proyecto: {branch}",
   "sessions.sidebar.grouping.archived": "archivado",
   "sessions.sidebar.grouping.archivedDescription": "Sesiones archivadas y no asignadas",
+  "sessions.sidebar.grouping.unbound": "Otras",
+  "sessions.sidebar.grouping.unboundDescription": "Sesiones no asignadas a un proyecto",
   "sessions.sidebar.folderItem.expandAria": "Expandir carpeta {folderName}",
   "sessions.sidebar.folderItem.collapseAria": "Colapsar carpeta {folderName}",
   "sessions.sidebar.folderItem.namePlaceholder": "Nombre de carpeta",

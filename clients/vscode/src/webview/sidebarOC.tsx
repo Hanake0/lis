@@ -5,12 +5,19 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { I18nProvider } from './lib/i18n';
 import { vscode } from './vscodeApi';
 import { useSessionUIStore } from './sync/session-ui-store';
+import { useProjectsStore } from './stores/useProjectsStore';
+import { normalizePath } from './components/session/sidebar/utils';
 
 /**
  * Side effects required before the sidebar renders:
  *  - dark + lis-sidebar CSS scope on `<html>` so design-system tokens resolve.
  *  - Intercept `setCurrentSession` to send `open_session` to the extension host,
  *    which routes the click to `ChatPanelManager.openOrFocus`.
+ *  - Intercept `openNewSessionDraft` to send `new_chat` to the extension host,
+ *    which runs `lis.newChat` (creates the chat row + opens a panel). The OC
+ *    store's draft state only makes sense in a single-pane desktop client; in
+ *    VS Code the chat lives in its own WebviewPanel, so the sidebar can't
+ *    render a draft inline.
  *
  * Project state comes from `useProjectsStore` (wired via `installProjectsSync`
  * in webview/index.ts), session lifecycle comes from `useGlobalSessionsStore`
@@ -20,11 +27,32 @@ import { useSessionUIStore } from './sync/session-ui-store';
 export function installSidebarFrameHandler(): void {
 	document.documentElement.classList.add('dark', 'lis-sidebar');
 
-	const orig = useSessionUIStore.getState().setCurrentSession;
+	const state    = useSessionUIStore.getState();
+	const origSet  = state.setCurrentSession;
+	// React StrictMode + SortableProjectItem's effect-driven "new" trigger fires
+	// `openNewSessionDraft` twice in quick succession. Without a guard we POST
+	// `/api/chats` twice and the user gets two stray panels. Collapse calls
+	// within 500ms targeting the same project — that's well under any humanly
+	// double-clickable rate.
+	let lastFireKey = '';
+	let lastFireAt  = 0;
 	useSessionUIStore.setState({
 		setCurrentSession: (id: string) => {
 			vscode.postMessage({ type: 'open_session', chat_id: id });
-			orig(id);
+			origSet(id);
+		},
+		openNewSessionDraft: (options?: { directoryOverride?: string | null }) => {
+			const dir = normalizePath(options?.directoryOverride ?? '') ?? '';
+			const { projects, activeProjectId } = useProjectsStore.getState();
+			const byPath  = dir ? projects.find((p) => normalizePath(p.path) === dir) : null;
+			const byActive = activeProjectId ? projects.find((p) => p.id === activeProjectId) : null;
+			const projectId = byPath?.id ?? byActive?.id ?? null;
+			const key = projectId ?? `dir:${dir}`;
+			const now = Date.now();
+			if (key === lastFireKey && now - lastFireAt < 500) return;
+			lastFireKey = key;
+			lastFireAt  = now;
+			vscode.postMessage({ type: 'new_chat', project_external_id: projectId });
 		},
 	});
 }

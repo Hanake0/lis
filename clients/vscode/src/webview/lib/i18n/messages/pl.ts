@@ -367,6 +367,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.grouping.projectRootWithBranch': 'główny katalog projektu: {branch}',
   'sessions.sidebar.grouping.archived': 'zarchiwizowane',
   'sessions.sidebar.grouping.archivedDescription': 'Zarchiwizowane i nieprzypisane sesje',
+  'sessions.sidebar.grouping.unbound': 'Inne',
+  'sessions.sidebar.grouping.unboundDescription': 'Sesje nieprzypisane do projektu',
   'sessions.sidebar.folderItem.expandAria': 'Rozwiń folder {folderName}',
   'sessions.sidebar.folderItem.collapseAria': 'Zwiń folder {folderName}',
   'sessions.sidebar.folderItem.namePlaceholder': 'Nazwa folderu',
