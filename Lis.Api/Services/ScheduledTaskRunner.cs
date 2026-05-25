@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 using Lis.Api.Schemas.Events;
 using Lis.Core.Events;
 using Lis.Persistence;
@@ -41,12 +39,21 @@ public sealed partial class ScheduledTaskRunner(
 
 		try {
 			while (!stoppingToken.IsCancellationRequested) {
-				CancellationTokenSource wakeOnChange = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+				// `using` so the CTS is disposed when this iteration ends — regardless of
+				// whether we exited via timeout, cancellation, or exception. Previously this
+				// wasn't disposed AND ClearWaiter was a no-op, so an empty heap drove a tight
+				// loop that allocated a fresh CTS every µs. ~400 MB/s growth, observed.
+				using CancellationTokenSource wakeOnChange = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 				coordinator.RegisterWaiter(wakeOnChange);
 
 				try {
 					TimeSpan wait = this.ComputeWait();
-					if (wait > TimeSpan.Zero) await Task.Delay(wait, wakeOnChange.Token);
+					// ComputeWait returns either a non-negative TimeSpan (heap non-empty) or
+					// `Timeout.InfiniteTimeSpan` (heap empty). Task.Delay handles both natively;
+					// no guard needed. The old `if (wait > TimeSpan.Zero)` skipped the await
+					// for the infinite case because TimeSpan.FromMilliseconds(-1) is NOT > Zero,
+					// which is what turned the empty-heap path into a busy-loop.
+					await Task.Delay(wait, wakeOnChange.Token);
 				} catch (OperationCanceledException) {
 					// Either we're shutting down, or a CRUD event fired — loop will recompute.
 					if (stoppingToken.IsCancellationRequested) break;
@@ -206,12 +213,26 @@ public sealed partial class ScheduledTaskRunner(
 /// </summary>
 public sealed partial class ScheduledTaskCoordinator(ILogger<ScheduledTaskCoordinator> logger) {
 	private ScheduledTaskRunner? runner;
-	private readonly ConcurrentBag<CancellationTokenSource> waiters = [];
+
+	// Single-CTS: the runner is a single-loop BackgroundService, so there is only
+	// ever one waiter active at a time. The previous implementation used a
+	// ConcurrentBag that grew unbounded (ClearWaiter was a no-op with a misleading
+	// comment), which combined with the empty-heap busy-loop in the runner caused
+	// ~400 MB/s allocation pressure observed in production. Single field + atomic
+	// Cancel via CompareExchange keeps both reads and clears race-free.
+	private CancellationTokenSource? activeWaiter;
 
 	internal void Bind(ScheduledTaskRunner? r) => this.runner = r;
 
-	internal void RegisterWaiter(CancellationTokenSource cts) => this.waiters.Add(cts);
-	internal void ClearWaiter(CancellationTokenSource cts) { /* GC-friendly no-op — the bag is recreated on each loop */ }
+	internal void RegisterWaiter(CancellationTokenSource cts) =>
+		Volatile.Write(ref this.activeWaiter, cts);
+
+	internal void ClearWaiter(CancellationTokenSource cts) =>
+		// Only clear if it's still the one we registered — defends against a
+		// late ClearWaiter racing past a newer RegisterWaiter (the runner loop
+		// is single-threaded, so this should be unreachable today, but the
+		// invariant is cheap to enforce).
+		Interlocked.CompareExchange(ref this.activeWaiter, null, cts);
 
 	public Task NotifyChangedAsync(long taskId, CancellationToken ct) {
 		if (this.runner is null) {
@@ -239,9 +260,11 @@ public sealed partial class ScheduledTaskCoordinator(ILogger<ScheduledTaskCoordi
 	}
 
 	private void WakeAll() {
-		// Snapshot then dispose — cancelling triggers the Task.Delay in the runner.
-		while (this.waiters.TryTake(out CancellationTokenSource? cts)) {
-			try { cts.Cancel(); } catch (ObjectDisposedException) { }
-		}
+		CancellationTokenSource? cts = Volatile.Read(ref this.activeWaiter);
+		if (cts is null) return;
+		// CTS lifetime is owned by the runner loop's `using`. Catch ObjectDisposedException
+		// for the race where the loop's `using` has already disposed and we haven't yet
+		// observed the resulting null from ClearWaiter.
+		try { cts.Cancel(); } catch (ObjectDisposedException) { }
 	}
 }

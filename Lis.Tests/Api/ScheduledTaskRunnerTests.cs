@@ -131,6 +131,49 @@ public sealed class ScheduledTaskRunnerTests :IAsyncDisposable {
 	}
 
 	[Fact]
+	public async Task Runner_With_Empty_Heap_Does_Not_Busy_Loop() {
+		// Regression for the OOM observed in production: when the heap was empty,
+		// the runner spun a tight loop allocating a fresh CancellationTokenSource
+		// every microsecond (the empty-heap branch skipped `await Task.Delay` because
+		// `Timeout.InfiniteTimeSpan > TimeSpan.Zero` is false, AND ClearWaiter was a
+		// no-op so the coordinator's bag of CTSes grew unbounded). Observed growth
+		// was ~400 MB/s. After the fix the loop is parked on `Task.Delay(Infinite, ct)`
+		// and allocates ~nothing while idle.
+
+		using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+		Task running = this.runner.StartAsync(cts.Token);
+
+		// Give the runner a beat to load (heap is empty — `ReloadAllAsync` finds 0 tasks)
+		// and park on its first Task.Delay. After this we sample allocation under what
+		// should be a fully idle workload.
+		await Task.Delay(100, cts.Token);
+
+		long before = GC.GetTotalAllocatedBytes(precise: true);
+		await Task.Delay(500, cts.Token);
+		long after  = GC.GetTotalAllocatedBytes(precise: true);
+		long delta  = after - before;
+
+		await this.runner.StopAsync(default);
+		await running;
+
+		// With the bug this was 100s of MB in half a second. After the fix it's
+		// nanoseconds of work — let through 2 MB of slack for ambient test-runner noise.
+		Assert.True(delta < 2_000_000,
+			$"Idle runner allocated {delta:N0} bytes in 500ms — busy-loop regression suspected.");
+	}
+
+	[Fact]
+	public async Task Coordinator_Wake_Is_Idempotent_When_No_Waiter_Is_Registered() {
+		// The pre-fix coordinator stored waiters in a ConcurrentBag and walked the bag
+		// to cancel — silently no-op when empty. The new code reads a single CTS field;
+		// guarding the null case explicitly catches a future refactor that forgets it.
+		this.coordinator.NotifyRemoved(taskId: 9999);
+		this.coordinator.NotifyRemoved(taskId: 9999);
+		await this.coordinator.NotifyChangedAsync(taskId: 9999, CancellationToken.None);
+		// No assertion needed — passing means no NullReferenceException / no throw.
+	}
+
+	[Fact]
 	public async Task Runner_Captures_Executor_Failure_As_Error_Event() {
 		this.executor.ThrowOnNext = true;
 
