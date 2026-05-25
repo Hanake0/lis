@@ -237,6 +237,78 @@ export class LisRpcClient {
 		});
 	}
 
+	/** Rename a chat. Empty name throws (server-side ArgumentException → 400). */
+	updateChat(chatId: string, patch: { name?: string }): Promise<LisChatSummary> {
+		return this.patch(`/chats/${encodeURIComponent(chatId)}`, patch);
+	}
+
+	/** Archive a chat — idempotent. Returns the row with `archived_at` populated. */
+	archiveChat(chatId: string): Promise<LisChatSummary> {
+		return this.post(`/chats/${encodeURIComponent(chatId)}/archive`);
+	}
+
+	/** Delete a chat and every message under it. Idempotent — deleting a missing chat returns 204. */
+	deleteChat(chatId: string): Promise<void> {
+		return this.delete(`/chats/${encodeURIComponent(chatId)}`);
+	}
+
+	/**
+	 * Returns the chat's transcript, oldest-first within the limited window.
+	 * Clamped 1-500 with default 100 server-side.
+	 */
+	getChatMessages(chatId: string, limit?: number): Promise<LisMessageSummary[]> {
+		return this.get(`/chats/${encodeURIComponent(chatId)}/messages`, limit !== undefined ? { limit: String(limit) } : undefined);
+	}
+
+	/** Returns the agent effective for this chat (bound agent or system default). */
+	getChatAgent(chatId: string): Promise<unknown> {
+		return this.get(`/chats/${encodeURIComponent(chatId)}/agent`);
+	}
+
+	/** Rebind the chat to a different agent. Emits `chat_updated` on `/api/events`. */
+	setChatAgent(chatId: string, agentName: string): Promise<unknown> {
+		return this.patch(`/chats/${encodeURIComponent(chatId)}/agent`, { agent_name: agentName });
+	}
+
+	/**
+	 * Save runtime overrides onto the chat's bound agent (or default when none).
+	 * Emits `agent_updated` on `/api/events`.
+	 */
+	saveChatOverrides(chatId: string, overrides: { model?: string; effort?: string; tool_profile?: string }): Promise<unknown> {
+		return this.patch(`/chats/${encodeURIComponent(chatId)}/overrides`, overrides);
+	}
+
+	/** Returns the context-window breakdown. `?force=true` bypasses the per-content token-count cache. */
+	getChatContext(chatId: string, opts?: { force?: boolean }): Promise<unknown> {
+		return this.get(`/chats/${encodeURIComponent(chatId)}/context`, opts?.force ? { force: 'true' } : undefined);
+	}
+
+	/** Abort the agent loop. Idempotent — no-op if nothing's running. */
+	abortChat(chatId: string): Promise<void> {
+		return this.requestNullable<void>('POST', `/chats/${encodeURIComponent(chatId)}/abort`).then(() => undefined);
+	}
+
+	/**
+	 * Submit a user-side message. The agent loop runs asynchronously; open
+	 * `/api/chats/{id}/stream` in parallel via {@link LisChatStreamChannel}
+	 * to consume the SSE token stream. Returns the user-echo's message id.
+	 */
+	sendChatMessage(chatId: string, body: SendChatMessageBody): Promise<{ message_id: string }> {
+		return this.post(`/chats/${encodeURIComponent(chatId)}/messages`, body);
+	}
+
+	// ── Permissions / Questions ────────────────────────────────────
+
+	/** Deliver the user's decision for a pending tool-approval prompt. 204 on success. */
+	respondToPermission(approvalId: string, decision: 'once' | 'always' | 'deny'): Promise<void> {
+		return this.requestNullable<void>('POST', `/permissions/${encodeURIComponent(approvalId)}/respond`, { decision }).then(() => undefined);
+	}
+
+	/** Deliver the user's answers (or rejection) for a pending tool-question prompt. 204 on success. */
+	respondToQuestion(questionId: string, body: { answers?: string[][]; rejected?: boolean }): Promise<void> {
+		return this.requestNullable<void>('POST', `/questions/${encodeURIComponent(questionId)}/respond`, body).then(() => undefined);
+	}
+
 	// ── Session folders + pins ─────────────────────────────────────
 
 	listSessionFolders(scope: string):                                Promise<unknown[]> { return this.get('/session-folders', { scope }); }
@@ -346,6 +418,38 @@ export interface LisChatSummary {
 	archived_at:  string | null;
 	created_at:   string;
 	updated_at:   string;
+}
+
+/**
+ * Mirror of <c>Lis.Api.Schemas.Chats.MessageDto</c>. Tool-specific fields
+ * (<c>tool_name</c>/<c>tool_args</c>/<c>tool_is_error</c>) are non-null only for
+ * tool rows; <c>thinking_content</c> only for assistant rows.
+ */
+export interface LisMessageSummary {
+	id:                      string;
+	role:                    string;
+	text:                    string | null;
+	timestamp:               string;
+	input_tokens:            number | null;
+	output_tokens:           number | null;
+	cache_read_tokens:       number | null;
+	cache_creation_tokens:   number | null;
+	thinking_tokens:         number | null;
+	tool_name:               string | null;
+	tool_args:               string | null;
+	tool_is_error:           boolean | null;
+	thinking_content:        string | null;
+}
+
+/** Body of `POST /api/chats/{id}/messages`. Either `text` OR `attachments` is required. */
+export interface SendChatMessageBody {
+	text?:          string | null;
+	dispatch?:      'default' | 'immediate' | 'queue_only' | 'interrupt' | null;
+	model?:         string | null;
+	effort?:        string | null;
+	tool_profile?:  string | null;
+	thinking_mode?: 'budget' | 'adaptive' | 'auto' | null;
+	attachments?:   { data_url: string; mime_type: string }[];
 }
 
 // ── GitHub status: snake_case wire ↔ camelCase response ──────────────────────
