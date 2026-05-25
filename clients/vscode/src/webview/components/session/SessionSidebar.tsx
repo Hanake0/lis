@@ -1533,6 +1533,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
       <SidebarHeader
         hideDirectoryControls={hideDirectoryControls}
         handleOpenDirectoryDialog={handleOpenDirectoryDialog}
+        handleNewChat={() => openNewSessionDraft({})}
         canOpenMultiRun={projects.length > 0}
         openMultiRunLauncher={handleOpenMultiRunFromHeader}
         headerActionIconClass={headerActionIconClass}

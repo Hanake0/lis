@@ -16,6 +16,7 @@ import { useI18n } from '@/lib/i18n';
 type Props = {
   hideDirectoryControls: boolean;
   handleOpenDirectoryDialog: () => void;
+  handleNewChat?: () => void;
   canOpenMultiRun: boolean;
   openMultiRunLauncher: () => void;
   headerActionIconClass: string;
@@ -39,6 +40,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
   const {
     hideDirectoryControls,
     handleOpenDirectoryDialog,
+    handleNewChat,
     canOpenMultiRun,
     openMultiRunLauncher,
     headerActionIconClass,
@@ -84,6 +86,22 @@ export function SidebarHeader(props: Props): React.ReactNode {
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.header.actions.addProject')}</p></TooltipContent>
             </Tooltip>
+
+            {handleNewChat ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleNewChat}
+                    className={headerActionButtonClass}
+                    aria-label={t('sessions.sidebar.header.actions.newSession')}
+                  >
+                    <Icon name="chat-new" className={headerActionIconClass} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.header.actions.newSession')}</p></TooltipContent>
+              </Tooltip>
+            ) : null}
 
             <Tooltip>
               <TooltipTrigger asChild>
