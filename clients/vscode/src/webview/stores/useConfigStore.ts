@@ -151,16 +151,16 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 				const defaults: ProviderDefaults = result.default ?? { model: null, agent: null };
 				set((prev: any) => {
 					const next: any = { providers, defaultProviders: defaults };
-					// Resolve the default model on first load only — don't trample an
-					// explicit user selection on refresh.
-					if (!prev.currentProviderId && !prev.currentModelId && defaults.model) {
-						// Default models from the API don't carry a provider id in the agent
-						// row today; pick the first provider that contains the model id.
+					// Resolve currentProviderId: if the user (or the agent-loader)
+					// has already picked a model but the provider isn't set yet,
+					// walk providers to find which one owns it. This also covers
+					// the cold start where defaults.model lands first.
+					const candidateModelId = prev.currentModelId || defaults.model || null;
+					if (candidateModelId && !prev.currentProviderId) {
 						for (const provider of providers) {
-							const model = provider.models.find((m) => m.id === defaults.model);
-							if (model) {
+							if (provider.models.find((m) => m.id === candidateModelId)) {
 								next.currentProviderId  = provider.id;
-								next.currentModelId     = model.id;
+								next.currentModelId     = candidateModelId;
 								next.selectedProviderId = provider.id;
 								break;
 							}
@@ -249,8 +249,20 @@ useChatStore.subscribe((state) => {
 		};
 		// Only adopt the composer-side model if the providers list hasn't
 		// resolved one yet — otherwise the user's explicit selection sticks.
+		// If we already have providers loaded, also resolve the provider id
+		// for this model so the model picker shows the name (not "Not
+		// selected").
 		if (model && !prev.currentModelId) {
 			next.currentModelId = model;
+			if (!prev.currentProviderId && Array.isArray(prev.providers)) {
+				for (const provider of prev.providers) {
+					if ((provider.models ?? []).find((m: ProviderModel) => m.id === model)) {
+						next.currentProviderId  = provider.id;
+						next.selectedProviderId = provider.id;
+						break;
+					}
+				}
+			}
 		}
 		return next;
 	});
