@@ -707,7 +707,14 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     </>
   );
 
-  if (isMobile) {
+  // Render via MobileOverlayPanel in two cases: (a) mobile (OC original),
+  // and (b) Lis's dedicated Add-Project picker webview (flag set in the
+  // panel's HTML before mount). MobileOverlayPanel is OC's centered-card
+  // overlay surface — exactly the modal-feel layout we want in our editor-
+  // tab picker, instead of the cramped <Dialog> wrapper.
+  const isAddProjectPanel = typeof window !== 'undefined'
+    && (window as unknown as { __LIS_ADD_PROJECT_MODE?: boolean }).__LIS_ADD_PROJECT_MODE === true;
+  if (isMobile || isAddProjectPanel) {
     return (
       <MobileOverlayPanel
         open={open}

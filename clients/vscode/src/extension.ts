@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { AddProjectPanelManager } from './addProjectPanel';
 import { ChatPanelManager } from './chatPanel';
 import { DEFAULT_SERVER_URL, readConfigFrom, type LisConfig } from './config';
 import { Logger } from './logger';
@@ -8,10 +9,11 @@ import { SidebarWebviewProvider } from './sidebarWebviewProvider';
 
 const FIRST_RUN_KEY = 'lis.firstRunNotificationDismissed';
 
-let sidebar:   SidebarWebviewProvider | null = null;
-let panels:    ChatPanelManager | null = null;
-let logger:    Logger | null = null;
-let statusBar: LisStatusBar | null = null;
+let sidebar:    SidebarWebviewProvider | null = null;
+let panels:     ChatPanelManager | null = null;
+let addProject: AddProjectPanelManager | null = null;
+let logger:     Logger | null = null;
+let statusBar:  LisStatusBar | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
 	let cfg: LisConfig = readConfigFrom(vscode.workspace.getConfiguration('lis'));
@@ -33,9 +35,10 @@ export function activate(context: vscode.ExtensionContext): void {
 		});
 	}
 
-	sidebar   = new SidebarWebviewProvider(context.extensionUri, getConfig, logger);
-	panels    = new ChatPanelManager(context, getConfig, logger);
-	statusBar = new LisStatusBar();
+	sidebar    = new SidebarWebviewProvider(context.extensionUri, getConfig, logger);
+	panels     = new ChatPanelManager(context, getConfig, logger);
+	addProject = new AddProjectPanelManager(context, getConfig, logger);
+	statusBar  = new LisStatusBar();
 
 	// All transport state now lives in the webview's LisRpcClient — the SSE channel
 	// there tracks the real connect/disconnect state. The host-side status bar shows
@@ -75,6 +78,14 @@ export function activate(context: vscode.ExtensionContext): void {
 			panels?.openOrFocus(chatId, title);
 		}),
 
+		// Opens the singleton Add-Project picker (editor tab with a modal-feel
+		// centered card). Accepts an optional defaultPath the sidebar uses to
+		// seed the dialog with the active project's location.
+		vscode.commands.registerCommand('lis.openAddProject', (defaultPath?: unknown) => {
+			const seed = typeof defaultPath === 'string' && defaultPath.length > 0 ? defaultPath : null;
+			addProject?.openOrFocus(seed);
+		}),
+
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (!e.affectsConfiguration('lis')) return;
 			cfg = readConfigFrom(vscode.workspace.getConfiguration('lis'));
@@ -84,6 +95,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			// re-opens the EventSource against the new server without a reload.
 			sidebar?.notifyConfigChange();
 			panels?.notifyConfigChange();
+			addProject?.notifyConfigChange();
 		}),
 
 		// Mirror VS Code workspace changes into the webview's useDirectoryStore so
@@ -91,6 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
 			sidebar?.notifyWorkspaceChange();
 			panels?.notifyWorkspaceChange();
+			addProject?.notifyWorkspaceChange();
 		}),
 	);
 
@@ -104,10 +117,11 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {
 	statusBar?.dispose();
 	logger?.dispose();
-	sidebar   = null;
-	panels    = null;
-	statusBar = null;
-	logger    = null;
+	sidebar    = null;
+	panels     = null;
+	addProject = null;
+	statusBar  = null;
+	logger     = null;
 }
 
 async function promptFirstRun(context: vscode.ExtensionContext, serverUrl: string): Promise<void> {

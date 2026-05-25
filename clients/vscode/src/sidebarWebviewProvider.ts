@@ -88,6 +88,14 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					void vscode.commands.executeCommand('lis.newChat', msg.project_external_id);
 					return;
 
+				case 'open_add_project':
+					// Sidebar's "+ Add project" toolbar button: route to the singleton
+					// editor-tab picker so the modal-feel card has room to breathe.
+					// `default_path` seeds the dialog with the active project's path.
+					this.logger?.info(`sidebar: open_add_project — default=${msg.default_path ?? '∅'}`);
+					void vscode.commands.executeCommand('lis.openAddProject', msg.default_path);
+					return;
+
 				case 'lis.log':
 					relayWebviewLog(this.logger, msg);
 					return;

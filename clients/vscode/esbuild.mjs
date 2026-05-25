@@ -63,13 +63,23 @@ const webviewConfig = {
 	},
 };
 
+// Standalone bundle for the Add-Project picker webview. Same React/Tailwind/
+// alias setup as chat.js but a smaller entry that only pulls in
+// DirectoryExplorerDialog + its deps — keeps the picker tab snappy.
+const addProjectConfig = {
+	...webviewConfig,
+	entryPoints: ['src/webview/addProject.ts'],
+	outfile: 'dist/addProject.js',
+};
+
 if (watch) {
-	const [extCtx, wvCtx] = await Promise.all([
+	const [extCtx, wvCtx, apCtx] = await Promise.all([
 		context(extensionConfig),
 		context(webviewConfig),
+		context(addProjectConfig),
 	]);
-	await Promise.all([extCtx.watch(), wvCtx.watch()]);
+	await Promise.all([extCtx.watch(), wvCtx.watch(), apCtx.watch()]);
 	console.log('watching for changes...');
 } else {
-	await Promise.all([build(extensionConfig), build(webviewConfig)]);
+	await Promise.all([build(extensionConfig), build(webviewConfig), build(addProjectConfig)]);
 }

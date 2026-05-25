@@ -60,6 +60,10 @@
       {
         "command": "lis.configure",
         "title": "Lis: Configure"
+      },
+      {
+        "command": "lis.openAddProject",
+        "title": "Lis: Add Project"
       }
     ],
     "configuration": {

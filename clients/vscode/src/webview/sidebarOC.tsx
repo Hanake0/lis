@@ -7,6 +7,7 @@ import { vscode } from './vscodeApi';
 import { useSessionUIStore } from './sync/session-ui-store';
 import { useProjectsStore } from './stores/useProjectsStore';
 import { normalizePath } from './components/session/sidebar/utils';
+import { sessionEvents } from './lib/sessionEvents';
 
 /**
  * Side effects required before the sidebar renders:
@@ -59,6 +60,22 @@ export function installSidebarFrameHandler(): void {
 			vscode.postMessage({ type: 'new_chat', project_external_id: projectId });
 		},
 	});
+
+	// Route the "+ Add project" toolbar button (and any other call site that
+	// fires sessionEvents.requestDirectoryDialog) through the host so the
+	// picker opens as the modal-feel editor-tab panel — not crammed inside
+	// the ~485px-wide sidebar. The host command seeds the dialog with the
+	// active project's path so the user lands somewhere useful.
+	const origRequestDirectoryDialog = sessionEvents.requestDirectoryDialog;
+	sessionEvents.requestDirectoryDialog = () => {
+		const { projects, activeProjectId } = useProjectsStore.getState();
+		const active = activeProjectId ? projects.find((p) => p.id === activeProjectId) : null;
+		const seed   = active?.path ?? projects[0]?.path ?? null;
+		vscode.postMessage({ type: 'open_add_project', default_path: seed });
+		// Don't dispatch to the local listeners — the in-sidebar
+		// DirectoryExplorerDialog stays closed.
+		void origRequestDirectoryDialog;
+	};
 }
 
 export function SidebarOCApp() {
