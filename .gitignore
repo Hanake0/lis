@@ -383,3 +383,7 @@ FodyWeavers.xsd
 
 # VS Code extension packaged artifacts
 clients/vscode/*.vsix
+.vscode/
+
+# Scratch screenshots from Playwright MCP / manual capture
+/*.png
