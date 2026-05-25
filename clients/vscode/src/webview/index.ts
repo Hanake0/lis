@@ -5,6 +5,7 @@ import { vscode } from './vscodeApi';
 import { LisRpcClient } from './lib/lis/rpc-client';
 import { mountChatEventsBridge } from './sync/chat-events-bridge';
 import { useGlobalSessionsStore } from './stores/useGlobalSessionsStore';
+import { installProjectsSync } from './stores/useProjectsStore';
 
 // Install the RPC client BEFORE any store boots. `install()` registers the
 // window message listener that translates the extension host's `lis.init` /
@@ -28,6 +29,11 @@ mountChatEventsBridge();
 LisRpcClient.instance().onConfigure(() => {
 	void useGlobalSessionsStore.getState().loadSessions();
 });
+
+// Wire useProjectsStore: initial REST load on configure + live SSE updates for
+// project_created/updated/deleted. Without this the sidebar falls back to the
+// synthetic project hack and projects edited elsewhere never appear.
+installProjectsSync();
 
 const isSidebarMode = (window as any).__LIS_SIDEBAR_MODE === true;
 

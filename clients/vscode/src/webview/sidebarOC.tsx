@@ -5,39 +5,20 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { I18nProvider } from './lib/i18n';
 import { vscode } from './vscodeApi';
 import { useSessionUIStore } from './sync/session-ui-store';
-import { useProjectsStore } from './stores/useProjectsStore';
-
-const LIS_PROJECT_ID = 'lis';
-const LIS_PROJECT_PATH = '/lis';
-
-/**
- * Sidebar uses a single synthetic "Lis" project until Stage 3's REST projects
- * land in the sidebar UI. Once `useProjectsStore` is wired to `/api/projects`
- * the seed disappears and real projects flow in from the backend.
- */
-function ensureLisProject(): void {
-	const state = useProjectsStore.getState();
-	if (state.projects?.some((p: any) => p.id === LIS_PROJECT_ID)) return;
-	useProjectsStore.setState({
-		projects: [{ id: LIS_PROJECT_ID, path: LIS_PROJECT_PATH, label: 'Lis' }],
-		activeProjectId: LIS_PROJECT_ID,
-	});
-}
 
 /**
  * Side effects required before the sidebar renders:
  *  - dark + lis-sidebar CSS scope on `<html>` so design-system tokens resolve.
- *  - One-off "Lis" project so the sidebar has a project to group sessions under.
  *  - Intercept `setCurrentSession` to send `open_session` to the extension host,
  *    which routes the click to `ChatPanelManager.openOrFocus`.
  *
- * Frame/state postMessage handling that previously lived here is dead — the
- * sidebar now reads its session list from `useGlobalSessionsStore`, which is
- * fed by the global SSE bridge in [sync/chat-events-bridge.ts](./sync/chat-events-bridge.ts).
+ * Project state comes from `useProjectsStore` (wired via `installProjectsSync`
+ * in webview/index.ts), session lifecycle comes from `useGlobalSessionsStore`
+ * (wired via `chat-events-bridge`). The legacy synthetic Lis-project hack and
+ * the WS-frame postMessage handler that used to live here are both gone.
  */
 export function installSidebarFrameHandler(): void {
 	document.documentElement.classList.add('dark', 'lis-sidebar');
-	ensureLisProject();
 
 	const orig = useSessionUIStore.getState().setCurrentSession;
 	useSessionUIStore.setState({

@@ -212,17 +212,23 @@ export const useProjectsStore = create<ProjectsStore>((set, get) => ({
 }));
 
 /**
- * Wires the store to the {@link LisRpcClient} SSE feed. Call this once near
- * webview boot, after `LisRpcClient.install`.
+ * Wires the store to the {@link LisRpcClient} SSE feed AND triggers the
+ * initial REST load as soon as config arrives. Call this once near webview
+ * boot, after `LisRpcClient.install`. Returns a combined unsubscribe.
+ *
+ * Loading is gated on `onConfigure` so the first fetch doesn't race against
+ * the host's `lis.init` postMessage (the bug fixed for useGlobalSessionsStore
+ * in eb03cf3 — same shape applies here).
  */
 export function installProjectsSync(): () => void {
 	const client = LisRpcClient.instance();
 	const store = useProjectsStore.getState();
 
-	// Initial load.
-	void store.loadAll();
+	// Bootstrap the initial REST load every time config is set (initial + future
+	// `lis.config_update`). The store's own loading flag de-dups concurrent calls.
+	const unsubConfigure = client.onConfigure(() => void store.loadAll());
 
-	const unsubscribe = client.onSse((ev) => {
+	const unsubSse = client.onSse((ev) => {
 		switch (ev.event) {
 			case 'project_created':
 				if (isProjectPayload(ev.data)) store._applyProjectCreated(ev.data.project);
@@ -237,7 +243,7 @@ export function installProjectsSync(): () => void {
 				return;
 		}
 	});
-	return unsubscribe;
+	return () => { unsubConfigure(); unsubSse(); };
 }
 
 function isProjectPayload(data: unknown): data is { project: ProjectEntry } {

@@ -43,6 +43,19 @@ builder.Services.AddControllers(o => o.Filters.Add<ApiExceptionFilter>())
 // Error handling
 builder.Services.AddProblemDetails();
 
+// CORS — required so the VS Code webview (origin `vscode-webview://*`) and any
+// browser-based test fixtures can hit /api/* directly. Extra origins are read
+// from `LIS_CORS_ALLOWED_ORIGINS` (comma-separated) for local dev workflows
+// like the `python -m http.server` test-sidebar fixture.
+string[] extraOrigins = Env("LIS_CORS_ALLOWED_ORIGINS")
+	.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
+	.SetIsOriginAllowed(origin => origin.StartsWith("vscode-webview://", StringComparison.OrdinalIgnoreCase)
+	                              || extraOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+	.AllowAnyMethod()
+	.AllowAnyHeader()
+	.WithExposedHeaders("Last-Event-ID")));
+
 // Time + event bus (singletons — the bus holds in-memory subscriber state and a replay ring)
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IEventBus, EventBus>();
@@ -194,6 +207,7 @@ if (app.Services.GetService<IConversationService>() is MessageDebouncer debounce
 
 // Middleware
 app.UseExceptionHandler();
+app.UseCors();
 
 // Endpoints
 app.MapControllers();
