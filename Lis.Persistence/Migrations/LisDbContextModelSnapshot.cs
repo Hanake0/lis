@@ -284,6 +284,12 @@ namespace Lis.Persistence.Migrations
                         .HasColumnName("debounce_ms")
                         .HasJsonPropertyName("debounce_ms");
 
+                    b.Property<string>("Directory")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)")
+                        .HasColumnName("directory")
+                        .HasJsonPropertyName("directory");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean")
                         .HasColumnName("enabled")

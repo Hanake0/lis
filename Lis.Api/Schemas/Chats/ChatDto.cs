@@ -15,6 +15,7 @@ public sealed record ChatDto(
 	[property: JsonPropertyName("chat_id")]      string  ChatId,
 	[property: JsonPropertyName("name")]         string? Name,
 	[property: JsonPropertyName("project_id")]   string? ProjectExternalId,
+	[property: JsonPropertyName("directory")]    string? Directory,
 	[property: JsonPropertyName("pinned_at")]    DateTimeOffset? PinnedAt,
 	[property: JsonPropertyName("archived_at")]  DateTimeOffset? ArchivedAt,
 	[property: JsonPropertyName("created_at")]   DateTimeOffset CreatedAt,
@@ -24,6 +25,7 @@ public sealed record ChatDto(
 		ChatId:            c.ExternalId,
 		Name:              c.Name,
 		ProjectExternalId: c.Project?.ExternalId,
+		Directory:         c.Directory,
 		PinnedAt:          c.PinnedAt,
 		ArchivedAt:        c.ArchivedAt,
 		CreatedAt:         c.CreatedAt,
@@ -44,12 +46,15 @@ public sealed record CreateChatRequest(
 );
 
 /// <summary>
-/// Patch a chat. Today only <c>name</c> is patchable (rename) — broader edits
-/// (project move, agent reassignment, override save) go through their own
-/// dedicated endpoints. Null fields are left unchanged.
+/// Patch a chat. Today only <c>name</c> and <c>directory</c> are patchable
+/// (rename + per-chat working-directory binding). Project move, agent
+/// reassignment, and override save go through their own dedicated
+/// endpoints. Null fields are left unchanged. To CLEAR <c>directory</c>
+/// (revert to project-root inheritance) send the literal empty string.
 /// </summary>
 public sealed record UpdateChatRequest(
-	[property: JsonPropertyName("name")] [MaxLength(256)] string? Name
+	[property: JsonPropertyName("name")]      [MaxLength(256)]  string? Name,
+	[property: JsonPropertyName("directory")] [MaxLength(1024)] string? Directory
 );
 
 /// <summary>

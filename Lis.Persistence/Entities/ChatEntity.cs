@@ -83,6 +83,17 @@ public sealed class ChatEntity {
 	[JsonPropertyName("project_id")]
 	public long? ProjectId { get; set; }
 
+	/// <summary>
+	/// Per-chat working directory the agent's tools (read, bash, git) treat as
+	/// cwd. <c>null</c> means "use the project root" (or the channel's default
+	/// when the chat has no project either). The webview composer's worktree
+	/// pill writes here via <c>PATCH /api/chats/{id}</c>.
+	/// </summary>
+	[MaxLength(1024)]
+	[Column("directory", TypeName = "varchar(1024)")]
+	[JsonPropertyName("directory")]
+	public string? Directory { get; set; }
+
 	[Column("pinned_at")]
 	[JsonPropertyName("pinned_at")]
 	public DateTimeOffset? PinnedAt { get; set; }

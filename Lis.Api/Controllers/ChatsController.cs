@@ -102,9 +102,11 @@ public sealed class ChatsController(
 	}
 
 	/// <summary>
-	/// Rename a chat. Only <c>name</c> is patchable here — broader chat editing
-	/// (project move, agent reassignment, override save) goes through dedicated
-	/// endpoints with their own permission/validation rules.
+	/// Rename a chat, or rebind its per-chat working directory. Project move,
+	/// agent reassignment, and override save go through dedicated endpoints
+	/// with their own permission/validation rules. <c>directory = ""</c> CLEARS
+	/// the override (the chat falls back to the project root); a non-empty
+	/// string sets it.
 	/// </summary>
 	[HttpPatch("{chatExternalId}")]
 	[ProducesResponseType(typeof(ChatDto),         StatusCodes.Status200OK)]
@@ -123,6 +125,10 @@ public sealed class ChatsController(
 			string trimmed = request.Name.Trim();
 			if (trimmed.Length == 0) throw new ArgumentException("name cannot be empty", nameof(request));
 			chat.Name = trimmed;
+		}
+		if (request.Directory is not null) {
+			string dir = request.Directory.Trim();
+			chat.Directory = dir.Length == 0 ? null : dir;
 		}
 		chat.UpdatedAt = time.GetUtcNow();
 		await db.SaveChangesAsync(ct);
