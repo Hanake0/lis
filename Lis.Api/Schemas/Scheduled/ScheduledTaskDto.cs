@@ -42,23 +42,23 @@ public sealed record ScheduledTaskDto(
 }
 
 public sealed record CreateScheduledTaskRequest(
-	[property: JsonPropertyName("name"),       Required, MaxLength(256)] string  Name,
-	[property: JsonPropertyName("cron_expr"),  Required, MaxLength(128)] string  CronExpression,
-	[property: JsonPropertyName("prompt"),     Required]                 string  Prompt,
-	[property: JsonPropertyName("project_id"), MaxLength(64)]            string? ProjectId,
-	[property: JsonPropertyName("agent_name"), MaxLength(64)]            string? AgentName,
-	[property: JsonPropertyName("model"),      MaxLength(128)]           string? Model,
-	[property: JsonPropertyName("timezone"),   MaxLength(64)]            string? Timezone,
+	[property: JsonPropertyName("name")] [Required, MaxLength(256)] string  Name,
+	[property: JsonPropertyName("cron_expr")] [Required, MaxLength(128)] string  CronExpression,
+	[property: JsonPropertyName("prompt")] [Required]                 string  Prompt,
+	[property: JsonPropertyName("project_id")] [MaxLength(64)]            string? ProjectId,
+	[property: JsonPropertyName("agent_name")] [MaxLength(64)]            string? AgentName,
+	[property: JsonPropertyName("model")] [MaxLength(128)]           string? Model,
+	[property: JsonPropertyName("timezone")] [MaxLength(64)]            string? Timezone,
 	[property: JsonPropertyName("enabled")]                              bool    Enabled = true
 );
 
 public sealed record UpdateScheduledTaskRequest(
-	[property: JsonPropertyName("name"),       MaxLength(256)] string? Name,
-	[property: JsonPropertyName("cron_expr"),  MaxLength(128)] string? CronExpression,
+	[property: JsonPropertyName("name")] [MaxLength(256)] string? Name,
+	[property: JsonPropertyName("cron_expr")] [MaxLength(128)] string? CronExpression,
 	[property: JsonPropertyName("prompt")]                     string? Prompt,
-	[property: JsonPropertyName("project_id"), MaxLength(64)]  string? ProjectId,
-	[property: JsonPropertyName("agent_name"), MaxLength(64)]  string? AgentName,
-	[property: JsonPropertyName("model"),      MaxLength(128)] string? Model,
-	[property: JsonPropertyName("timezone"),   MaxLength(64)]  string? Timezone,
+	[property: JsonPropertyName("project_id")] [MaxLength(64)]  string? ProjectId,
+	[property: JsonPropertyName("agent_name")] [MaxLength(64)]  string? AgentName,
+	[property: JsonPropertyName("model")] [MaxLength(128)] string? Model,
+	[property: JsonPropertyName("timezone")] [MaxLength(64)]  string? Timezone,
 	[property: JsonPropertyName("enabled")]                    bool?   Enabled
 );

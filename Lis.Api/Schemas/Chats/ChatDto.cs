@@ -37,10 +37,10 @@ public sealed record ChatDto(
 /// by its external_id (404 if missing).
 /// </summary>
 public sealed record CreateChatRequest(
-	[property: JsonPropertyName("chat_id"), MaxLength(64)]                 string? ChatId,
-	[property: JsonPropertyName("name"), MaxLength(256)]                   string? Name,
-	[property: JsonPropertyName("project_id"), MaxLength(64)]              string? ProjectExternalId,
-	[property: JsonPropertyName("channel"), MaxLength(32)]                 string? Channel
+	[property: JsonPropertyName("chat_id")] [MaxLength(64)]                 string? ChatId,
+	[property: JsonPropertyName("name")] [MaxLength(256)]                   string? Name,
+	[property: JsonPropertyName("project_id")] [MaxLength(64)]              string? ProjectExternalId,
+	[property: JsonPropertyName("channel")] [MaxLength(32)]                 string? Channel
 );
 
 /// <summary>
@@ -49,7 +49,7 @@ public sealed record CreateChatRequest(
 /// dedicated endpoints. Null fields are left unchanged.
 /// </summary>
 public sealed record UpdateChatRequest(
-	[property: JsonPropertyName("name"), MaxLength(256)] string? Name
+	[property: JsonPropertyName("name")] [MaxLength(256)] string? Name
 );
 
 /// <summary>
@@ -60,10 +60,10 @@ public sealed record UpdateChatRequest(
 /// saved to chat history.
 /// </summary>
 public sealed record GenerateRequest(
-	[property: JsonPropertyName("visible_prompt"), Required]   string  VisiblePrompt,
+	[property: JsonPropertyName("visible_prompt")] [Required]   string  VisiblePrompt,
 	[property: JsonPropertyName("hidden_prompt")]              string? HiddenPrompt,
-	[property: JsonPropertyName("kind"),           MaxLength(32)] string? Kind,
-	[property: JsonPropertyName("model"),          MaxLength(128)] string? Model
+	[property: JsonPropertyName("kind")] [MaxLength(32)] string? Kind,
+	[property: JsonPropertyName("model")] [MaxLength(128)] string? Model
 );
 
 public sealed record GenerateResponseDto(
@@ -78,7 +78,7 @@ public sealed record GenerateResponseDto(
 /// this one immediately.
 /// </summary>
 public sealed record SetChatAgentRequest(
-	[property: JsonPropertyName("agent_name"), Required, MaxLength(64)] string AgentName
+	[property: JsonPropertyName("agent_name")] [Required, MaxLength(64)] string AgentName
 );
 
 /// <summary>
@@ -88,9 +88,9 @@ public sealed record SetChatAgentRequest(
 /// (use the agents-CRUD endpoint to clear an optional field to null).
 /// </summary>
 public sealed record SaveChatOverridesRequest(
-	[property: JsonPropertyName("model"), MaxLength(128)]        string? Model,
-	[property: JsonPropertyName("effort"), MaxLength(16)]        string? Effort,
-	[property: JsonPropertyName("tool_profile"), MaxLength(32)]  string? ToolProfile
+	[property: JsonPropertyName("model")] [MaxLength(128)]        string? Model,
+	[property: JsonPropertyName("effort")] [MaxLength(16)]        string? Effort,
+	[property: JsonPropertyName("tool_profile")] [MaxLength(32)]  string? ToolProfile
 );
 
 /// <summary>
@@ -98,8 +98,8 @@ public sealed record SaveChatOverridesRequest(
 /// frame format so the webview's compose logic doesn't need re-encoding.
 /// </summary>
 public sealed record SendMessageAttachment(
-	[property: JsonPropertyName("data_url"), Required]  string DataUrl,
-	[property: JsonPropertyName("mime_type"), Required] string MimeType
+	[property: JsonPropertyName("data_url")] [Required]  string DataUrl,
+	[property: JsonPropertyName("mime_type")] [Required] string MimeType
 );
 
 /// <summary>

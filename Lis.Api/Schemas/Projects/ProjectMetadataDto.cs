@@ -23,5 +23,5 @@ public sealed record ProjectMetadataValueDto(
 
 /// <summary>Body for `PUT /api/projects/{id}/metadata?key=`. Value is required (use DELETE to clear).</summary>
 public sealed record SetProjectMetadataRequest(
-	[property: JsonPropertyName("value"), Required] string Value
+	[property: JsonPropertyName("value")] [Required] string Value
 );

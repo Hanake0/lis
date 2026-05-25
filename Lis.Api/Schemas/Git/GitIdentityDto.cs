@@ -40,26 +40,26 @@ public sealed record GitIdentityDto(
 }
 
 public sealed record CreateGitIdentityRequest(
-	[property: JsonPropertyName("id"), MaxLength(64)]                     string? Id,
-	[property: JsonPropertyName("name"), Required, MaxLength(128)]        string  Name,
-	[property: JsonPropertyName("user_name"), Required, MaxLength(128)]   string  UserName,
-	[property: JsonPropertyName("user_email"), Required, MaxLength(256)]  string  UserEmail,
-	[property: JsonPropertyName("auth_type"), MaxLength(8)]               string? AuthType,
-	[property: JsonPropertyName("ssh_key_path"), MaxLength(1024)]         string? SshKeyPath,
-	[property: JsonPropertyName("host"), MaxLength(128)]                  string? Host,
-	[property: JsonPropertyName("color"), MaxLength(32)]                  string? Color,
-	[property: JsonPropertyName("icon"), MaxLength(64)]                   string? Icon
+	[property: JsonPropertyName("id")] [MaxLength(64)]                     string? Id,
+	[property: JsonPropertyName("name")] [Required, MaxLength(128)]        string  Name,
+	[property: JsonPropertyName("user_name")] [Required, MaxLength(128)]   string  UserName,
+	[property: JsonPropertyName("user_email")] [Required, MaxLength(256)]  string  UserEmail,
+	[property: JsonPropertyName("auth_type")] [MaxLength(8)]               string? AuthType,
+	[property: JsonPropertyName("ssh_key_path")] [MaxLength(1024)]         string? SshKeyPath,
+	[property: JsonPropertyName("host")] [MaxLength(128)]                  string? Host,
+	[property: JsonPropertyName("color")] [MaxLength(32)]                  string? Color,
+	[property: JsonPropertyName("icon")] [MaxLength(64)]                   string? Icon
 );
 
 public sealed record UpdateGitIdentityRequest(
-	[property: JsonPropertyName("name"), MaxLength(128)]        string? Name,
-	[property: JsonPropertyName("user_name"), MaxLength(128)]   string? UserName,
-	[property: JsonPropertyName("user_email"), MaxLength(256)]  string? UserEmail,
-	[property: JsonPropertyName("auth_type"), MaxLength(8)]     string? AuthType,
-	[property: JsonPropertyName("ssh_key_path"), MaxLength(1024)] string? SshKeyPath,
-	[property: JsonPropertyName("host"), MaxLength(128)]        string? Host,
-	[property: JsonPropertyName("color"), MaxLength(32)]        string? Color,
-	[property: JsonPropertyName("icon"), MaxLength(64)]         string? Icon
+	[property: JsonPropertyName("name")] [MaxLength(128)]        string? Name,
+	[property: JsonPropertyName("user_name")] [MaxLength(128)]   string? UserName,
+	[property: JsonPropertyName("user_email")] [MaxLength(256)]  string? UserEmail,
+	[property: JsonPropertyName("auth_type")] [MaxLength(8)]     string? AuthType,
+	[property: JsonPropertyName("ssh_key_path")] [MaxLength(1024)] string? SshKeyPath,
+	[property: JsonPropertyName("host")] [MaxLength(128)]        string? Host,
+	[property: JsonPropertyName("color")] [MaxLength(32)]        string? Color,
+	[property: JsonPropertyName("icon")] [MaxLength(64)]         string? Icon
 );
 
 /// <summary>Read-only snapshot of the user's host-wide git config identity.</summary>
@@ -77,5 +77,5 @@ public sealed record DefaultGitIdentityDto(
 );
 
 public sealed record SetDefaultGitIdentityRequest(
-	[property: JsonPropertyName("external_id"), MaxLength(64)] string? ExternalId
+	[property: JsonPropertyName("external_id")] [MaxLength(64)] string? ExternalId
 );

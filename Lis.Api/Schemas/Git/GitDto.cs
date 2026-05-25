@@ -49,14 +49,14 @@ public sealed record WorktreeMetadataDto(
 }
 
 public sealed record CreateWorktreeRequest(
-	[property: JsonPropertyName("project_path"), Required, MaxLength(1024)] string ProjectPath,
-	[property: JsonPropertyName("new_path"),    Required, MaxLength(1024)]  string NewPath,
-	[property: JsonPropertyName("branch"),      Required, MaxLength(256)]   string Branch
+	[property: JsonPropertyName("project_path")] [Required, MaxLength(1024)] string ProjectPath,
+	[property: JsonPropertyName("new_path")] [Required, MaxLength(1024)]  string NewPath,
+	[property: JsonPropertyName("branch")] [Required, MaxLength(256)]   string Branch
 );
 
 public sealed record RemoveWorktreeRequest(
-	[property: JsonPropertyName("project_path"),  Required, MaxLength(1024)] string ProjectPath,
-	[property: JsonPropertyName("worktree_path"), Required, MaxLength(1024)] string WorktreePath,
+	[property: JsonPropertyName("project_path")] [Required, MaxLength(1024)] string ProjectPath,
+	[property: JsonPropertyName("worktree_path")] [Required, MaxLength(1024)] string WorktreePath,
 	[property: JsonPropertyName("force")]                                    bool   Force
 );
 
@@ -70,14 +70,14 @@ public sealed record BranchRefDto(
 }
 
 public sealed record CreateBranchRequest(
-	[property: JsonPropertyName("path"), Required, MaxLength(1024)] string  Path,
-	[property: JsonPropertyName("name"), Required, MaxLength(256)]  string  Name,
-	[property: JsonPropertyName("start_point"), MaxLength(256)]     string? StartPoint
+	[property: JsonPropertyName("path")] [Required, MaxLength(1024)] string  Path,
+	[property: JsonPropertyName("name")] [Required, MaxLength(256)]  string  Name,
+	[property: JsonPropertyName("start_point")] [MaxLength(256)]     string? StartPoint
 );
 
 public sealed record RenameBranchRequest(
-	[property: JsonPropertyName("path"),     Required, MaxLength(1024)] string Path,
-	[property: JsonPropertyName("new_name"), Required, MaxLength(256)]  string NewName
+	[property: JsonPropertyName("path")] [Required, MaxLength(1024)] string Path,
+	[property: JsonPropertyName("new_name")] [Required, MaxLength(256)]  string NewName
 );
 
 // ── Stash ────────────────────────────────────────────────────────────
@@ -115,8 +115,8 @@ public sealed record StashListDto(
 );
 
 public sealed record SaveStashRequest(
-	[property: JsonPropertyName("path"), Required, MaxLength(1024)] string  Path,
-	[property: JsonPropertyName("message"), MaxLength(1024)]        string? Message,
+	[property: JsonPropertyName("path")] [Required, MaxLength(1024)] string  Path,
+	[property: JsonPropertyName("message")] [MaxLength(1024)]        string? Message,
 	[property: JsonPropertyName("include_untracked")]               bool    IncludeUntracked
 );
 
@@ -137,8 +137,8 @@ public sealed record StashOpResultDto(
 );
 
 public sealed record StashFileCountsRequest(
-	[property: JsonPropertyName("path"), Required, MaxLength(1024)] string                Path,
-	[property: JsonPropertyName("refs"), Required]                  IReadOnlyList<string> Refs
+	[property: JsonPropertyName("path")] [Required, MaxLength(1024)] string                Path,
+	[property: JsonPropertyName("refs")] [Required]                  IReadOnlyList<string> Refs
 );
 
 public sealed record StashFileCountsDto(
@@ -178,7 +178,7 @@ public sealed record WorktreeBootstrapStatusDto(
 }
 
 public sealed record SetWorktreeBootstrapStatusRequest(
-	[property: JsonPropertyName("worktree_path"), Required, MaxLength(1024)] string  WorktreePath,
-	[property: JsonPropertyName("status"),        Required, MaxLength(16)]   string  Status,
-	[property: JsonPropertyName("error"),                   MaxLength(2048)] string? Error
+	[property: JsonPropertyName("worktree_path")] [Required, MaxLength(1024)] string  WorktreePath,
+	[property: JsonPropertyName("status")] [Required, MaxLength(16)]   string  Status,
+	[property: JsonPropertyName("error")] [MaxLength(2048)] string? Error
 );

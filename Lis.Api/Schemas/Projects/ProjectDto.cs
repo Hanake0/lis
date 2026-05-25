@@ -43,21 +43,21 @@ public sealed record ProjectDto(
 }
 
 public sealed record CreateProjectRequest(
-	[property: JsonPropertyName("path"), Required, MaxLength(1024)] string  Path,
-	[property: JsonPropertyName("label"), MaxLength(256)]            string? Label,
-	[property: JsonPropertyName("color"), MaxLength(32)]             string? Color
+	[property: JsonPropertyName("path")] [Required, MaxLength(1024)] string  Path,
+	[property: JsonPropertyName("label")] [MaxLength(256)]            string? Label,
+	[property: JsonPropertyName("color")] [MaxLength(32)]             string? Color
 );
 
 public sealed record UpdateProjectRequest(
-	[property: JsonPropertyName("label"), MaxLength(256)]              string? Label,
-	[property: JsonPropertyName("color"), MaxLength(32)]               string? Color,
-	[property: JsonPropertyName("icon"), MaxLength(64)]                string? Icon,
-	[property: JsonPropertyName("icon_background"), MaxLength(16)]     string? IconBackground,
+	[property: JsonPropertyName("label")] [MaxLength(256)]              string? Label,
+	[property: JsonPropertyName("color")] [MaxLength(32)]               string? Color,
+	[property: JsonPropertyName("icon")] [MaxLength(64)]                string? Icon,
+	[property: JsonPropertyName("icon_background")] [MaxLength(16)]     string? IconBackground,
 	[property: JsonPropertyName("sidebar_collapsed")]                  bool?   SidebarCollapsed
 );
 
 public sealed record ReorderProjectsRequest(
-	[property: JsonPropertyName("ordered_external_ids"), Required] IReadOnlyList<string> OrderedExternalIds
+	[property: JsonPropertyName("ordered_external_ids")] [Required] IReadOnlyList<string> OrderedExternalIds
 );
 
 public sealed record MoveChatRequest(
@@ -65,7 +65,7 @@ public sealed record MoveChatRequest(
 );
 
 public sealed record SetIconRequest(
-	[property: JsonPropertyName("mime"), Required, MaxLength(64)] string Mime,
-	[property: JsonPropertyName("blob_base64"), Required]         string BlobBase64,
-	[property: JsonPropertyName("source"), Required, MaxLength(8)] string Source
+	[property: JsonPropertyName("mime")] [Required, MaxLength(64)] string Mime,
+	[property: JsonPropertyName("blob_base64")] [Required]         string BlobBase64,
+	[property: JsonPropertyName("source")] [Required, MaxLength(8)] string Source
 );

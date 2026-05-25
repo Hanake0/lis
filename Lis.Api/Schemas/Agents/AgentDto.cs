@@ -60,20 +60,20 @@ public sealed record AgentDto(
 /// default agent's model so new custom agents are immediately usable).
 /// </summary>
 public sealed record CreateAgentRequest(
-	[property: JsonPropertyName("name"), Required, MaxLength(64)]            string  Name,
-	[property: JsonPropertyName("display_name"), MaxLength(128)]             string? DisplayName,
-	[property: JsonPropertyName("description"), MaxLength(2048)]             string? Description,
-	[property: JsonPropertyName("model"), MaxLength(128)]                    string? Model,
-	[property: JsonPropertyName("thinking_effort"), MaxLength(16)]           string? ThinkingEffort,
-	[property: JsonPropertyName("tool_profile"), MaxLength(32)]              string? ToolProfile,
+	[property: JsonPropertyName("name")] [Required, MaxLength(64)]            string  Name,
+	[property: JsonPropertyName("display_name")] [MaxLength(128)]             string? DisplayName,
+	[property: JsonPropertyName("description")] [MaxLength(2048)]             string? Description,
+	[property: JsonPropertyName("model")] [MaxLength(128)]                    string? Model,
+	[property: JsonPropertyName("thinking_effort")] [MaxLength(16)]           string? ThinkingEffort,
+	[property: JsonPropertyName("tool_profile")] [MaxLength(32)]              string? ToolProfile,
 	[property: JsonPropertyName("max_tokens")]                               int?    MaxTokens,
 	[property: JsonPropertyName("context_budget")]                           int?    ContextBudget,
-	[property: JsonPropertyName("mode"), MaxLength(16)]                      string? Mode,
+	[property: JsonPropertyName("mode")] [MaxLength(16)]                      string? Mode,
 	[property: JsonPropertyName("prompt")]                                   string? Prompt,
 	[property: JsonPropertyName("temperature")]                              double? Temperature,
 	[property: JsonPropertyName("top_p")]                                    double? TopP,
 	[property: JsonPropertyName("permission_json")]                          string? PermissionJson,
-	[property: JsonPropertyName("scope"), MaxLength(16)]                     string? Scope,
+	[property: JsonPropertyName("scope")] [MaxLength(16)]                     string? Scope,
 	[property: JsonPropertyName("disabled")]                                 bool?   Disabled
 );
 
@@ -83,18 +83,18 @@ public sealed record CreateAgentRequest(
 /// normalises empty to <c>null</c> in the entity for optional columns).
 /// </summary>
 public sealed record UpdateAgentRequest(
-	[property: JsonPropertyName("display_name"), MaxLength(128)]             string? DisplayName,
-	[property: JsonPropertyName("description"), MaxLength(2048)]             string? Description,
-	[property: JsonPropertyName("model"), MaxLength(128)]                    string? Model,
-	[property: JsonPropertyName("thinking_effort"), MaxLength(16)]           string? ThinkingEffort,
-	[property: JsonPropertyName("tool_profile"), MaxLength(32)]              string? ToolProfile,
+	[property: JsonPropertyName("display_name")] [MaxLength(128)]             string? DisplayName,
+	[property: JsonPropertyName("description")] [MaxLength(2048)]             string? Description,
+	[property: JsonPropertyName("model")] [MaxLength(128)]                    string? Model,
+	[property: JsonPropertyName("thinking_effort")] [MaxLength(16)]           string? ThinkingEffort,
+	[property: JsonPropertyName("tool_profile")] [MaxLength(32)]              string? ToolProfile,
 	[property: JsonPropertyName("max_tokens")]                               int?    MaxTokens,
 	[property: JsonPropertyName("context_budget")]                           int?    ContextBudget,
-	[property: JsonPropertyName("mode"), MaxLength(16)]                      string? Mode,
+	[property: JsonPropertyName("mode")] [MaxLength(16)]                      string? Mode,
 	[property: JsonPropertyName("prompt")]                                   string? Prompt,
 	[property: JsonPropertyName("temperature")]                              double? Temperature,
 	[property: JsonPropertyName("top_p")]                                    double? TopP,
 	[property: JsonPropertyName("permission_json")]                          string? PermissionJson,
-	[property: JsonPropertyName("scope"), MaxLength(16)]                     string? Scope,
+	[property: JsonPropertyName("scope")] [MaxLength(16)]                     string? Scope,
 	[property: JsonPropertyName("disabled")]                                 bool?   Disabled
 );

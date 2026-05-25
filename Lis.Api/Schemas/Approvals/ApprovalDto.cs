@@ -11,5 +11,5 @@ namespace Lis.Api.Schemas.Approvals;
 /// permissive parsing.
 /// </summary>
 public sealed record RespondToApprovalRequest(
-	[property: JsonPropertyName("decision"), Required, MaxLength(16)] string Decision
+	[property: JsonPropertyName("decision")] [Required, MaxLength(16)] string Decision
 );

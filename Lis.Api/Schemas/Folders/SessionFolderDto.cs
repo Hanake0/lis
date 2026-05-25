@@ -38,20 +38,20 @@ public sealed record SessionFolderItemDto(
 }
 
 public sealed record CreateSessionFolderRequest(
-	[property: JsonPropertyName("scope_key"), Required, MaxLength(512)] string  ScopeKey,
-	[property: JsonPropertyName("name"), Required, MaxLength(256)]      string  Name,
-	[property: JsonPropertyName("parent_id"), MaxLength(64)]            string? ParentId
+	[property: JsonPropertyName("scope_key")] [Required, MaxLength(512)] string  ScopeKey,
+	[property: JsonPropertyName("name")] [Required, MaxLength(256)]      string  Name,
+	[property: JsonPropertyName("parent_id")] [MaxLength(64)]            string? ParentId
 );
 
 public sealed record RenameSessionFolderRequest(
-	[property: JsonPropertyName("name"), Required, MaxLength(256)] string Name
+	[property: JsonPropertyName("name")] [Required, MaxLength(256)] string Name
 );
 
 public sealed record ReorderSessionFoldersRequest(
-	[property: JsonPropertyName("scope_key"), Required, MaxLength(512)]              string                ScopeKey,
-	[property: JsonPropertyName("ordered_external_ids"), Required]                   IReadOnlyList<string> OrderedExternalIds
+	[property: JsonPropertyName("scope_key")] [Required, MaxLength(512)]              string                ScopeKey,
+	[property: JsonPropertyName("ordered_external_ids")] [Required]                   IReadOnlyList<string> OrderedExternalIds
 );
 
 public sealed record AddSessionsRequest(
-	[property: JsonPropertyName("chat_ids"), Required] IReadOnlyList<string> ChatIds
+	[property: JsonPropertyName("chat_ids")] [Required] IReadOnlyList<string> ChatIds
 );
