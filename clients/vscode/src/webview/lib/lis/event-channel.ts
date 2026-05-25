@@ -38,7 +38,9 @@ const defaultFactory: EventSourceFactory = (url) => new EventSource(url);
 const KNOWN_EVENTS = [
 	'project_created', 'project_updated', 'project_deleted', 'chat_moved',
 	'folder_created',  'folder_updated',  'folder_deleted',
+	'chat_created',    'chat_updated',    'chat_deleted',    'chat_archived',
 	'chat_pinned',     'chat_unpinned',
+	'agent_updated',
 	'git_status_changed',
 	'scheduled_task_created', 'scheduled_task_updated', 'scheduled_task_deleted', 'scheduled_task_run',
 	'multi_run_progress',
