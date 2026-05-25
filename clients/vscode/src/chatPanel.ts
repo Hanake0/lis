@@ -1,28 +1,11 @@
 import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
-import type { LisClient } from './lisClient';
 import { buildWorkspaceMessage, openExternalPath } from './sidebarWebviewProvider';
-import type { ConnectionState, ServerFrame } from './types';
 import { generateNonce } from './util';
 
-interface ImageAttachment {
-	filename:  string;
-	mime_type: string;
-	data_url:  string;
-}
-
 interface WebviewInbound {
-	type:           'ready' | 'send' | 'send_frame' | 'create_session' | 'delete_session' | 'rename_session' | 'archive_session' | 'lis.ready' | 'host_open_external';
-	text?:          string;
-	model?:         string;
-	effort?:        string;
-	tool_profile?:  string;
-	thinking_mode?: string;
-	attachments?:   ImageAttachment[];
-	frame?:         Record<string, unknown>;
-	chat_id?:       string;
-	name?:          string;
+	type:           'ready' | 'lis.ready' | 'host_open_external' | 'toggle_sidebar';
 	path?:          string;
 }
 
@@ -30,13 +13,14 @@ interface ChatPanel {
 	readonly chatId: string;
 	title:    string;
 	panel:    vscode.WebviewPanel;
-	ready:    boolean;
 }
 
 /**
- * Owns one editor WebviewPanel per chat_id. The webview talks REST + SSE directly
- * to the Lis backend; the extension host only ships config (lis.init /
- * lis.config_update) and legacy WS frames through postMessage.
+ * Owns one editor WebviewPanel per chat_id. The webview talks REST + SSE
+ * directly to the Lis backend — the extension host's only responsibility is
+ * to provide config (lis.init / lis.config_update), workspace info, and
+ * route the inbound `init { chatId }` envelope so the panel knows which chat
+ * to bind to. No WebSocket, no frame proxying.
  */
 export class ChatPanelManager {
 	private static readonly viewType = 'lis.chatPanel';
@@ -44,12 +28,8 @@ export class ChatPanelManager {
 
 	constructor(
 		private readonly context:   vscode.ExtensionContext,
-		private readonly client:    LisClient,
 		private          getConfig: () => LisConfig,
-	) {
-		client.onFrame(frame => this.onFrame(frame));
-		client.onState(state => this.broadcastState(state));
-	}
+	) {}
 
 	/** Push the current config to every open panel — called when settings change. */
 	notifyConfigChange(): void {
@@ -92,7 +72,7 @@ export class ChatPanelManager {
 		panel.iconPath     = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'lis-noturna.svg');
 		panel.webview.html = this.buildHtml(panel.webview);
 
-		const entry: ChatPanel = { chatId, title: resolvedTitle, panel, ready: false };
+		const entry: ChatPanel = { chatId, title: resolvedTitle, panel };
 		this.panels.set(chatId, entry);
 
 		panel.webview.onDidReceiveMessage((msg: WebviewInbound) => this.onWebviewMessage(entry, msg));
@@ -101,11 +81,14 @@ export class ChatPanelManager {
 
 	private onWebviewMessage(entry: ChatPanel, msg: WebviewInbound & { type: string }): void {
 		switch (msg.type) {
-			case 'lis.ready': {
-				// Webview booted; send the current REST/SSE config + workspace info.
+			case 'lis.ready':
+			case 'ready': {
+				// First message from the React mount — push config + workspace, then
+				// tell the panel which chat it owns so the bridge can subscribe.
 				const cfg = this.getConfig();
 				this.post(entry, { type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
 				this.post(entry, buildWorkspaceMessage());
+				this.post(entry, { type: 'init', chatId: entry.chatId });
 				return;
 			}
 
@@ -116,68 +99,7 @@ export class ChatPanelManager {
 			case 'toggle_sidebar':
 				void vscode.commands.executeCommand('workbench.view.extension.lis-sidebar');
 				return;
-			case 'ready':
-				entry.ready = true;
-				this.post(entry, { type: 'init', chatId: entry.chatId });
-				this.post(entry, { type: 'state', state: this.client.currentState });
-				this.client.send({ type: 'history',     chat_id: entry.chatId });
-				this.client.send({ type: 'get_agent',   chat_id: entry.chatId });
-				this.client.send({ type: 'list_agents' });
-				this.client.send({ type: 'list_chats' });
-				break;
-
-			case 'send':
-				if (!msg.text && !msg.attachments?.length) return;
-				this.client.send({
-					type: 'message', chat_id: entry.chatId, text: msg.text ?? '', dispatch: 'immediate',
-					model: msg.model, effort: msg.effort, tool_profile: msg.tool_profile,
-					thinking_mode: msg.thinking_mode,
-					attachments: msg.attachments,
-				});
-				break;
-
-			case 'send_frame':
-				if (msg.frame) this.client.send(msg.frame as never);
-				break;
-
-			case 'create_session':
-				if (msg.chat_id) this.client.send({ type: 'create_session', chat_id: msg.chat_id, name: msg.name });
-				break;
-
-			case 'delete_session':
-				if (msg.chat_id) this.client.send({ type: 'delete_session', chat_id: msg.chat_id });
-				break;
-
-			case 'rename_session':
-				if (msg.chat_id && msg.name) this.client.send({ type: 'rename_session', chat_id: msg.chat_id, name: msg.name });
-				break;
-
-			case 'archive_session':
-				if (msg.chat_id) this.client.send({ type: 'archive_session', chat_id: msg.chat_id });
-				break;
 		}
-	}
-
-	private onFrame(frame: ServerFrame): void {
-		if (frame.type === 'connected') return;
-
-		// Global frames — broadcast to all panels
-		if (frame.type === 'agent_list' || frame.type === 'chat_list'
-			|| frame.type === 'chat_created' || frame.type === 'chat_deleted'
-			|| frame.type === 'chat_renamed' || frame.type === 'chat_archived') {
-			for (const entry of this.panels.values()) this.post(entry, { type: 'frame', frame });
-			return;
-		}
-
-		const chatId = (frame as { chat_id?: string }).chat_id;
-		if (!chatId) return;
-
-		const entry = this.panels.get(chatId);
-		if (entry) this.post(entry, { type: 'frame', frame });
-	}
-
-	private broadcastState(state: ConnectionState): void {
-		for (const entry of this.panels.values()) this.post(entry, { type: 'state', state });
 	}
 
 	private post(entry: ChatPanel, msg: unknown): void {

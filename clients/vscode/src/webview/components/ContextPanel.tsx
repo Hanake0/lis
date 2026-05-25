@@ -1,7 +1,17 @@
 import { useEffect } from 'react';
 import { useChatStore } from '../store';
-import { vscode } from '../vscodeApi';
+import { LisRpcClient } from '../lib/lis/rpc-client';
+import type { ContextSegment } from '../../types';
 import { Icon } from './icon/Icon';
+
+/** Wire shape returned by `GET /api/chats/{id}/context`. */
+interface ContextWire {
+	total:    number;
+	budget:   number;
+	segments: ContextSegment[];
+	model:    string;
+	effort?:  string;
+}
 
 const SEGMENT_COLORS: Record<string, string> = {
 	'Messages':          '#569cd6',
@@ -29,15 +39,27 @@ export function ContextPanel() {
 	const setData = useChatStore(s => s.setContextData);
 
 	useEffect(() => {
-		if (!open) return;
+		if (!open || !chatId) return;
 		setData(null);
-		if (chatId) vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: chatId } });
+		let cancelled = false;
+		void (async () => {
+			try {
+				const ctx = await LisRpcClient.instance().getChatContext(chatId) as ContextWire;
+				if (!cancelled) setData(ctx);
+			} catch { /* ignore — closing the panel cancels via `cancelled` flag */ }
+		})();
+		return () => { cancelled = true; };
 	}, [open, chatId, setData]);
 
 	function refresh() {
 		if (!chatId) return;
 		setData(null);
-		vscode.postMessage({ type: 'send_frame', frame: { type: 'get_context', chat_id: chatId, force_refresh: true } });
+		void (async () => {
+			try {
+				const ctx = await LisRpcClient.instance().getChatContext(chatId, { force: true }) as ContextWire;
+				setData(ctx);
+			} catch { /* ignore */ }
+		})();
 	}
 
 	if (!open) return null;

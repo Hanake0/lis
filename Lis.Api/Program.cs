@@ -2,8 +2,8 @@ using Grafana.OpenTelemetry;
 
 using Lis.Agent;
 using Lis.Api.Filters;
+using Lis.Api.Options;
 using Lis.Api.Services;
-using Lis.Channels.Web;
 using Lis.Channels.WhatsApp;
 using Lis.Core.Channel;
 using Lis.Core.Configuration;
@@ -31,8 +31,8 @@ AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiag
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Cap shutdown wait so a stuck handler (e.g. an idle WebSocket) can't block CTRL+C.
-// The WebSocket controller links ApplicationStopping into its CT, so this is a safety net.
+// Cap shutdown wait so a stuck SSE subscriber can't block CTRL+C — the SSE controllers
+// link ApplicationStopping into their cancellation tokens, this is a safety net.
 builder.Services.Configure<HostOptions>(opt => opt.ShutdownTimeout = TimeSpan.FromSeconds(5));
 
 // Controllers + JSON serialization + typed-exception → ProblemDetails mapping
@@ -124,14 +124,20 @@ builder.Services.AddHttpClient();
 // Channels
 if (Env("GOWA_ENABLED")        == "true") builder.Services.AddWhatsApp();
 if (Env("WEB_CHANNEL_ENABLED") == "true") {
-	builder.Services.AddWebChannel();
-	// Stage 13: SseChannelClient takes over as the IChannelClient — the agent loop
-	// publishes chunks/tools/etc through it onto IEventBus, and ChatStreamController
-	// fans them out as SSE per-chat. The WebChannelController (legacy WS) still
-	// compiles and can still receive client frames, but its publish path is bypassed
-	// once the registration below overrides IChannelClient.
+	// SseChannelClient is the web channel's IChannelClient — the agent loop publishes
+	// chunks/tools/etc through it onto IEventBus, and ChatStreamController fans them
+	// out as SSE per-chat. (The legacy WebSocket controller was removed in the
+	// Stage 13 teardown — all client→server chat traffic goes through the REST
+	// surface on /api/chats/* now.)
 	builder.Services.AddSingleton<SseChannelClient>();
 	builder.Services.AddSingleton<IChannelClient>(sp => sp.GetRequiredService<SseChannelClient>());
+
+	// Web-user identity — read from the same env vars the legacy WS layer used so
+	// existing deployments don't need a config change for the Stage 13 teardown.
+	builder.Services.AddSingleton(Options.Create(new WebUserOptions {
+		OwnerId   = Env("WEB_CHANNEL_OWNER_ID")   is { Length: > 0 } o ? o : "web:owner",
+		OwnerName = Env("WEB_CHANNEL_OWNER_NAME") is { Length: > 0 } n ? n : null,
+	}));
 }
 
 // Application services
@@ -188,7 +194,6 @@ if (app.Services.GetService<IConversationService>() is MessageDebouncer debounce
 
 // Middleware
 app.UseExceptionHandler();
-app.UseWebSockets();
 
 // Endpoints
 app.MapControllers();

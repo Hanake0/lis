@@ -1,8 +1,8 @@
 using Lis.Agent;
+using Lis.Api.Options;
 using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
-using Lis.Channels.Web;
 using Lis.Core.Channel;
 using Lis.Core.Events;
 using Lis.Persistence;
@@ -36,7 +36,7 @@ public sealed class ChatsController(
 	IChatGenerationService       generation,
 	IContextBreakdownService     contextBreakdown,
 	IConversationService         conversation,
-	IOptions<WebChannelOptions>  webOptions,
+	IOptions<WebUserOptions>     webOptions,
 	ILogger<ChatsController>     logger
 ) :ControllerBase {
 
@@ -260,7 +260,7 @@ public sealed class ChatsController(
 		// legacy WS handler, which also persisted only the first image).
 		(byte[]? imageData, string? imageMime) = ExtractFirstImage(request.Attachments);
 
-		WebChannelOptions opts = webOptions.Value;
+		WebUserOptions opts = webOptions.Value;
 		string externalId      = $"web:{Guid.NewGuid():N}";
 		DateTimeOffset now     = time.GetUtcNow();
 

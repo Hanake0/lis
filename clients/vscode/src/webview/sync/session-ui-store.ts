@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useChatStore } from '@/store';
-import { vscode } from '@/vscodeApi';
+import { LisRpcClient } from '@/lib/lis/rpc-client';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 
 export type { AttachedFile };
@@ -26,27 +26,41 @@ export const useSessionUIStore = create<any>((set: any) => ({
 
 	createSession: async (title?: string) => {
 		const chatId = `web:${crypto.randomUUID()}`;
-		vscode.postMessage({ type: 'create_session', chat_id: chatId, name: title ?? 'New Chat' });
+		await LisRpcClient.instance().createChat({ chatId, name: title ?? 'New Chat' });
 		return chatId;
 	},
 	deleteSession: async (sessionId: string) => {
-		vscode.postMessage({ type: 'delete_session', chat_id: sessionId });
+		await LisRpcClient.instance().deleteChat(sessionId);
 		return true;
 	},
 	deleteSessions: async (ids: string[]) => {
-		for (const id of ids) vscode.postMessage({ type: 'delete_session', chat_id: id });
-		return { deletedIds: ids, failedIds: [] as string[] };
+		const client = LisRpcClient.instance();
+		const deleted: string[] = [];
+		const failed:  string[] = [];
+		// Sequential — backend writes a row per call and emits a `chat_deleted` event;
+		// running them serially keeps the SSE stream ordered and avoids per-id race conditions.
+		for (const id of ids) {
+			try { await client.deleteChat(id); deleted.push(id); }
+			catch { failed.push(id); }
+		}
+		return { deletedIds: deleted, failedIds: failed };
 	},
 	archiveSession: async (sessionId: string) => {
-		vscode.postMessage({ type: 'archive_session', chat_id: sessionId });
+		await LisRpcClient.instance().archiveChat(sessionId);
 		return true;
 	},
 	archiveSessions: async (ids: string[]) => {
-		for (const id of ids) vscode.postMessage({ type: 'archive_session', chat_id: id });
-		return { archivedIds: ids, failedIds: [] as string[] };
+		const client = LisRpcClient.instance();
+		const archived: string[] = [];
+		const failed:   string[] = [];
+		for (const id of ids) {
+			try { await client.archiveChat(id); archived.push(id); }
+			catch { failed.push(id); }
+		}
+		return { archivedIds: archived, failedIds: failed };
 	},
 	updateSessionTitle: async (sessionId: string, title: string) => {
-		vscode.postMessage({ type: 'rename_session', chat_id: sessionId, name: title });
+		await LisRpcClient.instance().updateChat(sessionId, { name: title });
 	},
 	shareSession: asyncNoop,
 	unshareSession: asyncNoop,
@@ -55,22 +69,22 @@ export const useSessionUIStore = create<any>((set: any) => ({
 		const hasAttachments = attachments && attachments.length > 0;
 		if (!trimmed && !hasAttachments) return;
 
-		const { composerModel, composerEffort, composerProfile, composerThinking } = useChatStore.getState();
+		const { chatId, composerModel, composerEffort, composerProfile, composerThinking } = useChatStore.getState();
+		if (!chatId) return;
 
 		const imageAttachments = hasAttachments
 			? attachments
 				.filter((f: AttachedFile) => f.mimeType.startsWith('image/') && f.dataUrl)
-				.map((f: AttachedFile) => ({ filename: f.filename, mime_type: f.mimeType, data_url: f.dataUrl }))
+				.map((f: AttachedFile) => ({ data_url: f.dataUrl, mime_type: f.mimeType }))
 			: undefined;
 
-		vscode.postMessage({
-			type: 'send',
-			text: trimmed || undefined,
-			model: composerModel || undefined,
-			effort: composerEffort || undefined,
-			tool_profile: composerProfile || undefined,
-			thinking_mode: composerThinking || undefined,
-			attachments: imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
+		await LisRpcClient.instance().sendChatMessage(chatId, {
+			text:          trimmed || null,
+			model:         composerModel    || null,
+			effort:        composerEffort   || null,
+			tool_profile:  composerProfile  || null,
+			thinking_mode: (composerThinking as 'budget' | 'adaptive' | 'auto' | undefined) || null,
+			attachments:   imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
 		});
 	},
 	forkFromMessage: asyncNoop,

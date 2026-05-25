@@ -3,7 +3,6 @@ import {
 	DEFAULT_SERVER_URL,
 	deriveApiBase,
 	deriveEventsUrl,
-	deriveWsUrl,
 	normalizeBaseOrigin,
 	readConfigFrom,
 } from './config';
@@ -55,24 +54,6 @@ describe('normalizeBaseOrigin', () => {
 	test('is idempotent', () => {
 		const once = normalizeBaseOrigin('ws://host:1/web/ws');
 		expect(normalizeBaseOrigin(once)).toBe(once);
-	});
-});
-
-describe('deriveWsUrl', () => {
-	test('http origin → ws://…/web/ws', () => {
-		expect(deriveWsUrl('http://localhost:3010')).toBe('ws://localhost:3010/web/ws');
-	});
-
-	test('https origin → wss://…/web/ws', () => {
-		expect(deriveWsUrl('https://lis.example.com')).toBe('wss://lis.example.com/web/ws');
-	});
-
-	test('legacy ws URL is normalized first then re-derived', () => {
-		expect(deriveWsUrl('ws://localhost:3010/web/ws')).toBe('ws://localhost:3010/web/ws');
-	});
-
-	test('empty input returns empty string', () => {
-		expect(deriveWsUrl('')).toBe('');
 	});
 });
 

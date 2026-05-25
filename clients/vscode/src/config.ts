@@ -4,11 +4,11 @@
  * `lis.serverUrl` is the **base origin** (e.g. `http://localhost:3010`).
  * From it we derive:
  *   - REST base: `${origin}/api`
- *   - WebSocket: `${origin → ws}/web/ws`     (legacy, removed in Stage 13)
- *   - SSE events: `${origin}/api/events`     (Stage 9+)
+ *   - SSE events: `${origin}/api/events`
  *
  * Legacy installs may have a full WS URL stored (`ws://host:port/web/ws`).
- * `normalizeBaseOrigin` collapses any input to the canonical `proto://host[:port]`.
+ * `normalizeBaseOrigin` collapses any input to the canonical `proto://host[:port]`
+ * so we still accept those values and migrate them to the new shape on first read.
  */
 
 export const DEFAULT_SERVER_URL = 'http://localhost:3010';
@@ -40,25 +40,13 @@ export function normalizeBaseOrigin(raw: string): string {
 	}
 }
 
-/**
- * Derive the WebSocket URL for `LisClient` from a base origin.
- * Legacy path — removed once Stage 13 lands and we delete /web/ws.
- */
-export function deriveWsUrl(baseOrigin: string): string {
-	const base = normalizeBaseOrigin(baseOrigin);
-	if (!base) return '';
-	const wsProto = base.startsWith('https:') ? 'wss:' : 'ws:';
-	const host = base.replace(/^https?:\/\//, '');
-	return `${wsProto}//${host}/web/ws`;
-}
-
-/** Future REST base derived from origin. Kept here so config logic stays in one place. */
+/** REST base derived from origin. Kept here so config logic stays in one place. */
 export function deriveApiBase(baseOrigin: string): string {
 	const base = normalizeBaseOrigin(baseOrigin);
 	return base ? `${base}/api` : '';
 }
 
-/** Future SSE event-stream URL derived from origin. */
+/** SSE event-stream URL derived from origin. */
 export function deriveEventsUrl(baseOrigin: string): string {
 	const base = normalizeBaseOrigin(baseOrigin);
 	return base ? `${base}/api/events` : '';

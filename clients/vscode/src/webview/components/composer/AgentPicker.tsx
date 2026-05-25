@@ -1,7 +1,7 @@
 import { Chip } from './Chip';
 import { cn } from '../../lib/utils';
 import { useChatStore } from '../../store';
-import { vscode } from '../../vscodeApi';
+import { LisRpcClient } from '../../lib/lis/rpc-client';
 
 export function AgentPicker() {
 	const list   = useChatStore(s => s.agents);
@@ -11,7 +11,9 @@ export function AgentPicker() {
 
 	function select(name: string) {
 		if (!chatId) return;
-		vscode.postMessage({ type: 'send_frame', frame: { type: 'set_agent', chat_id: chatId, agent_name: name } });
+		// The PATCH emits `agent_updated` on /api/events; the chat-panel bridge
+		// picks it up and refreshes `currentAgent` + composer defaults.
+		void LisRpcClient.instance().setChatAgent(chatId, name);
 	}
 
 	return (

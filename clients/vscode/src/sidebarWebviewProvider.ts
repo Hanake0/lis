@@ -1,14 +1,12 @@
 import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
-import type { LisClient } from './lisClient';
-import type { ServerFrame } from './types';
 import { generateNonce } from './util';
 
 /**
  * Provides the activity-bar sidebar webview. The webview talks REST + SSE
- * directly to the Lis backend — the extension host only ships config and
- * legacy WS frames through postMessage.
+ * directly to the Lis backend — the extension host only ships config + workspace
+ * hints through postMessage. There is no WebSocket and no frame proxying.
  */
 export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	private view: vscode.WebviewView | null = null;
@@ -16,11 +14,8 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
-		private readonly client:       LisClient,
 		private          getConfig:    () => LisConfig,
-	) {
-		client.onFrame((frame: ServerFrame) => this.onFrame(frame));
-	}
+	) {}
 
 	setOpenSessionHandler(handler: (chatId: string, title?: string) => void): void {
 		this.onOpenSession = handler;
@@ -53,8 +48,11 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.webview.onDidReceiveMessage((msg) => {
 			switch (msg.type) {
-				case 'lis.ready': {
-					// New webview booted; push the current config so the LisRpcClient can wire up.
+				case 'lis.ready':
+				case 'ready': {
+					// Both events come from the webview's React mount — push the current
+					// config so LisRpcClient can wire up, plus the workspace info so
+					// useDirectoryStore mirrors the host.
 					const cfg = this.getConfig();
 					this.post({ type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
 					this.post(buildWorkspaceMessage());
@@ -65,56 +63,11 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					if (typeof msg.path === 'string' && msg.path.length > 0) void openExternalPath(msg.path);
 					return;
 
-				case 'ready':
-					if (this.client.currentState === 'connected') {
-						this.post({ type: 'state', state: 'connected' });
-						this.client.send({ type: 'list_chats' });
-						this.client.send({ type: 'list_agents' });
-					}
-					break;
-
 				case 'open_session':
 					this.onOpenSession?.(msg.chat_id, msg.title);
-					break;
-
-				case 'create_session':
-					if (msg.chat_id) {
-						this.client.send({ type: 'create_session', chat_id: msg.chat_id, name: msg.name });
-						this.onOpenSession?.(msg.chat_id, msg.name);
-					}
-					break;
-
-				case 'delete_session':
-					if (msg.chat_id) this.client.send({ type: 'delete_session', chat_id: msg.chat_id });
-					break;
-
-				case 'rename_session':
-					if (msg.chat_id && msg.name) this.client.send({ type: 'rename_session', chat_id: msg.chat_id, name: msg.name });
-					break;
-
-				case 'archive_session':
-					if (msg.chat_id) this.client.send({ type: 'archive_session', chat_id: msg.chat_id });
-					break;
-
-				case 'send_frame':
-					if (msg.frame) this.client.send(msg.frame);
-					break;
+					return;
 			}
 		});
-	}
-
-	private onFrame(frame: ServerFrame): void {
-		if (frame.type === 'connected') {
-			this.post({ type: 'state', state: 'connected' });
-			this.client.send({ type: 'list_chats' });
-			return;
-		}
-
-		if (frame.type === 'chat_list' || frame.type === 'chat_created'
-			|| frame.type === 'chat_deleted' || frame.type === 'chat_renamed'
-			|| frame.type === 'chat_archived' || frame.type === 'agent_list') {
-			this.post({ type: 'frame', frame });
-		}
 	}
 
 	private post(msg: unknown): void {

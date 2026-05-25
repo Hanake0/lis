@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useChatStore } from '../../store';
-import { vscode } from '../../vscodeApi';
+import { LisRpcClient } from '../../lib/lis/rpc-client';
 import { AgentPicker } from './AgentPicker';
 import { ModelInput } from './ModelInput';
 import { EffortPicker } from './EffortPicker';
@@ -23,28 +23,24 @@ export function Composer() {
 	function send() {
 		const trimmed = text.trim();
 		if (!trimmed || !chatId) return;
-		vscode.postMessage({
-			type:          'send',
+		// Fire-and-forget — the chat-panel bridge picks up the SSE token stream
+		// for this turn and renders chunks into useChatStore as they arrive.
+		void LisRpcClient.instance().sendChatMessage(chatId, {
 			text:          trimmed,
-			model:         model    || undefined,
-			effort:        effort   || undefined,
-			tool_profile:  profile  || undefined,
-			thinking_mode: thinking || undefined,
+			model:         model    || null,
+			effort:        effort   || null,
+			tool_profile:  profile  || null,
+			thinking_mode: (thinking as 'budget' | 'adaptive' | 'auto' | undefined) || null,
 		});
 		setText('');
 	}
 
 	function onSave() {
 		if (!chatId) return;
-		vscode.postMessage({
-			type: 'send_frame',
-			frame: {
-				type:         'save_overrides',
-				chat_id:      chatId,
-				model:        model   || undefined,
-				effort:       effort  || undefined,
-				tool_profile: profile || undefined,
-			},
+		void LisRpcClient.instance().saveChatOverrides(chatId, {
+			model:        model   || undefined,
+			effort:       effort  || undefined,
+			tool_profile: profile || undefined,
 		});
 	}
 

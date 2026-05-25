@@ -1,9 +1,9 @@
 using Lis.Agent;
 using Lis.Api.Controllers;
+using Lis.Api.Options;
 using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
-using Lis.Channels.Web;
 using Lis.Core.Channel;
 using Lis.Core.Events;
 using Lis.Persistence;
@@ -44,8 +44,8 @@ public class ChatsControllerTests :IDisposable {
 		this.generation   = new FakeGenerationService();
 		this.context      = new FakeContextBreakdown();
 		this.conversation = new CapturingConversation();
-		IOptions<WebChannelOptions> webOpts = Options.Create(new WebChannelOptions {
-			AuthToken = "test", OwnerId = "test-owner", OwnerName = "Tester",
+		IOptions<WebUserOptions> webOpts = Options.Create(new WebUserOptions {
+			OwnerId = "test-owner", OwnerName = "Tester",
 		});
 		this.sut = new ChatsController(this.db, this.bus, this.time, this.generation, this.context, this.conversation, webOpts, NullLogger<ChatsController>.Instance);
 	}

@@ -1,94 +1,51 @@
 // Shared type definitions for the Lis extension and webview.
+//
+// The WS-frame unions that used to live here (ServerFrame / ClientFrame /
+// ClientImageAttachment / DispatchMode / MessageRow) were removed when the
+// WebSocket transport was deleted in Stage 13 — every client→server call
+// now goes through REST (`Lis.Api/Controllers/*`) and every server→client
+// stream through SSE (`/api/events` + `/api/chats/{id}/stream`). DTO shapes
+// for those live next to the consumers:
+//
+//   - REST: `webview/lib/lis/rpc-client.ts` (LisChatSummary, LisMessageSummary, ...)
+//   - SSE chat-stream payloads: `webview/sync/chat-panel-bridge.ts` (private)
+//   - SSE global event payloads: `Lis.Api/Schemas/Events/*` mirrored ad-hoc
+//
+// What survives here are the shared shapes both the extension host AND the
+// webview still need.
 
+/**
+ * Connection state surfaced in the VS Code status bar. With the WS layer gone,
+ * the host no longer tracks live socket transitions — it derives the value
+ * from `lis.serverUrl` + `lis.authToken` being set (or not). The third value
+ * (`connecting`) is retained for forward-compat with a future health-probe
+ * status feed without forcing a type change downstream.
+ */
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 
-export type DispatchMode = 'default' | 'immediate' | 'queue_only' | 'interrupt';
-
-// ── DTOs ────────────────────────────────────────────────────────────
+// ── Chat-store DTOs ────────────────────────────────────────────────────────
+// These pre-date the LisRpcClient wire types and are kept because the legacy
+// `useChatStore` (the chat-panel side of the webview) still uses them as its
+// internal shape. The chat-panel bridge maps `LisChatSummary` →
+// `ChatSummary` and `LisMessageSummary` → ChatMessage on the way in.
 
 export interface ChatSummary {
-	chat_id: string;
-	name?: string;
-	updated_at: string;
+	chat_id:     string;
+	name?:       string;
+	updated_at:  string;
 	archived_at?: string;
 }
 
-export interface MessageRow {
-	id: string;
-	role: string;
-	text?: string;
-	timestamp: string;
-	input_tokens?: number;
-	output_tokens?: number;
-	cache_read_tokens?: number;
-	cache_creation_tokens?: number;
-	thinking_tokens?: number;
-	tool_name?: string;
-	tool_args?: string;
-	tool_is_error?: boolean;
-	thinking_content?: string;
-}
-
 export interface AgentSummary {
-	name: string;
+	name:          string;
 	display_name?: string;
-	model: string;
-	effort?: string;
+	model:         string;
+	effort?:       string;
 	tool_profile?: string;
-	is_default: boolean;
+	is_default:    boolean;
 }
 
 export interface ContextSegment {
 	name:   string;
 	tokens: number;
 }
-
-// ── Server → Client frames ─────────────────────────────────────────
-
-export type ServerFrame =
-	| { type: 'connected' }
-	| { type: 'message';         chat_id: string; id: string; text: string; role: 'user' | 'assistant'; timestamp: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cache_creation_tokens?: number; thinking_tokens?: number }
-	| { type: 'chunk';           chat_id: string; id: string; delta: string; done: boolean }
-	| { type: 'thinking_chunk';  chat_id: string; id: string; delta: string; done: boolean }
-	| { type: 'tool_start';      chat_id: string; id: string; tool_name: string; tool_args?: string }
-	| { type: 'tool_result';     chat_id: string; id: string; tool_name: string; result?: string; error?: string }
-	| { type: 'typing';          chat_id: string }
-	| { type: 'typing_stopped';  chat_id: string }
-	| { type: 'reaction';        chat_id: string; id: string; emoji: string }
-	| { type: 'agent_info';      chat_id: string; agent_name: string; display_name?: string; model: string; effort?: string; tool_profile?: string }
-	| { type: 'agent_list';      agents: AgentSummary[] }
-	| { type: 'error';           error: string; chat_id?: string }
-	| { type: 'chat_list';       chats: ChatSummary[] }
-	| { type: 'chat_created';    chat_id: string; name?: string; timestamp: string }
-	| { type: 'chat_deleted';    chat_id: string }
-	| { type: 'chat_renamed';    chat_id: string; name: string }
-	| { type: 'chat_archived';   chat_id: string; archived_at: string }
-	| { type: 'chat_history';    chat_id: string; messages: MessageRow[] }
-	| { type: 'context';         chat_id: string; total: number; budget: number; segments: ContextSegment[]; model: string; effort?: string }
-	| { type: 'permission_request'; chat_id: string; approval_id: string; permission: string; patterns: string[]; metadata: Record<string, unknown>; always: string[] }
-	| { type: 'question';           chat_id: string; question_id: string; questions: Array<{ question: string; header?: string; options: Array<{ label: string; description?: string }>; multiple?: boolean }> };
-
-// ── Client → Server frames ─────────────────────────────────────────
-
-export interface ClientImageAttachment {
-	filename:  string;
-	mime_type: string;
-	data_url:  string;
-}
-
-export type ClientFrame =
-	| { type: 'message';        chat_id: string; text: string; dispatch?: DispatchMode; model?: string; effort?: string; tool_profile?: string; thinking_mode?: string; attachments?: ClientImageAttachment[] }
-	| { type: 'history';        chat_id: string; limit?: number }
-	| { type: 'list_chats' }
-	| { type: 'create_session';  chat_id: string; name?: string }
-	| { type: 'delete_session';  chat_id: string }
-	| { type: 'rename_session';  chat_id: string; name: string }
-	| { type: 'archive_session'; chat_id: string }
-	| { type: 'set_agent';      chat_id: string; agent_name: string }
-	| { type: 'get_agent';      chat_id: string }
-	| { type: 'list_agents' }
-	| { type: 'save_overrides'; chat_id: string; model?: string; effort?: string; tool_profile?: string }
-	| { type: 'get_context';    chat_id: string; force_refresh?: boolean }
-	| { type: 'abort';          chat_id: string }
-	| { type: 'permission_response'; approval_id: string; decision: 'once' | 'always' | 'deny' }
-	| { type: 'question_response';  question_id: string; answers?: string[][]; rejected?: boolean };

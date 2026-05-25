@@ -1,15 +1,13 @@
 import * as vscode from 'vscode';
 
 import { ChatPanelManager } from './chatPanel';
-import { DEFAULT_SERVER_URL, deriveWsUrl, readConfigFrom, type LisConfig } from './config';
-import { LisClient } from './lisClient';
+import { DEFAULT_SERVER_URL, readConfigFrom, type LisConfig } from './config';
 import { Logger } from './logger';
 import { LisStatusBar } from './statusBar';
 import { SidebarWebviewProvider } from './sidebarWebviewProvider';
 
 const FIRST_RUN_KEY = 'lis.firstRunNotificationDismissed';
 
-let client:    LisClient | null = null;
 let sidebar:   SidebarWebviewProvider | null = null;
 let panels:    ChatPanelManager | null = null;
 let logger:    Logger | null = null;
@@ -35,16 +33,15 @@ export function activate(context: vscode.ExtensionContext): void {
 		});
 	}
 
-	const wsUrl = deriveWsUrl(cfg.baseOrigin);
-	client    = new LisClient(wsUrl, cfg.token, logger);
-	sidebar   = new SidebarWebviewProvider(context.extensionUri, client, getConfig);
-	panels    = new ChatPanelManager(context, client, getConfig);
+	sidebar   = new SidebarWebviewProvider(context.extensionUri, getConfig);
+	panels    = new ChatPanelManager(context, getConfig);
 	statusBar = new LisStatusBar();
 
-	statusBar.update(client.currentState, cfg.baseOrigin);
-	client.onState((state) => {
-		statusBar?.update(state, getConfig().baseOrigin);
-	});
+	// All transport state now lives in the webview's LisRpcClient — the SSE channel
+	// there tracks the real connect/disconnect state. The host-side status bar shows
+	// configured/not-configured as a proxy; live status updates would need a new
+	// extension-host signal from the webview if we ever surface them in the chrome.
+	statusBar.update(cfg.isConfigured ? 'connected' : 'disconnected', cfg.baseOrigin);
 
 	sidebar.setOpenSessionHandler((chatId, title) => {
 		panels?.openOrFocus(chatId, title);
@@ -55,16 +52,12 @@ export function activate(context: vscode.ExtensionContext): void {
 		statusBar,
 		vscode.window.registerWebviewViewProvider('lis.sidebar', sidebar),
 
-		vscode.commands.registerCommand('lis.connect',    () => client?.connect()),
-		vscode.commands.registerCommand('lis.disconnect', () => client?.disconnect()),
 		vscode.commands.registerCommand('lis.showOutput', () => logger?.show()),
 		vscode.commands.registerCommand('lis.configure',  () =>
 			vscode.commands.executeCommand('workbench.action.openSettings', '@ext:lis.lis-vscode')),
 
 		vscode.commands.registerCommand('lis.newChat', async () => {
 			const chatId = `web:${crypto.randomUUID()}`;
-			// REST-first creation. The legacy WS frame stayed accidentally — once
-			// Stage 13 deletes WebChannelController this is the only path.
 			const created = await createChatViaRest(getConfig(), chatId, 'New Chat', logger);
 			if (!created) {
 				// Don't open a panel for a non-existent chat — the create attempt failed.
@@ -83,8 +76,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			if (!e.affectsConfiguration('lis')) return;
 			cfg = readConfigFrom(vscode.workspace.getConfiguration('lis'));
 			logger?.setVerbose(cfg.verbose);
-			client?.updateConfig(deriveWsUrl(cfg.baseOrigin), cfg.token);
-			statusBar?.update(client?.currentState ?? 'disconnected', cfg.baseOrigin);
+			statusBar?.update(cfg.isConfigured ? 'connected' : 'disconnected', cfg.baseOrigin);
 			// Push the new origin + token to every live webview so its LisRpcClient
 			// re-opens the EventSource against the new server without a reload.
 			sidebar?.notifyConfigChange();
@@ -100,23 +92,15 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 
 	// First-run UX: if the user has never set a token, surface a one-shot notification
-	// with a direct path to settings. Default serverUrl is good enough to skip if
-	// they really want to point at localhost without auth, but most installs need
-	// the token to connect successfully.
+	// with a direct path to settings. Most installs need the token to connect successfully.
 	if (!cfg.isConfigured && !context.globalState.get<boolean>(FIRST_RUN_KEY)) {
 		void promptFirstRun(context, cfg.baseOrigin || DEFAULT_SERVER_URL);
 	}
-
-	// Connect regardless — if no token is set the user can opt in to "Connect anyway"
-	// from the notification, and the WS layer will surface auth failures via the status bar.
-	client.connect();
 }
 
 export function deactivate(): void {
-	client?.disconnect();
 	statusBar?.dispose();
 	logger?.dispose();
-	client    = null;
 	sidebar   = null;
 	panels    = null;
 	statusBar = null;

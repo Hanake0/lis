@@ -15,6 +15,7 @@
 
 import { LisHttpClient, type HttpRequest } from './http-client';
 import { LisEventChannel, type ChannelEventListener, type ChannelStateListener, type EventSourceFactory } from './event-channel';
+import { LisChatStreamChannel } from './chat-stream-channel';
 
 type HttpMethod = HttpRequest['method'];
 
@@ -53,10 +54,13 @@ export class LisRpcClient {
 	private static singleton: LisRpcClient | null = null;
 	private readonly http:    LisHttpClient;
 	private readonly channel: LisEventChannel;
+	/** Stored so per-chat SSE channels use the same factory the test harness injected. */
+	private readonly eventSourceFactory?: EventSourceFactory;
 
 	private constructor(source: MessageSource, eventSourceFactory?: EventSourceFactory) {
-		this.http    = new LisHttpClient();
-		this.channel = new LisEventChannel('', '', eventSourceFactory);
+		this.http               = new LisHttpClient();
+		this.channel            = new LisEventChannel('', '', eventSourceFactory);
+		this.eventSourceFactory = eventSourceFactory;
 
 		source.addEventListener('message', (e) => this.onHostMessage(e.data));
 	}
@@ -84,6 +88,23 @@ export class LisRpcClient {
 
 	/** Subscribe to connection-state transitions on the global event stream. */
 	onState(fn: ChannelStateListener): () => void { return this.channel.onState(fn); }
+
+	/**
+	 * Open a per-chat SSE token stream against `/api/chats/{id}/stream`.
+	 *
+	 * The returned channel reads its own base origin / token from this RPC
+	 * client's current config — call `open()` on the returned channel and
+	 * subscribe via `onEvent`. The caller owns its lifecycle (close on chatId
+	 * change, on unmount, etc.).
+	 */
+	openChatStream(chatId: string): LisChatStreamChannel {
+		return new LisChatStreamChannel(
+			this.http.configuredOrigin,
+			this.http.configuredToken,
+			chatId,
+			this.eventSourceFactory,
+		);
+	}
 
 	/** Internals — exposed for tests; production code goes through `install` + postMessage. */
 	setConfig(baseOrigin: string, token: string): void {
