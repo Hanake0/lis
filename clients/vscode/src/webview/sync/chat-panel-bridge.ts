@@ -437,10 +437,23 @@ function syncSessions(): void {
 	useChatStore.getState().setSessions(merged);
 }
 
-function toChatSummary(s: { id: string; title?: string; time?: { updated?: number; archived?: number } }): ChatSummary {
+function toChatSummary(s: {
+	id: string;
+	title?: string;
+	time?: { updated?: number; archived?: number };
+	chatDirectory?: string | null;
+	projectId?: string | null;
+}): ChatSummary {
 	const updated  = s.time?.updated  ? new Date(s.time.updated).toISOString()  : new Date(0).toISOString();
 	const archived = s.time?.archived ? new Date(s.time.archived).toISOString() : undefined;
-	return { chat_id: s.id, name: s.title, updated_at: updated, archived_at: archived };
+	return {
+		chat_id:    s.id,
+		name:       s.title,
+		project_id: s.projectId   ?? null,
+		directory:  s.chatDirectory ?? null,
+		updated_at: updated,
+		archived_at: archived,
+	};
 }
 
 /**

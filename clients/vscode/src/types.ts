@@ -32,8 +32,11 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 export interface ChatSummary {
 	chat_id:     string;
 	name?:       string;
+	project_id?: string | null;
+	directory?:  string | null;
 	updated_at:  string;
 	archived_at?: string;
+	pinned_at?:  string | null;
 }
 
 export interface AgentSummary {

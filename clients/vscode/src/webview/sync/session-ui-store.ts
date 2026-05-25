@@ -18,6 +18,11 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	availableWorktreesByProject: new Map(),
 	worktreeMetadata: new Map(),
 	isSessionPlanAvailable: false,
+	// Per-chat working directory cache. Populated from useChatStore.sessions
+	// (see the subscriber below) and from `setSessionDirectory` (composer
+	// worktree pill PATCH success). `getDirectoryForSession` reads from this
+	// map. null = "inherit project root" — matches the server-side semantic.
+	sessionDirectoryMap: new Map<string, string | null>(),
 
 	setCurrentSession: (id: string) => set({ currentSessionId: id, newSessionDraft: null }),
 	openNewSessionDraft: () => set({ currentSessionId: null, newSessionDraft: { open: true } }),
@@ -110,7 +115,30 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	setDraftBootstrapPendingDirectory: noop,
 	setNewSessionDraftTarget: noop,
 	getContextUsage: () => null,
-	getDirectoryForSession: () => null,
+	getDirectoryForSession: (sessionId: string) => {
+		const map = (useSessionUIStore.getState() as { sessionDirectoryMap?: Map<string, string | null> }).sessionDirectoryMap;
+		return map?.get(sessionId) ?? null;
+	},
+	/**
+	 * Rebind a persisted chat's working directory. PATCHes /api/chats/{id}
+	 * with `directory` (empty string CLEARS the override). The local cache
+	 * is updated optimistically — the next sessions-mirror refresh will
+	 * reconcile against the server's authoritative value.
+	 */
+	setSessionDirectory: async (sessionId: string, directory: string | null) => {
+		const trimmed = (directory ?? '').trim();
+		const value   = trimmed.length === 0 ? null : trimmed;
+		set((state: { sessionDirectoryMap?: Map<string, string | null> }) => {
+			const next = new Map(state.sessionDirectoryMap ?? new Map());
+			next.set(sessionId, value);
+			return { sessionDirectoryMap: next };
+		});
+		try {
+			await LisRpcClient.instance().updateChat(sessionId, { directory: value ?? '' });
+		} catch (err) {
+			console.warn('[session-ui-store] setSessionDirectory PATCH failed:', err);
+		}
+	},
 	getSessionsByDirectory: () => [],
 	getWorktreeMetadata: (sessionId: string) => {
 		const map = (useSessionUIStore.getState() as { worktreeMetadata?: Map<string, unknown> }).worktreeMetadata;
@@ -129,23 +157,34 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	}),
 }));
 
-// Mirror the Lis-side per-chat context window into the OC-facing
-// `getContextUsage` accessor. Phase 15c.5 will port OC's `contextStore`
-// proper — once it's wired into ModelControls directly, this bridge goes
-// away. The chatId → currentSessionId mirror moved to
+// Mirror useChatStore → useSessionUIStore:
+//   - contextData → getContextUsage accessor (will retire once
+//     contextStore.ts owns the calculation in a future commit)
+//   - sessions[].directory → sessionDirectoryMap (drives the composer
+//     worktree pill)
+// The chatId → currentSessionId mirror moved to
 // `chat-panel-bridge.installChatPanelInit` (which already runs on init).
 useChatStore.subscribe((state, prev) => {
-	const ctx = state.contextData;
-	if (ctx === prev.contextData) return;
-	useSessionUIStore.setState({
-		getContextUsage: () => {
-			if (!ctx || ctx.budget <= 0) return null;
-			return {
-				totalTokens:    ctx.total,
-				percentage:     Math.round((ctx.total / ctx.budget) * 100),
-				contextLimit:   ctx.budget,
-				thresholdLimit: ctx.budget,
-			};
-		},
-	});
+	if (state.contextData !== prev.contextData) {
+		const ctx = state.contextData;
+		useSessionUIStore.setState({
+			getContextUsage: () => {
+				if (!ctx || ctx.budget <= 0) return null;
+				return {
+					totalTokens:    ctx.total,
+					percentage:     Math.round((ctx.total / ctx.budget) * 100),
+					contextLimit:   ctx.budget,
+					thresholdLimit: ctx.budget,
+				};
+			},
+		});
+	}
+
+	if (state.sessions !== prev.sessions) {
+		const next = new Map<string, string | null>();
+		for (const s of state.sessions) {
+			next.set(s.chat_id, s.directory ?? null);
+		}
+		useSessionUIStore.setState({ sessionDirectoryMap: next });
+	}
 });

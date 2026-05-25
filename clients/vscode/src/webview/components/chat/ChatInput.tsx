@@ -3299,7 +3299,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
 
     const footerGapClass = 'gap-x-1.5 gap-y-0';
     const isVSCode = isVSCodeRuntime();
-    const showDraftTargetSelectors = newSessionDraftOpen && !isVSCode;
+    // Lis's parallel-chat model lets every tab own its own project + worktree,
+    // so the draft target pills must render in VS Code too. The OC original
+    // gated this off because OC's desktop chrome already provided a global
+    // project picker — Lis has no such global, so the per-chat pill is the
+    // only way the user binds a project to a draft.
+    const showDraftTargetSelectors = newSessionDraftOpen;
 
     const selectedDraftProject = React.useMemo(() => {
         const explicit = newSessionDraft?.selectedProjectId

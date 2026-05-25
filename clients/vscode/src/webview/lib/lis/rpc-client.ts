@@ -517,6 +517,7 @@ export interface LisChatSummary {
 	chat_id:      string;
 	name:         string | null;
 	project_id:   string | null;
+	directory:    string | null;
 	pinned_at:    string | null;
 	archived_at:  string | null;
 	created_at:   string;

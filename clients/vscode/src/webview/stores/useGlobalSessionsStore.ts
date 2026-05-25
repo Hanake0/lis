@@ -129,14 +129,21 @@ export function chatSummaryToSession(row: LisChatSummary): Session {
 	const projectPath = row.project_id
 		? normalizePath(projects.find((p) => p.id === row.project_id)?.path ?? null)
 		: null;
+	// Chat-scoped directory override (15c.6) takes precedence over the project
+	// root for "what cwd does this chat's composer worktree pill display".
+	// `directory` on the Session remains the GROUPING key (project root) so
+	// the sidebar buckets chats under their project; `chatDirectory` carries
+	// the per-chat override for the composer pill and tool cwd.
+	const chatDirectory = normalizePath(row.directory ?? null);
 	return {
-		id:        row.chat_id,
-		title:     row.name ?? undefined,
-		directory: projectPath,
-		projectId: row.project_id,
-		createdAt: createdMs,
-		updatedAt: updatedMs,
-		time:      { created: createdMs, updated: updatedMs, archived: archivedMs },
+		id:            row.chat_id,
+		title:         row.name ?? undefined,
+		directory:     projectPath,
+		chatDirectory: chatDirectory,
+		projectId:     row.project_id,
+		createdAt:     createdMs,
+		updatedAt:     updatedMs,
+		time:          { created: createdMs, updated: updatedMs, archived: archivedMs },
 	} as Session;
 }
 
