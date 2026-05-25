@@ -30,6 +30,8 @@ import { useChatStore, type ChatMessage } from '@/store';
 import { LisRpcClient, type LisMessageSummary } from '@/lib/lis/rpc-client';
 import type { LisChatStreamChannel } from '@/lib/lis/chat-stream-channel';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import { useSessionUIStore } from './session-ui-store';
+import { lisLog } from '@/lib/lis/logger';
 import type { AgentSummary, ChatSummary } from '../../types';
 
 /** Wire shape returned by `GET /api/agents`. Mirrors `AgentDto` on the server. */
@@ -439,6 +441,43 @@ function toChatSummary(s: { id: string; title?: string; time?: { updated?: numbe
 	const updated  = s.time?.updated  ? new Date(s.time.updated).toISOString()  : new Date(0).toISOString();
 	const archived = s.time?.archived ? new Date(s.time.archived).toISOString() : undefined;
 	return { chat_id: s.id, name: s.title, updated_at: updated, archived_at: archived };
+}
+
+/**
+ * Listen for the host's `init { chatId }` envelope and mount the per-chat data
+ * bridge whenever the chatId changes. Sets BOTH the OC-side
+ * `useSessionUIStore.currentSessionId` (which gates the send button + drives
+ * every per-session selector in the OC chat surface) AND the Lis-side
+ * `useChatStore.chatId` (which the bridge writes into for messages/agent
+ * state). Returns a teardown that removes the listener and closes the
+ * current per-chat bridge.
+ */
+export function installChatPanelInit(target: Window = window): () => void {
+	let currentChatId: string | null = null;
+	let stop:          (() => void) | null = null;
+
+	const handler = (ev: MessageEvent<{ type?: unknown; chatId?: unknown }>) => {
+		const msg = ev.data;
+		if (msg?.type !== 'init' || typeof msg.chatId !== 'string' || msg.chatId.length === 0) return;
+		if (msg.chatId === currentChatId) return;
+		currentChatId = msg.chatId;
+		lisLog.info(`chat-panel: init chatId=${currentChatId}`);
+
+		stop?.(); stop = null;
+
+		// OC's ChatInput gates the send button on currentSessionId; without it
+		// the user can't send. The bridge's data path uses useChatStore.chatId.
+		useSessionUIStore.getState().setCurrentSession(currentChatId, null);
+		useChatStore.getState().setChatId(currentChatId);
+
+		stop = mountChatPanelBridge(currentChatId);
+	};
+
+	target.addEventListener('message', handler);
+	return () => {
+		target.removeEventListener('message', handler);
+		stop?.(); stop = null;
+	};
 }
 
 // ── Re-exports for tests (no other production caller) ────────────────────────
