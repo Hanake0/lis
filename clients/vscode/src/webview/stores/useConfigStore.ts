@@ -64,7 +64,10 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 	providers:        [] as ProviderEntry[],
 	defaultProviders: { model: null, agent: null } as ProviderDefaults,
 	agents:           [] as AgentEntry[],
-	modelsMetadata:   [] as any[],
+	// ModelPickerList calls `.get('providerId/modelId')` on this — Map shape
+	// is non-negotiable. Lis doesn't pull from models.dev today so this stays
+	// empty; once a remote metadata fetcher lands it populates the same Map.
+	modelsMetadata:   new Map<string, any>(),
 	currentAgentName:   '',
 	currentModelId:     '',
 	currentProviderId:  '',
