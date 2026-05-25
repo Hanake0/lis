@@ -225,8 +225,32 @@ export function useGitBranchLabel(directory: string | null): string | null {
 	return useGitStore(state => directory ? (state.directories.get(directory)?.status?.current?.trim() ?? null) : null);
 }
 
-export function useGitAllBranches(directory: string | null): { local: string[]; remote: string[] } | null {
-	return useGitStore(state => directory ? state.directories.get(directory)?.allBranches ?? null : null);
+/**
+ * Map of every known directory → its current branch name, suitable for the
+ * sidebar's `gitBranches.get(directory)` lookups (SessionSidebar, CommandPalette,
+ * useSwitcherItems). Memoised by identity so consumers' useMemo chains stay
+ * stable when nothing changed; rebuilt only when an entry's `status.current`
+ * shifts. Returns an empty Map when no git data is loaded.
+ */
+export function useGitAllBranches(): Map<string, string> {
+	const cacheRef = useRef<Map<string, string>>(new Map());
+	return useGitStore((state) => {
+		const next = new Map<string, string>();
+		state.directories.forEach((entry, dir) => {
+			const branch = entry.status?.current?.trim();
+			if (branch) next.set(dir, branch);
+		});
+		const prev = cacheRef.current;
+		if (prev.size === next.size) {
+			let same = true;
+			for (const [k, v] of next) {
+				if (prev.get(k) !== v) { same = false; break; }
+			}
+			if (same) return prev;
+		}
+		cacheRef.current = next;
+		return next;
+	});
 }
 
 export function useGitLoadingStatus(directory: string | null): boolean {

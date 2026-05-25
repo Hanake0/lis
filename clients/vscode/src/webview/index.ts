@@ -4,6 +4,7 @@ import { App } from './app';
 import { vscode } from './vscodeApi';
 import { LisRpcClient } from './lib/lis/rpc-client';
 import { mountChatEventsBridge } from './sync/chat-events-bridge';
+import { useGlobalSessionsStore } from './stores/useGlobalSessionsStore';
 
 // Install the RPC client BEFORE any store boots. `install()` registers the
 // window message listener that translates the extension host's `lis.init` /
@@ -17,6 +18,16 @@ LisRpcClient.install(window, { vscode });
 // chat list stays in sync on create/update/delete/archive without an explicit
 // refresh — the store mutations run as the events arrive on /api/events.
 mountChatEventsBridge();
+
+// Bootstrap the global sessions list as soon as the RPC client has a real
+// origin to talk to. `onConfigure` fires synchronously when `lis.init` lands
+// (or immediately if config is already cached from a previous setConfig call),
+// so the sidebar populates without waiting for the SessionSidebar mount race.
+// loadSessions has its own inflight-de-dup so the SessionSidebar's own
+// refreshGlobalSessions call won't double-fetch.
+LisRpcClient.instance().onConfigure(() => {
+	void useGlobalSessionsStore.getState().loadSessions();
+});
 
 const isSidebarMode = (window as any).__LIS_SIDEBAR_MODE === true;
 

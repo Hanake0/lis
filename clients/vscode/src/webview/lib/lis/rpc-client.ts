@@ -56,6 +56,9 @@ export class LisRpcClient {
 	private readonly channel: LisEventChannel;
 	/** Stored so per-chat SSE channels use the same factory the test harness injected. */
 	private readonly eventSourceFactory?: EventSourceFactory;
+	/** Fires every time `setConfig` lands a non-empty origin. Lets stores re-bootstrap
+	 *  data when the host's `lis.init` arrives after their first render. */
+	private readonly configureListeners = new Set<() => void>();
 
 	private constructor(source: MessageSource, eventSourceFactory?: EventSourceFactory) {
 		this.http               = new LisHttpClient();
@@ -113,6 +116,30 @@ export class LisRpcClient {
 		// Open (or reopen if config changed) the SSE channel.
 		if (baseOrigin) this.channel.open();
 		else            this.channel.close();
+		// Notify configure subscribers — only when there's actually an origin to talk to,
+		// otherwise consumers retry against an empty client and burn a re-render for nothing.
+		if (baseOrigin) {
+			for (const fn of this.configureListeners) {
+				try { fn(); } catch { /* swallow */ }
+			}
+		}
+	}
+
+	/**
+	 * Subscribe to "config became available" — fires every time {@link setConfig}
+	 * is called with a non-empty origin (initial bootstrap and subsequent
+	 * `lis.config_update` events). Used by stores that need to retry their
+	 * initial REST bootstrap if their first render lost the race against
+	 * `lis.init` from the extension host. Returns an unsubscribe function.
+	 */
+	onConfigure(fn: () => void): () => void {
+		this.configureListeners.add(fn);
+		// Fire immediately if config is already in place — saves the caller from a
+		// branch like "if (currentOrigin) doIt() else onConfigure(doIt)".
+		if (this.http.configuredOrigin) {
+			try { fn(); } catch { /* swallow */ }
+		}
+		return () => this.configureListeners.delete(fn);
 	}
 
 	// ── Generic helpers ────────────────────────────────────────────

@@ -24,11 +24,13 @@
 			color-scheme: dark;
 		}
 	</style>
-	<title>Test Sidebar</title>
+	<title>Test Sidebar (REST + SSE)</title>
 </head>
 <body>
 	<div id="app"></div>
 	<script>
+		// Capture postMessages the sidebar fires (open_session, etc.) so we can
+		// inspect them in DevTools while iterating on the layout.
 		window.acquireVsCodeApi = () => ({
 			postMessage: (msg) => console.log('[sidebar postMessage]', JSON.stringify(msg)),
 			getState: () => ({}),
@@ -37,21 +39,22 @@
 	</script>
 	<script src="dist/chat.js"></script>
 	<script>
-		setTimeout(() => {
-			// Simulate connected + session list
-			window.postMessage({ type: 'state', state: 'connected' }, '*');
+		// Feed the new RPC client real credentials so it hits the live backend
+		// over REST + SSE — same shape the extension host posts to the webview.
+		// Override these via ?origin=... &token=... in the URL when serving the
+		// fixture from a different host or with a different auth token.
+		(function bootstrapLisConfig() {
+			const params     = new URLSearchParams(location.search);
+			const baseOrigin = params.get('origin') ?? 'http://localhost:3010';
+			const token      = params.get('token')  ?? '';
+			// The LisRpcClient subscribes to window 'message' events at boot
+			// (see src/webview/index.ts → LisRpcClient.install). It listens for
+			// `lis.init { baseOrigin, token }` to wire up REST + SSE.
+			// Defer so install() has run by the time we fire.
 			setTimeout(() => {
-				window.postMessage({ type: 'frame', frame: {
-					type: 'chat_list',
-					chats: [
-						{ chat_id: 'web:abc123', name: 'Debug login flow', updated_at: new Date(Date.now() - 4*60000).toISOString() },
-						{ chat_id: 'web:def456', name: 'Refactor auth middleware', updated_at: new Date(Date.now() - 35*60000).toISOString() },
-						{ chat_id: 'web:ghi789', name: 'Add unit tests for API', updated_at: new Date(Date.now() - 3*3600000).toISOString() },
-						{ chat_id: 'web:jkl012', name: 'Fix CSS layout bug', updated_at: new Date(Date.now() - 2*86400000).toISOString() },
-					]
-				}}, '*');
-			}, 100);
-		}, 300);
+				window.postMessage({ type: 'lis.init', baseOrigin, token }, '*');
+			}, 50);
+		})();
 	</script>
 </body>
 </html>
