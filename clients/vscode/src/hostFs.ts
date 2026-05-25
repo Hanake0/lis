@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 
+import type { Logger } from './logger';
+
 /**
  * Webview → extension host filesystem bridge.
  *
@@ -34,16 +36,26 @@ interface HostFsRequest {
 export function installHostFsHandler(
 	webview: vscode.Webview,
 	next:    (msg: { type?: string; [k: string]: unknown }) => void,
+	logger?: Logger | null,
 ): vscode.Disposable {
 	return webview.onDidReceiveMessage((msg: { type?: string; [k: string]: unknown }) => {
 		if (msg?.type !== 'host_fs') { next(msg); return; }
 		const req = msg as unknown as HostFsRequest;
+		const startedAt = Date.now();
+		if (logger?.isVerbose()) logger?.frame('recv', { type: 'host_fs', op: req.op, request_id: req.request_id, path: req.path });
 		void handle(req)
-			.then((result) => webview.postMessage({ type: 'host_fs_response', request_id: req.request_id, ok: true, result }))
-			.catch((err)   => webview.postMessage({
-				type: 'host_fs_response', request_id: req.request_id, ok: false,
-				error: err instanceof Error ? err.message : String(err),
-			}));
+			.then((result) => {
+				if (logger?.isVerbose()) logger?.frame('send', { type: 'host_fs_response', request_id: req.request_id, ok: true, op: req.op, ms: Date.now() - startedAt });
+				return webview.postMessage({ type: 'host_fs_response', request_id: req.request_id, ok: true, result });
+			})
+			.catch((err)   => {
+				const errMsg = err instanceof Error ? err.message : String(err);
+				logger?.warn(`host_fs ${req.op} failed (path=${req.path ?? '∅'}): ${errMsg}`);
+				return webview.postMessage({
+					type: 'host_fs_response', request_id: req.request_id, ok: false,
+					error: errMsg,
+				});
+			});
 	});
 }
 

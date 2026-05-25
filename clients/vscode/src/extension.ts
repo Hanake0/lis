@@ -33,8 +33,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		});
 	}
 
-	sidebar   = new SidebarWebviewProvider(context.extensionUri, getConfig);
-	panels    = new ChatPanelManager(context, getConfig);
+	sidebar   = new SidebarWebviewProvider(context.extensionUri, getConfig, logger);
+	panels    = new ChatPanelManager(context, getConfig, logger);
 	statusBar = new LisStatusBar();
 
 	// All transport state now lives in the webview's LisRpcClient — the SSE channel
@@ -56,9 +56,12 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('lis.configure',  () =>
 			vscode.commands.executeCommand('workbench.action.openSettings', '@ext:lis.lis-vscode')),
 
-		vscode.commands.registerCommand('lis.newChat', async () => {
+		vscode.commands.registerCommand('lis.newChat', async (projectExternalId?: unknown) => {
 			const chatId = `web:${crypto.randomUUID()}`;
-			const created = await createChatViaRest(getConfig(), chatId, 'New Chat', logger);
+			const projectId = typeof projectExternalId === 'string' && projectExternalId.length > 0
+				? projectExternalId
+				: null;
+			const created = await createChatViaRest(getConfig(), chatId, 'New Chat', projectId, logger);
 			if (!created) {
 				// Don't open a panel for a non-existent chat — the create attempt failed.
 				void vscode.window.showWarningMessage('Lis: could not create a new chat (check the server URL/token in settings).');
@@ -131,16 +134,22 @@ interface CreatedChatRest {
  * the host directly so we keep a thin helper here.
  */
 async function createChatViaRest(
-	cfg:     LisConfig,
-	chatId:  string,
-	name:    string,
-	logger?: Logger | null,
+	cfg:                LisConfig,
+	chatId:             string,
+	name:               string,
+	projectExternalId:  string | null,
+	logger?:            Logger | null,
 ): Promise<CreatedChatRest | null> {
 	if (!cfg.baseOrigin) {
 		logger?.warn('lis.newChat: no baseOrigin configured');
 		return null;
 	}
 	const url = `${cfg.baseOrigin}/api/chats`;
+	const payload: Record<string, unknown> = { chat_id: chatId, name };
+	// Server's CreateChatRequest reads `project_id` on the wire (it's the
+	// project's external id, not the FK — see Lis.Api/Schemas/Chats/ChatDto.cs).
+	// Sending the wrong key was a silent no-op and chats came back unbound.
+	if (projectExternalId) payload.project_id = projectExternalId;
 	try {
 		const res = await fetch(url, {
 			method:  'POST',
@@ -148,7 +157,7 @@ async function createChatViaRest(
 				'Content-Type':  'application/json',
 				...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
 			},
-			body: JSON.stringify({ chat_id: chatId, name }),
+			body: JSON.stringify(payload),
 		});
 		if (!res.ok) {
 			const text = await res.text().catch(() => '');

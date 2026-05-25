@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
 import { installHostFsHandler } from './hostFs';
-import { buildWorkspaceMessage, openExternalPath } from './sidebarWebviewProvider';
+import { type Logger, relayWebviewLog } from './logger';
+import { buildWorkspaceMessage, openExternalPath, safeMtimeMs } from './sidebarWebviewProvider';
 import { generateNonce } from './util';
 
 interface WebviewInbound {
@@ -30,13 +31,15 @@ export class ChatPanelManager {
 	constructor(
 		private readonly context:   vscode.ExtensionContext,
 		private          getConfig: () => LisConfig,
+		private readonly logger:    Logger | null = null,
 	) {}
 
 	/** Push the current config to every open panel — called when settings change. */
 	notifyConfigChange(): void {
 		const cfg = this.getConfig();
-		const msg = { type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token };
+		const msg = { type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token, verbose: cfg.verbose };
 		for (const entry of this.panels.values()) entry.panel.webview.postMessage(msg);
+		this.logger?.info(`chatPanel: pushed config to ${this.panels.size} panel(s) (origin=${cfg.baseOrigin || '∅'}, token=${cfg.token ? 'set' : 'missing'}, verbose=${cfg.verbose})`);
 	}
 
 	/** Push the current VS Code workspace root + home directory to every open panel. */
@@ -79,8 +82,11 @@ export class ChatPanelManager {
 		// installHostFsHandler intercepts `host_fs` messages and forwards everything else
 		// to our existing onWebviewMessage. Same flow as SidebarWebviewProvider — the
 		// chat panel needs the FS bridge for SidebarFilesTree / FilesView / etc.
-		installHostFsHandler(panel.webview, (msg) => this.onWebviewMessage(entry, msg as WebviewInbound & { type: string }));
-		panel.onDidDispose(() => { this.panels.delete(chatId); });
+		installHostFsHandler(panel.webview, (msg) => {
+			if (msg?.type === 'lis.log') { relayWebviewLog(this.logger, msg); return; }
+			this.onWebviewMessage(entry, msg as WebviewInbound & { type: string });
+		}, this.logger);
+		panel.onDidDispose(() => { this.panels.delete(chatId); this.logger?.info(`chatPanel: disposed chat=${chatId}`); });
 	}
 
 	private onWebviewMessage(entry: ChatPanel, msg: WebviewInbound & { type: string }): void {
@@ -90,7 +96,8 @@ export class ChatPanelManager {
 				// First message from the React mount — push config + workspace, then
 				// tell the panel which chat it owns so the bridge can subscribe.
 				const cfg = this.getConfig();
-				this.post(entry, { type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
+				this.logger?.info(`chatPanel ${entry.chatId}: handshake (${msg.type}) — pushing init (origin=${cfg.baseOrigin || '∅'}, token=${cfg.token ? 'set' : 'missing'}, verbose=${cfg.verbose})`);
+				this.post(entry, { type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token, verbose: cfg.verbose });
 				this.post(entry, buildWorkspaceMessage());
 				this.post(entry, { type: 'init', chatId: entry.chatId });
 				return;
@@ -112,8 +119,12 @@ export class ChatPanelManager {
 
 	private buildHtml(webview: vscode.Webview): string {
 		const distRoot   = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
-		const cssUri     = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.css'));
-		const jsUri      = webview.asWebviewUri(vscode.Uri.joinPath(distRoot, 'chat.js'));
+		const cssDisk    = vscode.Uri.joinPath(distRoot, 'chat.css');
+		const jsDisk     = vscode.Uri.joinPath(distRoot, 'chat.js');
+		// See sidebarWebviewProvider.safeMtimeMs — mtime cache-bust so Chromium /
+		// VS Code Web don't serve a stale bundle after esbuild rebuilds it.
+		const cssUri     = `${webview.asWebviewUri(cssDisk)}?v=${safeMtimeMs(cssDisk.fsPath)}`;
+		const jsUri      = `${webview.asWebviewUri(jsDisk)}?v=${safeMtimeMs(jsDisk.fsPath)}`;
 		const nonce      = generateNonce();
 		const cspSource  = webview.cspSource;
 		const apiOrigin  = this.getConfig().baseOrigin;

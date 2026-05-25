@@ -33,7 +33,9 @@ const extensionConfig = {
 	entryPoints: ['src/extension.ts'],
 	bundle: true,
 	outfile: 'dist/extension.js',
-	external: ['vscode'],
+	// `fs` is a Node built-in that the VS Code extension host resolves at
+	// runtime — marking it external keeps esbuild from trying to bundle it.
+	external: ['vscode', 'fs'],
 	format: 'cjs',
 	platform: 'browser',
 	target: 'es2022',

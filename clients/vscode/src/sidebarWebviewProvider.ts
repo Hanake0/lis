@@ -1,7 +1,9 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
 import { installHostFsHandler } from './hostFs';
+import { type Logger, relayWebviewLog } from './logger';
 import { generateNonce } from './util';
 
 /**
@@ -16,6 +18,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private          getConfig:    () => LisConfig,
+		private readonly logger:       Logger | null = null,
 	) {}
 
 	setOpenSessionHandler(handler: (chatId: string, title?: string) => void): void {
@@ -25,7 +28,8 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	/** Called from extension.ts when `lis.serverUrl` / `lis.authToken` change at runtime. */
 	notifyConfigChange(): void {
 		const cfg = this.getConfig();
-		this.post({ type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token });
+		this.post({ type: 'lis.config_update', baseOrigin: cfg.baseOrigin, token: cfg.token, verbose: cfg.verbose });
+		this.logger?.info(`sidebar: pushed config (origin=${cfg.baseOrigin || '∅'}, token=${cfg.token ? 'set' : 'missing'}, verbose=${cfg.verbose})`);
 	}
 
 	/** Called on activation + when the VS Code workspace folders change. */
@@ -58,7 +62,8 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					// config so LisRpcClient can wire up, plus the workspace info so
 					// useDirectoryStore mirrors the host.
 					const cfg = this.getConfig();
-					this.post({ type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token });
+					this.logger?.info(`sidebar: handshake (${msg.type}) — pushing init (origin=${cfg.baseOrigin || '∅'}, token=${cfg.token ? 'set' : 'missing'}, verbose=${cfg.verbose})`);
+					this.post({ type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token, verbose: cfg.verbose });
 					this.post(buildWorkspaceMessage());
 					return;
 				}
@@ -68,10 +73,26 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					return;
 
 				case 'open_session':
+					this.logger?.info(`sidebar: open_session chat=${msg.chat_id}`);
 					this.onOpenSession?.(msg.chat_id as string, msg.title as string | undefined);
 					return;
+
+				case 'new_chat':
+					// The sidebar's "+ New session" button can't render a draft inline
+					// (the chat lives in a separate WebviewPanel), so we route through
+					// the same `lis.newChat` command the title-bar action uses. The
+					// optional `project_external_id` ties the new chat to the project
+					// whose "+" button was clicked, which the backend stores as the
+					// chat's `project_id` foreign key.
+					this.logger?.info(`sidebar: new_chat — project=${msg.project_external_id ?? '∅'}`);
+					void vscode.commands.executeCommand('lis.newChat', msg.project_external_id);
+					return;
+
+				case 'lis.log':
+					relayWebviewLog(this.logger, msg);
+					return;
 			}
-		});
+		}, this.logger);
 	}
 
 	private post(msg: unknown): void {
@@ -80,8 +101,17 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 
 	private getHtml(webview: vscode.Webview): string {
 		const nonce     = generateNonce();
-		const cssUri    = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.css'));
-		const jsUri     = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'chat.js'));
+		const distRoot  = vscode.Uri.joinPath(this.extensionUri, 'dist');
+		const cssDisk   = vscode.Uri.joinPath(distRoot, 'chat.css');
+		const jsDisk    = vscode.Uri.joinPath(distRoot, 'chat.js');
+		// Cache-bust by mtime so the iframe refetches the bundle whenever esbuild
+		// rewrites it. VS Code Web (and Chromium more generally) caches webview
+		// resources aggressively — without this, a freshly built `chat.js` is
+		// often served stale and dev iterations look broken until a hard reload.
+		const cssVer    = safeMtimeMs(cssDisk.fsPath);
+		const jsVer     = safeMtimeMs(jsDisk.fsPath);
+		const cssUri    = `${webview.asWebviewUri(cssDisk)}?v=${cssVer}`;
+		const jsUri     = `${webview.asWebviewUri(jsDisk)}?v=${jsVer}`;
 		const cspSource = webview.cspSource;
 		const apiOrigin = this.getConfig().baseOrigin;
 		// CSP connect-src must include the user-configured backend so fetch() + EventSource
@@ -103,6 +133,19 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 	<script nonce="${nonce}" src="${jsUri}"></script>
 </body>
 </html>`;
+	}
+}
+
+/**
+ * mtimeMs of `path`, or `Date.now()` if the stat fails. Used for cache-busting
+ * webview bundle URIs so iframe never serves stale `chat.js` after esbuild
+ * rewrites it.
+ */
+export function safeMtimeMs(path: string): number {
+	try {
+		return fs.statSync(path).mtimeMs | 0;
+	} catch {
+		return Date.now();
 	}
 }
 
