@@ -23,6 +23,11 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	// worktree pill PATCH success). `getDirectoryForSession` reads from this
 	// map. null = "inherit project root" — matches the server-side semantic.
 	sessionDirectoryMap: new Map<string, string | null>(),
+	// Per-chat project external_id cache. Same mirror as
+	// `sessionDirectoryMap` — fed by useChatStore.sessions and consumed by
+	// `getProjectIdForSession`. Drives the composer's persisted-chat project
+	// pill.
+	sessionProjectIdMap: new Map<string, string | null>(),
 
 	setCurrentSession: (id: string) => set({ currentSessionId: id, newSessionDraft: null }),
 	openNewSessionDraft: () => set({ currentSessionId: null, newSessionDraft: { open: true } }),
@@ -154,6 +159,23 @@ export const useSessionUIStore = create<any>((set: any) => ({
 		const map = (useSessionUIStore.getState() as { sessionDirectoryMap?: Map<string, string | null> }).sessionDirectoryMap;
 		return map?.get(sessionId) ?? null;
 	},
+	getProjectIdForSession: (sessionId: string) => {
+		const map = (useSessionUIStore.getState() as { sessionProjectIdMap?: Map<string, string | null> }).sessionProjectIdMap;
+		return map?.get(sessionId) ?? null;
+	},
+	/**
+	 * Rebind a persisted chat's project. POSTs /api/chats/{id}/move which
+	 * publishes `chat_updated` via SSE — the sidebar re-buckets the row
+	 * automatically. We don't optimistically touch the local map; the
+	 * sessions mirror will reconcile when the SSE round-trips.
+	 */
+	setSessionProject: async (sessionId: string, projectExternalId: string | null) => {
+		try {
+			await LisRpcClient.instance().moveChat(sessionId, projectExternalId);
+		} catch (err) {
+			console.warn('[session-ui-store] setSessionProject move failed:', err);
+		}
+	},
 	/**
 	 * Rebind a persisted chat's working directory. PATCHes /api/chats/{id}
 	 * with `directory` (empty string CLEARS the override). The local cache
@@ -216,10 +238,12 @@ useChatStore.subscribe((state, prev) => {
 	}
 
 	if (state.sessions !== prev.sessions) {
-		const next = new Map<string, string | null>();
+		const nextDir = new Map<string, string | null>();
+		const nextPrj = new Map<string, string | null>();
 		for (const s of state.sessions) {
-			next.set(s.chat_id, s.directory ?? null);
+			nextDir.set(s.chat_id, s.directory  ?? null);
+			nextPrj.set(s.chat_id, s.project_id ?? null);
 		}
-		useSessionUIStore.setState({ sessionDirectoryMap: next });
+		useSessionUIStore.setState({ sessionDirectoryMap: nextDir, sessionProjectIdMap: nextPrj });
 	}
 });

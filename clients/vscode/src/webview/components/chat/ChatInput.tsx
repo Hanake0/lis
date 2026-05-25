@@ -950,6 +950,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const newSessionDraft = useSessionUIStore((s) => s.newSessionDraft);
     const newSessionDraftOpen = Boolean(newSessionDraft?.open);
     const setNewSessionDraftTarget = useSessionUIStore((s) => s.setNewSessionDraftTarget);
+    // Lis-side per-chat binding lookups (15c.6). The pills render for BOTH
+    // draft chats (mutate newSessionDraft) and persisted chats (PATCH chat
+    // row directly). These reads drive the *initial* selected pill values
+    // for persisted chats; setSessionDirectory + setSessionProject below
+    // handle the writes.
+    const setSessionDirectory = useSessionUIStore((s) => s.setSessionDirectory);
+    const setSessionProject   = useSessionUIStore((s) => s.setSessionProject);
+    const persistedChatProjectId = useSessionUIStore(
+        React.useCallback((s) => currentSessionId ? s.getProjectIdForSession(currentSessionId) : null, [currentSessionId]),
+    );
+    const persistedChatDirectory = useSessionUIStore(
+        React.useCallback((s) => currentSessionId ? s.getDirectoryForSession(currentSessionId) : null, [currentSessionId]),
+    );
     const availableWorktreesByProject = useSessionUIStore((s) => s.availableWorktreesByProject);
     const abortPromptSessionId = useSessionUIStore((s) => s.abortPromptSessionId);
     const clearAbortPrompt = useSessionUIStore((s) => s.clearAbortPrompt);
@@ -3300,13 +3313,23 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const footerGapClass = 'gap-x-1.5 gap-y-0';
     const isVSCode = isVSCodeRuntime();
     // Lis's parallel-chat model lets every tab own its own project + worktree,
-    // so the draft target pills must render in VS Code too. The OC original
-    // gated this off because OC's desktop chrome already provided a global
-    // project picker — Lis has no such global, so the per-chat pill is the
-    // only way the user binds a project to a draft.
-    const showDraftTargetSelectors = newSessionDraftOpen;
+    // so the target pills always render in VS Code — for drafts AND persisted
+    // chats. The OC original gated this off because OC's desktop chrome already
+    // provided a global project picker; Lis has no such global, so the per-chat
+    // pill is the only way the user binds a project / worktree to a chat.
+    const showDraftTargetSelectors = newSessionDraftOpen || Boolean(currentSessionId);
+    // True when the composer is on a persisted (non-draft) chat — drives
+    // whether the pill change handlers PATCH the chat row vs mutate
+    // newSessionDraft.
+    const isPersistedChatBinding = !newSessionDraftOpen && Boolean(currentSessionId);
 
     const selectedDraftProject = React.useMemo(() => {
+        // Persisted chat: the row's project_id is authoritative.
+        if (isPersistedChatBinding && persistedChatProjectId) {
+            const chatProj = projects.find((project) => project.id === persistedChatProjectId);
+            if (chatProj) return chatProj;
+        }
+
         const explicit = newSessionDraft?.selectedProjectId
             ? projects.find((project) => project.id === newSessionDraft.selectedProjectId) ?? null
             : null;
@@ -3322,7 +3345,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
         }
 
         return projects[0] ?? null;
-    }, [activeProjectId, newSessionDraft?.selectedProjectId, projects]);
+    }, [activeProjectId, isPersistedChatBinding, newSessionDraft?.selectedProjectId, persistedChatProjectId, projects]);
 
     const selectedDraftProjectPath = React.useMemo(
         () => normalizePath(selectedDraftProject?.path ?? null),
@@ -3411,10 +3434,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     }, [availableWorktreesByProject, newSessionDraft?.bootstrapPendingDirectory, selectedDraftProject, selectedDraftProjectCurrentBranch, selectedDraftProjectPath]);
 
     const selectedDraftDirectory = React.useMemo(
-        () => normalizePath(newSessionDraft?.bootstrapPendingDirectory ?? null)
-            ?? normalizePath(newSessionDraft?.directoryOverride ?? null)
-            ?? selectedDraftProjectPath,
-        [newSessionDraft?.bootstrapPendingDirectory, newSessionDraft?.directoryOverride, selectedDraftProjectPath],
+        () => {
+            // Persisted chat: chat.directory wins. null → fall back to project root.
+            if (isPersistedChatBinding) {
+                return normalizePath(persistedChatDirectory) ?? selectedDraftProjectPath;
+            }
+            return normalizePath(newSessionDraft?.bootstrapPendingDirectory ?? null)
+                ?? normalizePath(newSessionDraft?.directoryOverride ?? null)
+                ?? selectedDraftProjectPath;
+        },
+        [isPersistedChatBinding, persistedChatDirectory, newSessionDraft?.bootstrapPendingDirectory, newSessionDraft?.directoryOverride, selectedDraftProjectPath],
     );
 
     const shouldKeepMissingSelectedDraftDirectory = React.useMemo(() => {
@@ -3504,12 +3533,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     }, [isDiscoveringDraftBranches, projectRootBranchOption, selectedDraftProjectIsGitRepo, worktreeBranchOptions.length]);
 
     const handleDraftProjectChange = React.useCallback((projectId: string) => {
-        const draft = useSessionUIStore.getState().newSessionDraft;
-        if (draft?.pendingWorktreeRequestId || draft?.bootstrapPendingDirectory || draft?.preserveDirectoryOverride) {
+        const project = projects.find((entry) => entry.id === projectId);
+        if (!project) return;
+        // Persisted chat → PATCH /api/chats/{id}/move (publishes chat_updated
+        // SSE → sidebar re-buckets). We also rebind the directory to the new
+        // project root so the worktree pill resets sensibly; the next PATCH
+        // round-trip clears any stale chat.Directory.
+        if (isPersistedChatBinding && currentSessionId) {
+            void setSessionProject(currentSessionId, projectId);
+            void setSessionDirectory(currentSessionId, '');
             return;
         }
-        const project = projects.find((entry) => entry.id === projectId);
-        if (!project) {
+        const draft = useSessionUIStore.getState().newSessionDraft;
+        if (draft?.pendingWorktreeRequestId || draft?.bootstrapPendingDirectory || draft?.preserveDirectoryOverride) {
             return;
         }
         if (activeProjectId !== projectId) {
@@ -3519,21 +3555,30 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
             projectId,
             directoryOverride: project.path,
         }, { force: true });
-    }, [activeProjectId, projects, setActiveProjectIdOnly, setNewSessionDraftTarget]);
+    }, [activeProjectId, currentSessionId, isPersistedChatBinding, projects, setActiveProjectIdOnly, setNewSessionDraftTarget, setSessionDirectory, setSessionProject]);
 
     const handleDraftDirectoryChange = React.useCallback((directory: string) => {
-        const draft = useSessionUIStore.getState().newSessionDraft;
-        if (draft?.pendingWorktreeRequestId || draft?.bootstrapPendingDirectory || draft?.preserveDirectoryOverride) {
+        if (!selectedDraftProject) return;
+        // Persisted chat → PATCH /api/chats/{id} { directory } (empty = clear
+        // the override → fall back to project root). The next chat_updated SSE
+        // updates useChatStore.sessions, which subscribes back into
+        // sessionDirectoryMap so the pill re-renders without a local touch.
+        if (isPersistedChatBinding && currentSessionId) {
+            // Picking the project root → clear the override.
+            const projectRoot = normalizePath(selectedDraftProject.path) ?? '';
+            const value = normalizePath(directory) === projectRoot ? '' : directory;
+            void setSessionDirectory(currentSessionId, value);
             return;
         }
-        if (!selectedDraftProject) {
+        const draft = useSessionUIStore.getState().newSessionDraft;
+        if (draft?.pendingWorktreeRequestId || draft?.bootstrapPendingDirectory || draft?.preserveDirectoryOverride) {
             return;
         }
         setNewSessionDraftTarget({
             projectId: selectedDraftProject.id,
             directoryOverride: directory,
         }, { force: true });
-    }, [selectedDraftProject, setNewSessionDraftTarget]);
+    }, [currentSessionId, isPersistedChatBinding, selectedDraftProject, setNewSessionDraftTarget, setSessionDirectory]);
 
     const renderProjectLabelWithIcon = React.useCallback((project: {
         id: string;
