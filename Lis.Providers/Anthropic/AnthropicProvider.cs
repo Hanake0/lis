@@ -57,6 +57,10 @@ public static class AnthropicProvider {
 		services.AddSingleton<IChatClient>(anthropic.Messages);
 		services.AddSingleton<IUsageExtractor, AnthropicUsageExtractor>();
 		services.AddSingleton<IReasoningExtractor, AnthropicReasoningExtractor>();
+		// Surface the static model catalog through `GET /api/providers` so the
+		// webview model picker / effort dropdown / provider icons populate. Only
+		// registered when Anthropic is enabled — providers list is honest.
+		services.AddSingleton<IProviderMetadata, AnthropicProviderMetadata>();
 
 		// Token counter (free endpoint for accurate post-compaction counts, with a
 		// real messages.create fallback on the small/fast model if it fails).
