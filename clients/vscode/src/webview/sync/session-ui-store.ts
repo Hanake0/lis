@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useChatStore } from '@/store';
 import { LisRpcClient } from '@/lib/lis/rpc-client';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 
@@ -128,24 +129,23 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	}),
 }));
 
+// Mirror the Lis-side per-chat context window into the OC-facing
+// `getContextUsage` accessor. Phase 15c.5 will port OC's `contextStore`
+// proper — once it's wired into ModelControls directly, this bridge goes
+// away. The chatId → currentSessionId mirror moved to
+// `chat-panel-bridge.installChatPanelInit` (which already runs on init).
 useChatStore.subscribe((state, prev) => {
-	if (state.chatId !== prev.chatId && state.chatId) {
-		useSessionUIStore.setState({ currentSessionId: state.chatId, newSessionDraft: null });
-	}
-
 	const ctx = state.contextData;
-	const prevCtx = prev.contextData;
-	if (ctx !== prevCtx) {
-		useSessionUIStore.setState({
-			getContextUsage: () => {
-				if (!ctx || ctx.budget <= 0) return null;
-				return {
-					totalTokens: ctx.total,
-					percentage: Math.round((ctx.total / ctx.budget) * 100),
-					contextLimit: ctx.budget,
-					thresholdLimit: ctx.budget,
-				};
-			},
-		});
-	}
+	if (ctx === prev.contextData) return;
+	useSessionUIStore.setState({
+		getContextUsage: () => {
+			if (!ctx || ctx.budget <= 0) return null;
+			return {
+				totalTokens:    ctx.total,
+				percentage:     Math.round((ctx.total / ctx.budget) * 100),
+				contextLimit:   ctx.budget,
+				thresholdLimit: ctx.budget,
+			};
+		},
+	});
 });
