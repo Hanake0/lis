@@ -7,6 +7,7 @@ import { lisLog } from './lib/lis/logger';
 import { mountChatEventsBridge } from './sync/chat-events-bridge';
 import { useGlobalSessionsStore } from './stores/useGlobalSessionsStore';
 import { installProjectsSync } from './stores/useProjectsStore';
+import { installChatPanelInit } from './sync/chat-panel-bridge';
 
 // Trace every inbound postMessage when verbose logging is on. Wire this BEFORE
 // the RPC client so the trace fires for `lis.init` too.
@@ -31,6 +32,15 @@ installProjectsSync();
 
 const isSidebarMode = (window as any).__LIS_SIDEBAR_MODE === true;
 const appRoot       = document.getElementById('app')!;
+
+// Chat-panel mode needs the `init { chatId }` listener wired BEFORE we post
+// `ready` — the host responds with `lis.init` + workspace + `init` in one
+// burst, and if React hasn't mounted yet the `init` message lands without a
+// listener and is silently dropped. Wiring here makes the bridge owner of
+// init handling, with React-mount timing as an irrelevant detail.
+if (!isSidebarMode) {
+	installChatPanelInit();
+}
 
 /**
  * Mount sequence:

@@ -6,13 +6,13 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { Toaster } from './components/ui/sonner';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { I18nProvider } from './lib/i18n';
-import { installChatPanelInit } from './sync/chat-panel-bridge';
 
 /**
  * Chat-panel root — one instance per VS Code chat WebviewPanel. The host posts
- * `init { chatId }` so the bridge knows which chat to bind to; everything
- * else (history, agent, token stream, permissions, questions, sessions list)
- * arrives through REST + SSE wired in {@link installChatPanelInit}.
+ * `init { chatId }` and the bridge (mounted from `index.ts` before the ready
+ * ping fires) translates that into `useSessionUIStore.currentSessionId` and a
+ * per-chat data subscription. Everything else (history, agent, token stream,
+ * permissions, questions, sessions list) flows through REST + SSE.
  *
  * The OC `ChatContainer` is the entire UI — composer, message list, status
  * row, error boundaries. SessionDialogs hosts the delete / worktree confirm
@@ -21,7 +21,6 @@ import { installChatPanelInit } from './sync/chat-panel-bridge';
 export function App() {
     useEffect(() => {
         document.documentElement.classList.add('dark');
-        return installChatPanelInit();
     }, []);
 
     return (
