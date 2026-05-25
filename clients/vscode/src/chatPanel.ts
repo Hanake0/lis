@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
+import { installHostFsHandler } from './hostFs';
 import { buildWorkspaceMessage, openExternalPath } from './sidebarWebviewProvider';
 import { generateNonce } from './util';
 
@@ -75,7 +76,10 @@ export class ChatPanelManager {
 		const entry: ChatPanel = { chatId, title: resolvedTitle, panel };
 		this.panels.set(chatId, entry);
 
-		panel.webview.onDidReceiveMessage((msg: WebviewInbound) => this.onWebviewMessage(entry, msg));
+		// installHostFsHandler intercepts `host_fs` messages and forwards everything else
+		// to our existing onWebviewMessage. Same flow as SidebarWebviewProvider — the
+		// chat panel needs the FS bridge for SidebarFilesTree / FilesView / etc.
+		installHostFsHandler(panel.webview, (msg) => this.onWebviewMessage(entry, msg as WebviewInbound & { type: string }));
 		panel.onDidDispose(() => { this.panels.delete(chatId); });
 	}
 

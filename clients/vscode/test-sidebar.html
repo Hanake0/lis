@@ -55,6 +55,26 @@
 				window.postMessage({ type: 'lis.init', baseOrigin, token }, '*');
 			}, 50);
 		})();
+
+		// Simulate the extension host's host_fs handler so the OC components'
+		// filesystem calls (DirectoryExplorerDialog / useDirectoryStatusProbe / etc.)
+		// resolve to *something* in the browser fixture. The real extension host
+		// answers from vscode.workspace.fs — here we just return an empty list
+		// and treat probe as true so the sidebar never hangs.
+		window.addEventListener('message', (ev) => {
+			const msg = ev.data;
+			if (!msg || msg.type !== 'host_fs') return;
+			const reply = (ok, result, error) =>
+				window.postMessage({ type: 'host_fs_response', request_id: msg.request_id, ok, result, error }, '*');
+			switch (msg.op) {
+				case 'list':             return reply(true, []);
+				case 'probe':            return reply(true, true);
+				case 'system_info':      return reply(true, { home: '/home/test', platform: 'browser' });
+				case 'home':             return reply(true, '/home/test');
+				case 'create_directory': return reply(true, { path: msg.path });
+				default:                 return reply(false, null, 'fixture: op not implemented');
+			}
+		});
 	</script>
 </body>
 </html>

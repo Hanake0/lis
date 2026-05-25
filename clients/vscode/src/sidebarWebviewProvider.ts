@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import type { LisConfig } from './config';
+import { installHostFsHandler } from './hostFs';
 import { generateNonce } from './util';
 
 /**
@@ -46,7 +47,10 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.webview.html = this.getHtml(webviewView.webview);
 
-		webviewView.webview.onDidReceiveMessage((msg) => {
+		// installHostFsHandler intercepts `host_fs` messages and forwards everything else
+		// to our own switch. That keeps the OC-component filesystem flow (project picker,
+		// file tree, directory probe) working inside the sandbox.
+		installHostFsHandler(webviewView.webview, (msg) => {
 			switch (msg.type) {
 				case 'lis.ready':
 				case 'ready': {
@@ -64,7 +68,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
 					return;
 
 				case 'open_session':
-					this.onOpenSession?.(msg.chat_id, msg.title);
+					this.onOpenSession?.(msg.chat_id as string, msg.title as string | undefined);
 					return;
 			}
 		});
