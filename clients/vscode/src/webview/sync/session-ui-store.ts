@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { useChatStore } from '@/store';
 import { LisRpcClient } from '@/lib/lis/rpc-client';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 
@@ -64,12 +63,21 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	},
 	shareSession: asyncNoop,
 	unshareSession: asyncNoop,
-	sendMessage: async (text: string, _providerId?: string, _modelId?: string, _agentName?: string, attachments?: AttachedFile[]) => {
-		const trimmed = (text ?? '').trim();
+	sendMessage: async (
+		content:     string,
+		_providerId: string,
+		modelId:     string,
+		_agent?:     string,
+		attachments?: AttachedFile[],
+	) => {
+		const trimmed = (content ?? '').trim();
 		const hasAttachments = attachments && attachments.length > 0;
 		if (!trimmed && !hasAttachments) return;
 
-		const { chatId, composerModel, composerEffort, composerProfile, composerThinking } = useChatStore.getState();
+		// OC's ChatInput is the only caller of this action; it passes the active
+		// composer's selections positionally. We read chatId straight from
+		// currentSessionId (the OC source of truth) — no Lis-legacy fallback.
+		const chatId = useSessionUIStore.getState().currentSessionId as string | null;
 		if (!chatId) return;
 
 		const imageAttachments = hasAttachments
@@ -78,12 +86,15 @@ export const useSessionUIStore = create<any>((set: any) => ({
 				.map((f: AttachedFile) => ({ data_url: f.dataUrl, mime_type: f.mimeType }))
 			: undefined;
 
+		// effort / tool_profile / thinking_mode wiring lands in Stage 15c with the
+		// composer pills. Today the server falls back to the chat's bound agent's
+		// defaults when these are null, which is the correct semantic.
 		await LisRpcClient.instance().sendChatMessage(chatId, {
 			text:          trimmed || null,
-			model:         composerModel    || null,
-			effort:        composerEffort   || null,
-			tool_profile:  composerProfile  || null,
-			thinking_mode: (composerThinking as 'budget' | 'adaptive' | 'auto' | undefined) || null,
+			model:         modelId || null,
+			effort:        null,
+			tool_profile:  null,
+			thinking_mode: null,
 			attachments:   imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
 		});
 	},
