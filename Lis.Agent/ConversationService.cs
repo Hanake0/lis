@@ -429,6 +429,18 @@ public sealed class ConversationService(
 		if (chat is null) {
 			string? chatName = message.IsGroup ? message.ChatName : null;
 
+			// Draft-session hints (15d). The web channel emits these on the first
+			// message of a draft so the lazy-created row lands bound to the right
+			// project + worktree from turn one. Subsequent messages ignore them —
+			// PATCH /api/chats/{id} owns post-creation rebinding.
+			long? projectFkId = null;
+			if (!string.IsNullOrWhiteSpace(message.ProjectExternalIdHint)) {
+				ProjectEntity? project = await db.Projects
+					.FirstOrDefaultAsync(p => p.ExternalId == message.ProjectExternalIdHint, ct);
+				if (project is not null) projectFkId = project.Id;
+			}
+			string? directory = string.IsNullOrWhiteSpace(message.DirectoryHint) ? null : message.DirectoryHint.Trim();
+
 			chat = new ChatEntity {
 				ExternalId     = message.ChatId,
 				Name           = chatName ?? message.SenderName,
@@ -437,6 +449,8 @@ public sealed class ConversationService(
 				RequireMention = message.IsGroup,
 				GroupTopic     = message.IsGroup ? message.ChatTopic : null,
 				Enabled        = message.IsGroup || message.SenderId == ownerJid,
+				ProjectId      = projectFkId,
+				Directory      = directory,
 				CreatedAt      = DateTimeOffset.UtcNow,
 				UpdatedAt      = DateTimeOffset.UtcNow
 			};

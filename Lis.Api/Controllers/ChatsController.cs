@@ -262,6 +262,21 @@ public sealed class ChatsController(
 		if (!hasText && !hasAttachments)
 			throw new ArgumentException("message requires text or attachments", nameof(request));
 
+		// Validate the draft envelope up-front. If the chat row doesn't exist yet
+		// (15d draft path) we'll lazy-create it from these hints inside the agent
+		// loop's UpsertChatAsync — but we want a clean 404/400 NOW if the
+		// caller passed a bogus project id, not a silent drop later.
+		string? draftProjectExternalId = string.IsNullOrWhiteSpace(request.DraftProjectExternalId)
+			? null : request.DraftProjectExternalId!.Trim();
+		string? draftDirectory = string.IsNullOrWhiteSpace(request.DraftDirectory)
+			? null : request.DraftDirectory!.Trim();
+		bool isDraft = !await db.Chats.AnyAsync(c => c.ExternalId == chatExternalId, ct);
+		if (isDraft && draftProjectExternalId is not null) {
+			bool projectExists = await db.Projects.AnyAsync(p => p.ExternalId == draftProjectExternalId, ct);
+			if (!projectExists)
+				throw new KeyNotFoundException($"Project '{draftProjectExternalId}' not found");
+		}
+
 		// Parse the first usable image attachment — additional are dropped (matches the
 		// legacy WS handler, which also persisted only the first image).
 		(byte[]? imageData, string? imageMime) = ExtractFirstImage(request.Attachments);
@@ -286,12 +301,50 @@ public sealed class ChatsController(
 			MediaType            = imageData is not null ? "image" : null,
 			InlineMediaData      = imageData,
 			InlineMediaMimeType  = imageMime,
+			// Draft envelope — honoured only on lazy chat creation (first message).
+			// UpsertChatAsync drops these if the chat row already exists.
+			ProjectExternalIdHint = draftProjectExternalId,
+			DirectoryHint         = draftDirectory,
 		};
 
 		// Echo the user-side message immediately so the UI renders the bubble before
 		// the assistant starts streaming. Publishes to the chat's SSE subject — the
 		// connected ChatStreamController forwards it to subscribers for this chat.
 		await this.EchoUserMessageAsync(chatExternalId, externalId, request.Text ?? (imageData is not null ? "[image]" : ""), now, ct);
+
+		// Draft → first message persists the chat row inside the agent loop's
+		// UpsertChatAsync. Schedule a chat_created broadcast on the global event
+		// bus after that lazy-create lands so the sidebar adds the new row
+		// without a list refresh. We re-read the row to capture the project FK
+		// resolution + the canonical CreatedAt/UpdatedAt the DB wrote.
+		if (isDraft) {
+			_ = Task.Run(async () => {
+				try {
+					// Poll briefly for the row to appear — UpsertChatAsync runs
+					// inside the fire-and-forget task below, so the row only exists
+					// after that races ahead. 50ms × 20 tries = 1s ceiling; in
+					// practice the row lands inside the first 100ms.
+					for (int i = 0; i < 20; i++) {
+						await Task.Delay(50, CancellationToken.None);
+						ChatEntity? row = await db.Chats
+							.Include(c => c.Project)
+							.AsNoTracking()
+							.FirstOrDefaultAsync(c => c.ExternalId == chatExternalId, CancellationToken.None);
+						if (row is null) continue;
+						ChatDto dto = ChatDto.From(row);
+						await events.PublishAsync(new ServerEvent(
+							0, ChatEventNames.Created,
+							new ChatCreatedPayload(dto),
+							row.CreatedAt
+						), CancellationToken.None);
+						return;
+					}
+					logger.LogWarning("Draft chat {ChatId} never materialised within 1s after first message", chatExternalId);
+				} catch (Exception ex) {
+					logger.LogError(ex, "chat_created broadcast for draft {ChatId} failed", chatExternalId);
+				}
+			}, CancellationToken.None);
+		}
 
 		// Fire-and-forget the agent loop. The loop itself publishes chunks/tool-events
 		// onto the same SSE subject via IChannelClient — failures fall through to a

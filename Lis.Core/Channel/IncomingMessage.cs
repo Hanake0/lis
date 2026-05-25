@@ -35,6 +35,20 @@ public sealed class IncomingMessage {
 	public string? ToolProfileOverride  { get; init; }
 	public string? ThinkingModeOverride { get; init; } // "budget" | "adaptive" | "auto"
 
+	/// <summary>
+	/// Project external_id this chat should be bound to. Honoured only on lazy
+	/// chat creation (the first message of a draft) — subsequent messages
+	/// ignore it. The webview composer sends this as part of the draft envelope.
+	/// </summary>
+	public string? ProjectExternalIdHint { get; init; }
+
+	/// <summary>
+	/// Per-chat working directory the agent's tools should treat as cwd.
+	/// Honoured only on lazy chat creation; subsequent messages ignore it
+	/// (use PATCH /api/chats/{id} to change after creation).
+	/// </summary>
+	public string? DirectoryHint { get; init; }
+
 	/// <summary>Set after ingestion — the DB-generated primary key.</summary>
 	public long DbId { get; set; }
 }

@@ -121,7 +121,12 @@ public sealed record SendMessageRequest(
 	[property: JsonPropertyName("effort")]        string?                       Effort,
 	[property: JsonPropertyName("tool_profile")]  string?                       ToolProfile,
 	[property: JsonPropertyName("thinking_mode")] string?                       ThinkingMode,
-	[property: JsonPropertyName("attachments")]   List<SendMessageAttachment>?  Attachments
+	[property: JsonPropertyName("attachments")]   List<SendMessageAttachment>?  Attachments,
+	// Draft-session envelope: honoured only when the chat row doesn't exist yet
+	// (the controller lazy-creates it from these hints). Subsequent messages
+	// drop these — to change them post-creation use PATCH /api/chats/{id}.
+	[property: JsonPropertyName("project_id")]    [MaxLength(64)]   string?      DraftProjectExternalId = null,
+	[property: JsonPropertyName("directory")]     [MaxLength(1024)] string?      DraftDirectory          = null
 );
 
 /// <summary>
