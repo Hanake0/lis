@@ -2,6 +2,7 @@ using Lis.Agent;
 using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
+using Lis.Core.Channel;
 using Lis.Core.Events;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
@@ -30,7 +31,8 @@ public sealed class ChatsController(
 	IEventBus                events,
 	TimeProvider             time,
 	IChatGenerationService   generation,
-	IContextBreakdownService contextBreakdown
+	IContextBreakdownService contextBreakdown,
+	IConversationService     conversation
 ) :ControllerBase {
 
 	/// <summary>
@@ -219,6 +221,27 @@ public sealed class ChatsController(
 
 		MessageDto[] dtos = raw.Select(MessageDto.FromRaw).ToArray();
 		return this.Ok(dtos);
+	}
+
+	/// <summary>
+	/// Abort the agent loop for this chat — interrupts any in-flight LLM call
+	/// or queued message. Idempotent (no-op if nothing is running). Returns
+	/// 204 either way so the caller doesn't need to know whether anything was
+	/// actually cancelled. The implementation is a runtime cast to
+	/// <see cref="MessageDebouncer"/> — when the conversation service isn't
+	/// the debouncer (test environments, alternative orchestrators), abort is
+	/// a no-op and we still return 204 to keep the wire contract consistent.
+	/// </summary>
+	[HttpPost("{chatExternalId}/abort")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	public async Task<IActionResult> Abort(
+		[FromRoute] string chatExternalId,
+		CancellationToken  ct
+	) {
+		_ = ct;
+		if (conversation is MessageDebouncer debouncer)
+			await debouncer.AbortAsync(chatExternalId);
+		return this.NoContent();
 	}
 
 	/// <summary>

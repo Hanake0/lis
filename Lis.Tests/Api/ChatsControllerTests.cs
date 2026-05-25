@@ -3,6 +3,7 @@ using Lis.Api.Controllers;
 using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
+using Lis.Core.Channel;
 using Lis.Core.Events;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
@@ -25,6 +26,7 @@ public class ChatsControllerTests :IDisposable {
 	private readonly CapturingEventBus        bus;
 	private readonly FakeGenerationService    generation;
 	private readonly FakeContextBreakdown     context;
+	private readonly NoOpConversationService  conversation;
 	private readonly ChatsController          sut;
 
 	public ChatsControllerTests() {
@@ -32,12 +34,13 @@ public class ChatsControllerTests :IDisposable {
 			.UseInMemoryDatabase($"chats-api-{Guid.NewGuid()}")
 			.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
 			.Options;
-		this.db         = new TestDbContext(options);
-		this.time       = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-		this.bus        = new CapturingEventBus();
-		this.generation = new FakeGenerationService();
-		this.context    = new FakeContextBreakdown();
-		this.sut        = new ChatsController(this.db, this.bus, this.time, this.generation, this.context);
+		this.db           = new TestDbContext(options);
+		this.time         = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+		this.bus          = new CapturingEventBus();
+		this.generation   = new FakeGenerationService();
+		this.context      = new FakeContextBreakdown();
+		this.conversation = new NoOpConversationService();
+		this.sut          = new ChatsController(this.db, this.bus, this.time, this.generation, this.context, this.conversation);
 	}
 
 	public void Dispose() {
@@ -312,6 +315,17 @@ public class ChatsControllerTests :IDisposable {
 		// Idempotent broadcast — racing clients still get the "drop this row" signal.
 		Assert.Single(this.bus.Captured);
 		Assert.Equal(ChatEventNames.Deleted, this.bus.Captured[0].Name);
+	}
+
+	// ── Abort ─────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task Abort_Returns_NoContent_Even_When_Conversation_Service_Cant_Cancel() {
+		// The test conversation service isn't a MessageDebouncer, so the abort is a no-op —
+		// the controller still returns 204 to keep the wire contract consistent across
+		// environments where a different orchestrator is wired (alternative IConversationService impls).
+		IActionResult result = await this.sut.Abort("any-chat", default);
+		Assert.IsType<NoContentResult>(result);
 	}
 
 	// ── Context breakdown ─────────────────────────────────────────
@@ -788,6 +802,20 @@ public class ChatsControllerTests :IDisposable {
 			throw new NotSupportedException("Tests do not subscribe directly.");
 
 		public IReadOnlyList<ServerEvent> ReplaySince(long? lastEventId) => [];
+	}
+
+	/// <summary>
+	/// Stand-in for <see cref="IConversationService"/>. The controller only uses it
+	/// for the runtime cast inside <c>Abort</c>; this stub fails that cast so the
+	/// abort no-ops (the right behaviour for any non-MessageDebouncer impl).
+	/// </summary>
+	private sealed class NoOpConversationService :IConversationService {
+		public Task HandleIncomingAsync(IncomingMessage message, CancellationToken ct) => Task.CompletedTask;
+		public Task HandleTypingAsync(string chatId, CancellationToken ct) => Task.CompletedTask;
+		public Task HandleSentEchoAsync(IncomingMessage echo, CancellationToken ct) => Task.CompletedTask;
+		public Task HandleReactionAsync(string messageId, string chatId, string emoji, string senderId, CancellationToken ct) => Task.CompletedTask;
+		public Task<string?> ResolvePhoneToNameAsync(string chatId, string phone, CancellationToken ct) => Task.FromResult<string?>(null);
+		public Task<string?> ResolveNameToPhoneAsync(string chatId, string name, string? preferSenderId, CancellationToken ct) => Task.FromResult<string?>(null);
 	}
 
 	/// <summary>
