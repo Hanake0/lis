@@ -199,6 +199,33 @@ export class LisRpcClient {
 		return this.delete(`/projects/${encodeURIComponent(projectId)}/metadata/${encodeURIComponent(key)}`);
 	}
 
+	// ── Providers / Models ────────────────────────────────────────
+
+	/** Fetches the DI-registered provider + model catalog from the backend.
+	 *  Response shape matches OC's Provider SDK so dropped-in OC stores
+	 *  (useConfigStore, useModelLists) consume it without adaptation —
+	 *  `default.model` and `default.agent` come from the agent row marked
+	 *  `is_default = true`. */
+	getProviders(): Promise<{
+		providers: {
+			id:    string;
+			name:  string;
+			models: Record<string, {
+				id:           string;
+				name:         string;
+				release_date: string | null;
+				attachment:   { image: boolean; video: boolean; audio: boolean };
+				reasoning:    { enabled: boolean; supported_efforts: string[] };
+				cost:         { input: number; output: number; cache_read: number; cache_write: number };
+				limit:        { context: number; output: number };
+				experimental: boolean;
+			}>;
+		}[];
+		default: { model: string | null; agent: string | null };
+	}> {
+		return this.get('/providers');
+	}
+
 	// ── Agents ─────────────────────────────────────────────────────
 
 	listAgents():                Promise<unknown[]> { return this.get('/agents'); }
@@ -304,9 +331,14 @@ export class LisRpcClient {
 		});
 	}
 
-	/** Rename a chat. Empty name throws (server-side ArgumentException → 400). */
-	updateChat(chatId: string, patch: { name?: string }): Promise<LisChatSummary> {
-		return this.patch(`/chats/${encodeURIComponent(chatId)}`, patch);
+	/** Rename a chat, or rebind its working directory. Empty `name` throws
+	 *  (server-side ArgumentException → 400); pass `directory: ''` to CLEAR
+	 *  the directory override and revert to project-root inheritance. */
+	updateChat(chatId: string, patch: { name?: string; directory?: string | null }): Promise<LisChatSummary> {
+		const body: Record<string, unknown> = {};
+		if (patch.name      !== undefined) body.name      = patch.name;
+		if (patch.directory !== undefined) body.directory = patch.directory ?? '';
+		return this.patch(`/chats/${encodeURIComponent(chatId)}`, body);
 	}
 
 	/** Archive a chat — idempotent. Returns the row with `archived_at` populated. */
