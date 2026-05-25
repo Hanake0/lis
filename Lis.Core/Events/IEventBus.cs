@@ -19,9 +19,12 @@ public interface IEventBus {
 	/// <summary>
 	/// Subscribe for live events. Returns a channel reader that yields events as they
 	/// are published; the caller is responsible for completing the subscription via
-	/// the returned <see cref="IDisposable"/> when the connection closes.
+	/// the returned <see cref="IDisposable"/> when the connection closes. An optional
+	/// <paramref name="filter"/> predicate runs server-side at publish time — non-matching
+	/// events are dropped before they consume queue capacity, so a per-chat subscriber
+	/// doesn't have its buffer pressured by unrelated traffic.
 	/// </summary>
-	IEventSubscription Subscribe(int capacity = 256);
+	IEventSubscription Subscribe(int capacity = 256, Func<ServerEvent, bool>? filter = null);
 
 	/// <summary>
 	/// Pull events from the ring buffer with id strictly greater than

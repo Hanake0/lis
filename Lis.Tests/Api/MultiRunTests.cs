@@ -122,7 +122,7 @@ public sealed class MultiRunTests :IDisposable {
 			return ValueTask.CompletedTask;
 		}
 
-		public IEventSubscription Subscribe(int capacity = 256) =>
+		public IEventSubscription Subscribe(int capacity = 256, Func<ServerEvent, bool>? filter = null) =>
 			throw new NotSupportedException("Tests do not subscribe directly.");
 
 		public IReadOnlyList<ServerEvent> ReplaySince(long? lastEventId) => [];

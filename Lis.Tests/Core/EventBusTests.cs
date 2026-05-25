@@ -130,6 +130,60 @@ public class EventBusTests {
 		Assert.Equal(["c", "d"], names);
 	}
 
+	// ── Filtered subscriptions ────────────────────────────────────
+
+	private static ServerEvent MakeChatEvent(string name, string chatId) =>
+		new(0, name, new { }, DateTimeOffset.UtcNow, Subject: $"chat:{chatId}");
+
+	[Fact]
+	public async Task Filtered_Subscriber_Only_Receives_Events_Matching_The_Predicate() {
+		EventBus bus = new();
+		// Subscribes only to chat:c1's stream.
+		await using IEventSubscription sub = bus.Subscribe(filter: ev => ev.Subject == "chat:c1");
+
+		await bus.PublishAsync(MakeChatEvent("chunk", "c1"));
+		await bus.PublishAsync(MakeChatEvent("chunk", "c2"));   // dropped by filter
+		await bus.PublishAsync(MakeChatEvent("chunk", "c1"));
+		await bus.PublishAsync(MakeEvent  ("global", new { })); // null Subject — dropped
+
+		List<string?> seen = [];
+		while (sub.Reader.TryRead(out ServerEvent? ev)) seen.Add(ev!.Subject);
+		Assert.Equal(["chat:c1", "chat:c1"], seen);
+	}
+
+	[Fact]
+	public async Task Unfiltered_Subscribers_Still_See_Everything_When_A_Filtered_One_Is_Present() {
+		EventBus bus = new();
+		await using IEventSubscription unfiltered = bus.Subscribe();
+		await using IEventSubscription filtered   = bus.Subscribe(filter: ev => ev.Subject == "chat:c1");
+
+		await bus.PublishAsync(MakeChatEvent("chunk", "c1"));
+		await bus.PublishAsync(MakeChatEvent("chunk", "c2"));
+		await bus.PublishAsync(MakeEvent  ("global", new { }));
+
+		int unfilteredCount = 0;
+		while (unfiltered.Reader.TryRead(out _)) unfilteredCount++;
+		int filteredCount = 0;
+		while (filtered.Reader.TryRead(out _)) filteredCount++;
+
+		Assert.Equal(3, unfilteredCount);
+		Assert.Equal(1, filteredCount);
+	}
+
+	[Fact]
+	public async Task Filtered_Subscriber_Sees_Monotonic_Ids_Even_Though_Some_Events_Were_Dropped() {
+		EventBus bus = new();
+		await using IEventSubscription sub = bus.Subscribe(filter: ev => ev.Subject == "chat:c1");
+
+		await bus.PublishAsync(MakeChatEvent("chunk", "c1"));   // id=1, kept
+		await bus.PublishAsync(MakeChatEvent("chunk", "c2"));   // id=2, dropped
+		await bus.PublishAsync(MakeChatEvent("chunk", "c1"));   // id=3, kept
+
+		List<long> ids = [];
+		while (sub.Reader.TryRead(out ServerEvent? ev)) ids.Add(ev!.Id);
+		Assert.Equal([1L, 3L], ids);
+	}
+
 	[Fact]
 	public async Task Late_Subscriber_Misses_Earlier_Events_But_Can_Replay() {
 		EventBus bus = new();

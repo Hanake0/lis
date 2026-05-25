@@ -37,6 +37,7 @@ public sealed class EventBus(EventBusOptions? options = null) :IEventBus {
 		// Fan-out. WriteAsync blocks if a subscriber's channel is full —
 		// bounded queues use DropOldest so this only blocks briefly under churn.
 		foreach (Subscription sub in this.subscribers.Values) {
+			if (sub.Filter is not null && !sub.Filter(stamped)) continue;
 			try {
 				await sub.Channel.Writer.WriteAsync(stamped, ct);
 			} catch (ChannelClosedException) {
@@ -45,7 +46,7 @@ public sealed class EventBus(EventBusOptions? options = null) :IEventBus {
 		}
 	}
 
-	public IEventSubscription Subscribe(int capacity = 256) {
+	public IEventSubscription Subscribe(int capacity = 256, Func<ServerEvent, bool>? filter = null) {
 		Channel<ServerEvent> channel = SysChannel.CreateBounded<ServerEvent>(new BoundedChannelOptions(capacity) {
 			FullMode     = BoundedChannelFullMode.DropOldest,
 			SingleReader = true,
@@ -53,7 +54,7 @@ public sealed class EventBus(EventBusOptions? options = null) :IEventBus {
 		});
 
 		Guid id = Guid.NewGuid();
-		Subscription sub = new(id, channel, this);
+		Subscription sub = new(id, channel, this, filter);
 		this.subscribers[id] = sub;
 		return sub;
 	}
@@ -78,8 +79,9 @@ public sealed class EventBus(EventBusOptions? options = null) :IEventBus {
 			sub.Channel.Writer.TryComplete();
 	}
 
-	private sealed class Subscription(Guid id, Channel<ServerEvent> channel, EventBus owner) :IEventSubscription {
+	private sealed class Subscription(Guid id, Channel<ServerEvent> channel, EventBus owner, Func<ServerEvent, bool>? filter) :IEventSubscription {
 		public Channel<ServerEvent> Channel { get; } = channel;
+		public Func<ServerEvent, bool>? Filter { get; } = filter;
 		public ChannelReader<ServerEvent> Reader => this.Channel.Reader;
 
 		public ValueTask DisposeAsync() {
