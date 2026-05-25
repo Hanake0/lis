@@ -94,6 +94,42 @@ public sealed record SaveChatOverridesRequest(
 );
 
 /// <summary>
+/// One image attachment delivered inline as a base64 data URL — mirrors the WS
+/// frame format so the webview's compose logic doesn't need re-encoding.
+/// </summary>
+public sealed record SendMessageAttachment(
+	[property: JsonPropertyName("data_url"), Required]  string DataUrl,
+	[property: JsonPropertyName("mime_type"), Required] string MimeType
+);
+
+/// <summary>
+/// User-side message dispatch. Either <c>text</c> OR at least one attachment is
+/// required. Per-turn overrides (model/effort/tool_profile/thinking_mode) apply
+/// only to this message — the agent's defaults aren't mutated. <c>dispatch</c>
+/// is "immediate" / "default" / "queue_only" / "interrupt" — anything else falls
+/// back to "immediate" (matches the legacy WS frame's permissive parsing).
+/// </summary>
+public sealed record SendMessageRequest(
+	[property: JsonPropertyName("text")]          string?                       Text,
+	[property: JsonPropertyName("dispatch")]      string?                       Dispatch,
+	[property: JsonPropertyName("model")]         string?                       Model,
+	[property: JsonPropertyName("effort")]        string?                       Effort,
+	[property: JsonPropertyName("tool_profile")]  string?                       ToolProfile,
+	[property: JsonPropertyName("thinking_mode")] string?                       ThinkingMode,
+	[property: JsonPropertyName("attachments")]   List<SendMessageAttachment>?  Attachments
+);
+
+/// <summary>
+/// Response from <c>POST /api/chats/{id}/messages</c>. The chat's agent loop
+/// runs asynchronously; the client opens <c>GET /api/chats/{id}/stream</c> in
+/// parallel to consume the token stream. The <c>message_id</c> is the user-side
+/// echo's id — useful for client-side ack tracking.
+/// </summary>
+public sealed record SendMessageResponse(
+	[property: JsonPropertyName("message_id")] string MessageId
+);
+
+/// <summary>
 /// One labelled slice of the context-window breakdown — system prompt, summary,
 /// per-turn messages, etc. <c>tokens = -1</c> means the counter failed for that
 /// slice; the UI renders "—" rather than zeroing it (we never silently

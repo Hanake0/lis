@@ -2,10 +2,13 @@ using Lis.Agent;
 using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
+using Lis.Channels.Web;
 using Lis.Core.Channel;
 using Lis.Core.Events;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
+
+using Microsoft.Extensions.Options;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,12 +30,14 @@ namespace Lis.Api.Controllers;
 [Tags("Chats")]
 [Produces("application/json")]
 public sealed class ChatsController(
-	LisDbContext             db,
-	IEventBus                events,
-	TimeProvider             time,
-	IChatGenerationService   generation,
-	IContextBreakdownService contextBreakdown,
-	IConversationService     conversation
+	LisDbContext                 db,
+	IEventBus                    events,
+	TimeProvider                 time,
+	IChatGenerationService       generation,
+	IContextBreakdownService     contextBreakdown,
+	IConversationService         conversation,
+	IOptions<WebChannelOptions>  webOptions,
+	ILogger<ChatsController>     logger
 ) :ControllerBase {
 
 	/// <summary>
@@ -221,6 +226,131 @@ public sealed class ChatsController(
 
 		MessageDto[] dtos = raw.Select(MessageDto.FromRaw).ToArray();
 		return this.Ok(dtos);
+	}
+
+	/// <summary>
+	/// Submit a user-side message into a chat. The agent loop runs asynchronously;
+	/// the caller should open <c>GET /api/chats/{id}/stream</c> in parallel to
+	/// consume the token stream (chunks/tool events/done marker). Returns 202 with
+	/// the user-echo's message id so client-side acks have something to reference.
+	///
+	/// Mirrors the legacy WS <c>message</c> frame: same validation (text OR attachments
+	/// required), same per-turn overrides (model/effort/tool_profile/thinking_mode),
+	/// same dispatch modes (default/immediate/queue_only/interrupt), same inline-image
+	/// base64-data-url handling. The first image becomes the persisted media payload —
+	/// additional attachments are dropped here just like the WS frame did (multi-image
+	/// is a future enhancement that needs persistence changes).
+	/// </summary>
+	[HttpPost("{chatExternalId}/messages")]
+	[ProducesResponseType(typeof(SendMessageResponse), StatusCodes.Status202Accepted)]
+	[ProducesResponseType(typeof(ProblemDetails),      StatusCodes.Status400BadRequest)]
+	public async Task<ActionResult<SendMessageResponse>> SendMessage(
+		[FromRoute] string             chatExternalId,
+		[FromBody]  SendMessageRequest request,
+		CancellationToken              ct
+	) {
+		if (request is null) throw new ArgumentException("body is required", nameof(request));
+
+		bool hasText        = !string.IsNullOrEmpty(request.Text);
+		bool hasAttachments = request.Attachments is { Count: > 0 };
+		if (!hasText && !hasAttachments)
+			throw new ArgumentException("message requires text or attachments", nameof(request));
+
+		// Parse the first usable image attachment — additional are dropped (matches the
+		// legacy WS handler, which also persisted only the first image).
+		(byte[]? imageData, string? imageMime) = ExtractFirstImage(request.Attachments);
+
+		WebChannelOptions opts = webOptions.Value;
+		string externalId      = $"web:{Guid.NewGuid():N}";
+		DateTimeOffset now     = time.GetUtcNow();
+
+		IncomingMessage incoming = new() {
+			ExternalId           = externalId,
+			ChatId               = chatExternalId,
+			SenderId             = opts.OwnerId,
+			SenderName           = opts.OwnerName,
+			Timestamp            = now,
+			Body                 = request.Text,
+			Channel              = "web",
+			Dispatch             = ParseDispatch(request.Dispatch),
+			ModelOverride        = request.Model,
+			EffortOverride       = request.Effort,
+			ToolProfileOverride  = request.ToolProfile,
+			ThinkingModeOverride = request.ThinkingMode,
+			MediaType            = imageData is not null ? "image" : null,
+			InlineMediaData      = imageData,
+			InlineMediaMimeType  = imageMime,
+		};
+
+		// Echo the user-side message immediately so the UI renders the bubble before
+		// the assistant starts streaming. Publishes to the chat's SSE subject — the
+		// connected ChatStreamController forwards it to subscribers for this chat.
+		await this.EchoUserMessageAsync(chatExternalId, externalId, request.Text ?? (imageData is not null ? "[image]" : ""), now, ct);
+
+		// Fire-and-forget the agent loop. The loop itself publishes chunks/tool-events
+		// onto the same SSE subject via IChannelClient — failures fall through to a
+		// chat-level error event so the UI sees the failure even though the HTTP
+		// response is already on its way back to the client.
+		_ = Task.Run(async () => {
+			try {
+				await conversation.HandleIncomingAsync(incoming, CancellationToken.None);
+			} catch (Exception ex) {
+				logger.LogError(ex, "Error processing web message {Id} in {ChatId}", externalId, chatExternalId);
+				await events.PublishAsync(new ServerEvent(
+					0, ChatStreamEventNames.Error,
+					new ChatErrorPayload(chatExternalId, ex.Message),
+					DateTimeOffset.UtcNow,
+					Subject: $"chat:{chatExternalId}"
+				), CancellationToken.None);
+			}
+		}, ct);
+
+		return this.Accepted(new SendMessageResponse(externalId));
+	}
+
+	private async Task EchoUserMessageAsync(string chatId, string messageId, string text, DateTimeOffset ts, CancellationToken ct) {
+		await events.PublishAsync(new ServerEvent(
+			0, ChatStreamEventNames.Message,
+			new ChatMessagePayload(
+				ChatId:              chatId,
+				Id:                  messageId,
+				Text:                text,
+				Role:                "user",
+				Timestamp:           ts,
+				InputTokens:         null,
+				OutputTokens:        null,
+				CacheReadTokens:     null,
+				CacheCreationTokens: null,
+				ThinkingTokens:      null
+			),
+			ts,
+			Subject: $"chat:{chatId}"
+		), ct);
+	}
+
+	private static MessageDispatchMode ParseDispatch(string? value) => value switch {
+		"default"    => MessageDispatchMode.Default,
+		"queue_only" => MessageDispatchMode.QueueOnly,
+		"interrupt"  => MessageDispatchMode.Interrupt,
+		_            => MessageDispatchMode.Immediate,
+	};
+
+	private static (byte[]? Data, string? Mime) ExtractFirstImage(IReadOnlyList<SendMessageAttachment>? attachments) {
+		if (attachments is null) return (null, null);
+		foreach (SendMessageAttachment a in attachments) {
+			if (string.IsNullOrEmpty(a.DataUrl) || string.IsNullOrEmpty(a.MimeType)) continue;
+			if (!a.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) continue;
+			byte[]? data = ParseDataUrl(a.DataUrl);
+			if (data is not null && data.Length > 0) return (data, a.MimeType);
+		}
+		return (null, null);
+	}
+
+	private static byte[]? ParseDataUrl(string dataUrl) {
+		int commaIdx = dataUrl.IndexOf(',');
+		if (commaIdx < 0) return null;
+		try { return Convert.FromBase64String(dataUrl[(commaIdx + 1)..]); }
+		catch (FormatException) { return null; }
 	}
 
 	/// <summary>

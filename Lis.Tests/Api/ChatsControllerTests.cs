@@ -3,10 +3,14 @@ using Lis.Api.Controllers;
 using Lis.Api.Schemas.Agents;
 using Lis.Api.Schemas.Chats;
 using Lis.Api.Schemas.Events;
+using Lis.Channels.Web;
 using Lis.Core.Channel;
 using Lis.Core.Events;
 using Lis.Persistence;
 using Lis.Persistence.Entities;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +30,7 @@ public class ChatsControllerTests :IDisposable {
 	private readonly CapturingEventBus        bus;
 	private readonly FakeGenerationService    generation;
 	private readonly FakeContextBreakdown     context;
-	private readonly NoOpConversationService  conversation;
+	private readonly CapturingConversation    conversation;
 	private readonly ChatsController          sut;
 
 	public ChatsControllerTests() {
@@ -39,8 +43,11 @@ public class ChatsControllerTests :IDisposable {
 		this.bus          = new CapturingEventBus();
 		this.generation   = new FakeGenerationService();
 		this.context      = new FakeContextBreakdown();
-		this.conversation = new NoOpConversationService();
-		this.sut          = new ChatsController(this.db, this.bus, this.time, this.generation, this.context, this.conversation);
+		this.conversation = new CapturingConversation();
+		IOptions<WebChannelOptions> webOpts = Options.Create(new WebChannelOptions {
+			AuthToken = "test", OwnerId = "test-owner", OwnerName = "Tester",
+		});
+		this.sut = new ChatsController(this.db, this.bus, this.time, this.generation, this.context, this.conversation, webOpts, NullLogger<ChatsController>.Instance);
 	}
 
 	public void Dispose() {
@@ -315,6 +322,169 @@ public class ChatsControllerTests :IDisposable {
 		// Idempotent broadcast — racing clients still get the "drop this row" signal.
 		Assert.Single(this.bus.Captured);
 		Assert.Equal(ChatEventNames.Deleted, this.bus.Captured[0].Name);
+	}
+
+	// ── SendMessage ───────────────────────────────────────────────
+
+	[Fact]
+	public async Task SendMessage_With_Text_Echoes_User_Bubble_Via_SSE_And_Kicks_Agent_Loop() {
+		this.bus.Captured.Clear();
+		ActionResult<SendMessageResponse> result = await this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(Text: "hi there", Dispatch: null, Model: null, Effort: null, ToolProfile: null, ThinkingMode: null, Attachments: null),
+			default
+		);
+
+		AcceptedResult accepted = Assert.IsType<AcceptedResult>(result.Result);
+		SendMessageResponse dto = Assert.IsType<SendMessageResponse>(accepted.Value);
+		Assert.StartsWith("web:", dto.MessageId);
+
+		// The user-echo lands on the bus IMMEDIATELY, with role=user and the right Subject.
+		ServerEvent echo = this.bus.Captured[0];
+		Assert.Equal(ChatStreamEventNames.Message, echo.Name);
+		Assert.Equal("chat:c1",                    echo.Subject);
+		ChatMessagePayload payload = Assert.IsType<ChatMessagePayload>(echo.Data);
+		Assert.Equal("hi there", payload.Text);
+		Assert.Equal("user",     payload.Role);
+		Assert.Equal(dto.MessageId, payload.Id);
+
+		// Wait for the background HandleIncomingAsync to fire — guards against the agent
+		// loop being skipped or racing the assertion.
+		await this.conversation.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		IncomingMessage incoming = Assert.Single(this.conversation.Incoming);
+		Assert.Equal("hi there",      incoming.Body);
+		Assert.Equal("c1",            incoming.ChatId);
+		Assert.Equal("web",           incoming.Channel);
+		Assert.Equal("test-owner",    incoming.SenderId);
+		Assert.Equal(dto.MessageId,   incoming.ExternalId);
+	}
+
+	[Fact]
+	public async Task SendMessage_With_Only_Attachments_Echoes_Image_Placeholder_And_Persists_Inline_Bytes() {
+		// 1×1 transparent PNG, base64 form of the actual bytes — small enough to embed.
+		const string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=";
+		string dataUrl   = $"data:image/png;base64,{png}";
+
+		this.bus.Captured.Clear();
+		ActionResult<SendMessageResponse> result = await this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(
+				Text:        null,
+				Dispatch:    null, Model: null, Effort: null, ToolProfile: null, ThinkingMode: null,
+				Attachments: [new SendMessageAttachment(DataUrl: dataUrl, MimeType: "image/png")]
+			),
+			default
+		);
+
+		Assert.IsType<AcceptedResult>(result.Result);
+
+		ChatMessagePayload echo = Assert.IsType<ChatMessagePayload>(this.bus.Captured[0].Data);
+		Assert.Equal("[image]", echo.Text);
+
+		await this.conversation.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		IncomingMessage incoming = Assert.Single(this.conversation.Incoming);
+		Assert.Equal("image",      incoming.MediaType);
+		Assert.Equal("image/png",  incoming.InlineMediaMimeType);
+		Assert.NotNull(incoming.InlineMediaData);
+		Assert.True(incoming.InlineMediaData!.Length > 0);
+	}
+
+	[Fact]
+	public async Task SendMessage_Rejects_Empty_Body_With_ArgumentException() {
+		await Assert.ThrowsAsync<ArgumentException>(() => this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(Text: null, Dispatch: null, Model: null, Effort: null, ToolProfile: null, ThinkingMode: null, Attachments: null),
+			default
+		));
+	}
+
+	[Fact]
+	public async Task SendMessage_Propagates_Per_Turn_Overrides_To_IncomingMessage() {
+		await this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(
+				Text: "hi", Dispatch: "interrupt", Model: "anthropic/claude-opus-4",
+				Effort: "high", ToolProfile: "read-only", ThinkingMode: "budget", Attachments: null
+			),
+			default
+		);
+
+		await this.conversation.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		IncomingMessage incoming = Assert.Single(this.conversation.Incoming);
+		Assert.Equal(MessageDispatchMode.Interrupt,    incoming.Dispatch);
+		Assert.Equal("anthropic/claude-opus-4",         incoming.ModelOverride);
+		Assert.Equal("high",                            incoming.EffortOverride);
+		Assert.Equal("read-only",                       incoming.ToolProfileOverride);
+		Assert.Equal("budget",                          incoming.ThinkingModeOverride);
+	}
+
+	[Theory]
+	[InlineData("default",    MessageDispatchMode.Default)]
+	[InlineData("queue_only", MessageDispatchMode.QueueOnly)]
+	[InlineData("interrupt",  MessageDispatchMode.Interrupt)]
+	[InlineData(null,         MessageDispatchMode.Immediate)]
+	[InlineData("garbage",    MessageDispatchMode.Immediate)]
+	public async Task SendMessage_Dispatch_Parsing_Matches_The_Legacy_WS_Frame(string? wire, MessageDispatchMode expected) {
+		await this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(Text: "x", Dispatch: wire, Model: null, Effort: null, ToolProfile: null, ThinkingMode: null, Attachments: null),
+			default
+		);
+		await this.conversation.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(expected, this.conversation.Incoming[0].Dispatch);
+	}
+
+	[Fact]
+	public async Task SendMessage_Skips_Non_Image_Attachments_And_Falls_Back_To_Empty_Echo_When_No_Other_Content() {
+		this.bus.Captured.Clear();
+		await this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(
+				Text:        "doc",
+				Attachments: [new SendMessageAttachment(DataUrl: "data:text/plain;base64,aGVsbG8=", MimeType: "text/plain")],
+				Dispatch:    null, Model: null, Effort: null, ToolProfile: null, ThinkingMode: null
+			),
+			default
+		);
+
+		await this.conversation.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		IncomingMessage incoming = Assert.Single(this.conversation.Incoming);
+		Assert.Null(incoming.InlineMediaData);    // text/plain skipped — only image/* are processed
+		Assert.Null(incoming.InlineMediaMimeType);
+		Assert.Null(incoming.MediaType);
+		// Echo still renders the text body (not the dropped attachment).
+		Assert.Equal("doc", ((ChatMessagePayload)this.bus.Captured[0].Data).Text);
+	}
+
+	[Fact]
+	public async Task SendMessage_Agent_Loop_Failure_Publishes_Chat_Error_Event() {
+		this.conversation.ThrowOnHandle = new InvalidOperationException("agent loop broke");
+		this.bus.Captured.Clear();
+
+		await this.sut.SendMessage(
+			"c1",
+			new SendMessageRequest(Text: "x", Dispatch: null, Model: null, Effort: null, ToolProfile: null, ThinkingMode: null, Attachments: null),
+			default
+		);
+
+		// First event is the user-echo, second is the error from the agent loop failure.
+		// Wait for the background task to have raised + published.
+		await this.conversation.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		await this.WaitForEventCountAsync(2, TimeSpan.FromSeconds(2));
+
+		Assert.Equal(2, this.bus.Captured.Count);
+		Assert.Equal(ChatStreamEventNames.Error, this.bus.Captured[1].Name);
+		ChatErrorPayload err = Assert.IsType<ChatErrorPayload>(this.bus.Captured[1].Data);
+		Assert.Equal("c1",              err.ChatId);
+		Assert.Equal("agent loop broke", err.Error);
+	}
+
+	private async Task WaitForEventCountAsync(int target, TimeSpan timeout) {
+		DateTime deadline = DateTime.UtcNow + timeout;
+		while (DateTime.UtcNow < deadline) {
+			if (this.bus.Captured.Count >= target) return;
+			await Task.Delay(20);
+		}
 	}
 
 	// ── Abort ─────────────────────────────────────────────────────
@@ -805,12 +975,24 @@ public class ChatsControllerTests :IDisposable {
 	}
 
 	/// <summary>
-	/// Stand-in for <see cref="IConversationService"/>. The controller only uses it
-	/// for the runtime cast inside <c>Abort</c>; this stub fails that cast so the
-	/// abort no-ops (the right behaviour for any non-MessageDebouncer impl).
+	/// Captures every <c>HandleIncomingAsync</c> invocation so SendMessage tests can
+	/// assert that the agent loop was kicked with the right IncomingMessage. Fails the
+	/// MessageDebouncer cast so <c>Abort</c> no-ops (the right behaviour for any
+	/// non-debouncer impl). The optional <see cref="ThrowOnHandle"/> hook lets tests
+	/// simulate an agent-loop failure so we can verify the error-publish fallback.
 	/// </summary>
-	private sealed class NoOpConversationService :IConversationService {
-		public Task HandleIncomingAsync(IncomingMessage message, CancellationToken ct) => Task.CompletedTask;
+	private sealed class CapturingConversation :IConversationService {
+		public List<IncomingMessage> Incoming { get; } = [];
+		public Exception? ThrowOnHandle { get; set; }
+		public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		public Task HandleIncomingAsync(IncomingMessage message, CancellationToken ct) {
+			this.Incoming.Add(message);
+			this.Started.TrySetResult();
+			if (this.ThrowOnHandle is not null) throw this.ThrowOnHandle;
+			return Task.CompletedTask;
+		}
+
 		public Task HandleTypingAsync(string chatId, CancellationToken ct) => Task.CompletedTask;
 		public Task HandleSentEchoAsync(IncomingMessage echo, CancellationToken ct) => Task.CompletedTask;
 		public Task HandleReactionAsync(string messageId, string chatId, string emoji, string senderId, CancellationToken ct) => Task.CompletedTask;
