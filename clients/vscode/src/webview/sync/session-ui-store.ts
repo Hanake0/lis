@@ -92,6 +92,18 @@ export const useSessionUIStore = create<any>((set: any) => ({
 				.map((f: AttachedFile) => ({ data_url: f.dataUrl, mime_type: f.mimeType }))
 			: undefined;
 
+		// 15d draft envelope: on first send of a `web:draft-…` chat, ship the
+		// project_id + directory hints so the server's lazy-create path binds
+		// the row correctly from turn one. The flag is checked once here — we
+		// don't keep "draft" state alive across messages because the server
+		// drops the envelope on the second message anyway.
+		const draftState = useSessionUIStore.getState().newSessionDraft as {
+			open?: boolean; selectedProjectId?: string | null; directoryOverride?: string | null;
+		} | null;
+		const isDraft = chatId.startsWith('web:draft-');
+		const draftProjectId = isDraft ? draftState?.selectedProjectId ?? null : null;
+		const draftDirectory = isDraft ? draftState?.directoryOverride ?? null : null;
+
 		// effort / tool_profile / thinking_mode wiring lands in Stage 15c with the
 		// composer pills. Today the server falls back to the chat's bound agent's
 		// defaults when these are null, which is the correct semantic.
@@ -102,7 +114,16 @@ export const useSessionUIStore = create<any>((set: any) => ({
 			tool_profile:  null,
 			thinking_mode: null,
 			attachments:   imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
+			project_id:    draftProjectId,
+			directory:     draftDirectory,
 		});
+
+		// Clear the draft flag — the chat row exists server-side now (the
+		// chat_created SSE event will reconcile useGlobalSessionsStore /
+		// useChatStore.sessions). The id stays `web:draft-…` until the user
+		// closes + reopens the panel, but the composer no longer renders the
+		// draft pills (newSessionDraftOpen flips to false).
+		if (isDraft) useSessionUIStore.setState({ newSessionDraft: null });
 	},
 	forkFromMessage: asyncNoop,
 	revertToMessage: asyncNoop,
@@ -113,7 +134,21 @@ export const useSessionUIStore = create<any>((set: any) => ({
 	acknowledgeSessionAbort: noop,
 	clearAbortPrompt: noop,
 	setDraftBootstrapPendingDirectory: noop,
-	setNewSessionDraftTarget: noop,
+	// Composer draft pill writes here when the user changes project or
+	// worktree before sending the first message. The fields piggyback on
+	// `newSessionDraft` so OC's ChatInput consumes them unchanged (it reads
+	// `newSessionDraft.selectedProjectId` / `.directoryOverride`).
+	setNewSessionDraftTarget: (
+		target: { projectId?: string | null; selectedProjectId?: string | null; directoryOverride?: string | null },
+		_options?: { force?: boolean },
+	) => set((state: any) => {
+		const prev = (state.newSessionDraft ?? {}) as Record<string, unknown>;
+		const next: Record<string, unknown> = { ...prev, open: true };
+		if ('selectedProjectId' in target) next.selectedProjectId = target.selectedProjectId ?? null;
+		if ('projectId'         in target) next.selectedProjectId = target.projectId         ?? next.selectedProjectId ?? null;
+		if ('directoryOverride' in target) next.directoryOverride = target.directoryOverride ?? null;
+		return { newSessionDraft: next };
+	}),
 	getContextUsage: () => null,
 	getDirectoryForSession: (sessionId: string) => {
 		const map = (useSessionUIStore.getState() as { sessionDirectoryMap?: Map<string, string | null> }).sessionDirectoryMap;

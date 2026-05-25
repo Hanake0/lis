@@ -554,6 +554,11 @@ export interface SendChatMessageBody {
 	tool_profile?:  string | null;
 	thinking_mode?: 'budget' | 'adaptive' | 'auto' | null;
 	attachments?:   { data_url: string; mime_type: string }[];
+	/** Draft-session envelope. Honoured only when the chat row doesn't exist
+	 *  yet — the controller lazy-creates it from these hints and ignores them
+	 *  on subsequent messages. */
+	project_id?:    string | null;
+	directory?:     string | null;
 }
 
 // ── GitHub status: snake_case wire ↔ camelCase response ──────────────────────

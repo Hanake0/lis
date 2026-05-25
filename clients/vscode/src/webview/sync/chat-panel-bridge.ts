@@ -85,15 +85,25 @@ interface QuestionData {
 /**
  * Mount the bridge for one chatId. The caller is responsible for re-mounting
  * when the chatId changes; this bridge does not track chatId transitions.
+ *
+ * Draft mode (chatId starts with `web:draft-`) skips the history + chat-agent
+ * fetches because the row doesn't exist server-side yet — both endpoints
+ * would 404. The first user message lazy-creates the row (server side), at
+ * which point the host re-mounts the panel with the persisted id and this
+ * function re-runs against the real chat.
  */
 export function mountChatPanelBridge(chatId: string): () => void {
 	const client    = LisRpcClient.instance();
 	const cleanups: (() => void)[] = [];
+	const isDraft   = chatId.startsWith('web:draft-');
 
 	// ── Bootstrap fetches ─────────────────────────────────────────────
-	void loadHistory(client, chatId);
+	if (!isDraft) {
+		void loadHistory(client, chatId);
+		void loadChatAgent(client, chatId);
+	}
+	// Agent list is global; draft chats still need it to render the picker.
 	void loadAgents(client);
-	void loadChatAgent(client, chatId);
 
 	// ── Per-chat SSE token stream ─────────────────────────────────────
 	const stream = client.openChatStream(chatId);
@@ -469,12 +479,19 @@ export function installChatPanelInit(target: Window = window): () => void {
 	let currentChatId: string | null = null;
 	let stop:          (() => void) | null = null;
 
-	const handler = (ev: MessageEvent<{ type?: unknown; chatId?: unknown }>) => {
+	const handler = (ev: MessageEvent<{
+		type?:                   unknown;
+		chatId?:                 unknown;
+		isDraft?:                unknown;
+		draftProjectExternalId?: unknown;
+	}>) => {
 		const msg = ev.data;
 		if (msg?.type !== 'init' || typeof msg.chatId !== 'string' || msg.chatId.length === 0) return;
 		if (msg.chatId === currentChatId) return;
 		currentChatId = msg.chatId;
-		lisLog.info(`chat-panel: init chatId=${currentChatId}`);
+		const isDraft = msg.isDraft === true || currentChatId.startsWith('web:draft-');
+		const draftProjectExternalId = typeof msg.draftProjectExternalId === 'string' ? msg.draftProjectExternalId : null;
+		lisLog.info(`chat-panel: init chatId=${currentChatId} draft=${isDraft} project=${draftProjectExternalId ?? '∅'}`);
 
 		stop?.(); stop = null;
 
@@ -482,6 +499,20 @@ export function installChatPanelInit(target: Window = window): () => void {
 		// the user can't send. The bridge's data path uses useChatStore.chatId.
 		useSessionUIStore.getState().setCurrentSession(currentChatId, null);
 		useChatStore.getState().setChatId(currentChatId);
+
+		// Draft mode: seed `newSessionDraft` with the project hint so the
+		// composer pills render bound to the right project from turn one.
+		// `selectedProjectId` is the project's external id (not the FK) —
+		// useProjectsStore + the draft pills use the external id as their key.
+		if (isDraft) {
+			useSessionUIStore.setState({
+				newSessionDraft: {
+					open:              true,
+					selectedProjectId: draftProjectExternalId,
+					directoryOverride: null,
+				},
+			});
+		}
 
 		stop = mountChatPanelBridge(currentChatId);
 	};

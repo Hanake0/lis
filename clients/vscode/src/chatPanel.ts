@@ -15,6 +15,16 @@ interface ChatPanel {
 	readonly chatId: string;
 	title:    string;
 	panel:    vscode.WebviewPanel;
+	/** Draft-only hints surfaced to the webview via the init envelope. Persisted
+	 *  chats (no `web:draft-` prefix) leave these null. The webview composer
+	 *  reads them once on mount to seed the draft pills. */
+	draftProjectExternalId?: string | null;
+}
+
+export interface OpenChatPanelOptions {
+	/** Project external_id to bind the chat to on first user message. Honoured
+	 *  only when `chatId` starts with `web:draft-`. */
+	draftProjectExternalId?: string | null;
 }
 
 /**
@@ -48,7 +58,7 @@ export class ChatPanelManager {
 		for (const entry of this.panels.values()) entry.panel.webview.postMessage(msg);
 	}
 
-	openOrFocus(chatId: string, title?: string): void {
+	openOrFocus(chatId: string, title?: string, opts?: OpenChatPanelOptions): void {
 		const existing = this.panels.get(chatId);
 		if (existing) {
 			if (title && title !== existing.title) {
@@ -76,7 +86,10 @@ export class ChatPanelManager {
 		panel.iconPath     = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'lis-noturna.svg');
 		panel.webview.html = this.buildHtml(panel.webview);
 
-		const entry: ChatPanel = { chatId, title: resolvedTitle, panel };
+		const entry: ChatPanel = {
+			chatId, title: resolvedTitle, panel,
+			draftProjectExternalId: opts?.draftProjectExternalId ?? null,
+		};
 		this.panels.set(chatId, entry);
 
 		// installHostFsHandler intercepts `host_fs` messages and forwards everything else
@@ -99,7 +112,16 @@ export class ChatPanelManager {
 				this.logger?.info(`chatPanel ${entry.chatId}: handshake (${msg.type}) — pushing init (origin=${cfg.baseOrigin || '∅'}, token=${cfg.token ? 'set' : 'missing'}, verbose=${cfg.verbose})`);
 				this.post(entry, { type: 'lis.init', baseOrigin: cfg.baseOrigin, token: cfg.token, verbose: cfg.verbose });
 				this.post(entry, buildWorkspaceMessage());
-				this.post(entry, { type: 'init', chatId: entry.chatId });
+				// Draft chats (`web:draft-…`) tell the webview to skip the history
+				// fetch + render the composer in draft mode with the project pill
+				// pre-selected to the project the user clicked "+" under.
+				const isDraft = entry.chatId.startsWith('web:draft-');
+				this.post(entry, {
+					type:                  'init',
+					chatId:                entry.chatId,
+					isDraft,
+					draftProjectExternalId: isDraft ? (entry.draftProjectExternalId ?? null) : null,
+				});
 				return;
 			}
 

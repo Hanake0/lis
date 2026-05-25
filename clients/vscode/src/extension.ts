@@ -59,18 +59,18 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('lis.configure',  () =>
 			vscode.commands.executeCommand('workbench.action.openSettings', '@ext:lis.lis-vscode')),
 
-		vscode.commands.registerCommand('lis.newChat', async (projectExternalId?: unknown) => {
-			const chatId = `web:${crypto.randomUUID()}`;
+		vscode.commands.registerCommand('lis.newChat', (projectExternalId?: unknown) => {
+			// 15d draft flow: mint a local draft id and open the panel immediately.
+			// The chat row materialises on the FIRST user message (POST /messages
+			// with the draft envelope), not here — no server round-trip on click.
+			// The `draft-` prefix lets the webview chat-panel-bridge recognise the
+			// state so it can render the composer pills + bypass the history fetch.
+			const chatId    = `web:draft-${crypto.randomUUID()}`;
 			const projectId = typeof projectExternalId === 'string' && projectExternalId.length > 0
 				? projectExternalId
 				: null;
-			const created = await createChatViaRest(getConfig(), chatId, 'New Chat', projectId, logger);
-			if (!created) {
-				// Don't open a panel for a non-existent chat — the create attempt failed.
-				void vscode.window.showWarningMessage('Lis: could not create a new chat (check the server URL/token in settings).');
-				return;
-			}
-			panels?.openOrFocus(created.chatId, created.name ?? 'New Chat');
+			logger?.info(`lis.newChat: minting draft chatId=${chatId} project=${projectId ?? '∅'}`);
+			panels?.openOrFocus(chatId, 'New Chat', { draftProjectExternalId: projectId });
 		}),
 
 		vscode.commands.registerCommand('lis.openChat', (chatId: string, title?: string) => {
@@ -137,52 +137,3 @@ async function promptFirstRun(context: vscode.ExtensionContext, serverUrl: strin
 	await context.globalState.update(FIRST_RUN_KEY, true);
 }
 
-interface CreatedChatRest {
-	chatId: string;
-	name:   string | null;
-}
-
-/**
- * Extension-host-side `POST /api/chats` for the `lis.newChat` command. The
- * webview normally does this itself via LisRpcClient, but commands fire from
- * the host directly so we keep a thin helper here.
- */
-async function createChatViaRest(
-	cfg:                LisConfig,
-	chatId:             string,
-	name:               string,
-	projectExternalId:  string | null,
-	logger?:            Logger | null,
-): Promise<CreatedChatRest | null> {
-	if (!cfg.baseOrigin) {
-		logger?.warn('lis.newChat: no baseOrigin configured');
-		return null;
-	}
-	const url = `${cfg.baseOrigin}/api/chats`;
-	const payload: Record<string, unknown> = { chat_id: chatId, name };
-	// Server's CreateChatRequest reads `project_id` on the wire (it's the
-	// project's external id, not the FK — see Lis.Api/Schemas/Chats/ChatDto.cs).
-	// Sending the wrong key was a silent no-op and chats came back unbound.
-	if (projectExternalId) payload.project_id = projectExternalId;
-	try {
-		const res = await fetch(url, {
-			method:  'POST',
-			headers: {
-				'Content-Type':  'application/json',
-				...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-			},
-			body: JSON.stringify(payload),
-		});
-		if (!res.ok) {
-			const text = await res.text().catch(() => '');
-			logger?.warn(`lis.newChat: POST /api/chats → ${res.status} ${text}`);
-			return null;
-		}
-		const body = await res.json() as { chat_id?: string; name?: string | null };
-		if (!body.chat_id) return null;
-		return { chatId: body.chat_id, name: body.name ?? null };
-	} catch (err) {
-		logger?.error('lis.newChat: REST call failed', err);
-		return null;
-	}
-}
