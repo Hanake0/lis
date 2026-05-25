@@ -123,7 +123,16 @@ builder.Services.AddHttpClient();
 
 // Channels
 if (Env("GOWA_ENABLED")        == "true") builder.Services.AddWhatsApp();
-if (Env("WEB_CHANNEL_ENABLED") == "true") builder.Services.AddWebChannel();
+if (Env("WEB_CHANNEL_ENABLED") == "true") {
+	builder.Services.AddWebChannel();
+	// Stage 13: SseChannelClient takes over as the IChannelClient — the agent loop
+	// publishes chunks/tools/etc through it onto IEventBus, and ChatStreamController
+	// fans them out as SSE per-chat. The WebChannelController (legacy WS) still
+	// compiles and can still receive client frames, but its publish path is bypassed
+	// once the registration below overrides IChannelClient.
+	builder.Services.AddSingleton<SseChannelClient>();
+	builder.Services.AddSingleton<IChannelClient>(sp => sp.GetRequiredService<SseChannelClient>());
+}
 
 // Application services
 builder.Services.AddSingleton<ContextWindowBuilder>();
