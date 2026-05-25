@@ -4,8 +4,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using Lis.Core.Util;
-using Lis.Persistence;
-using Lis.Persistence.Entities;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
@@ -27,7 +25,7 @@ public sealed class ExecPlugin(IServiceScopeFactory scopeFactory) {
 		[Description("Timeout in seconds (default: 30, max: 300)")] int timeoutSeconds = 30) {
 		await ToolContext.NotifyAsync($"🖥️ Running: {command}");
 
-		string workspacePath = await this.ResolveWorkspacePathAsync();
+		string workspacePath = await WorkspaceResolver.ResolveAsync(scopeFactory);
 		string workingDirectory = ResolveWorkingDirectory(workspacePath, cwd);
 		if (!Directory.Exists(workingDirectory))
 			return $"Exit: -1\n--- stderr ---\nWorking directory '{workingDirectory}' does not exist. "
@@ -75,15 +73,6 @@ public sealed class ExecPlugin(IServiceScopeFactory scopeFactory) {
 		string stderr = await stderrTask;
 
 		return FormatResult(process.ExitCode, stdout, stderr);
-	}
-
-	private async Task<string> ResolveWorkspacePathAsync() {
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
-		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext        db    = scope.ServiceProvider.GetRequiredService<LisDbContext>();
-
-		AgentEntity? agent = await db.Agents.FindAsync(agentId);
-		return agent?.WorkspacePath ?? Directory.GetCurrentDirectory();
 	}
 
 	private static string ResolveWorkingDirectory(string workspacePath, string? cwd) {

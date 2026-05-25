@@ -3,8 +3,6 @@ using System.IO.Enumeration;
 using System.Text;
 
 using Lis.Core.Util;
-using Lis.Persistence;
-using Lis.Persistence.Entities;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
@@ -21,8 +19,9 @@ public sealed class FileSystemPlugin(IServiceScopeFactory scopeFactory) {
 		[Description("Path to file (relative to workspace or absolute)")] string path,
 		[Description("Starting line number (1-based)")] int offset = 1,
 		[Description("Maximum number of lines to return")] int limit = 200) {
-		string resolved = this.ResolveSafePath(path);
-		string relativePath = Path.GetRelativePath(this.ResolveWorkspacePath(), resolved);
+		string workspace    = await WorkspaceResolver.ResolveAsync(scopeFactory);
+		string resolved     = ResolveSafePath(workspace, path);
+		string relativePath = Path.GetRelativePath(workspace, resolved);
 		await ToolContext.NotifyAsync($"\ud83d\udcc4 Reading file\n{relativePath} (offset={offset}, limit={limit})");
 
 		string[] allLines = await File.ReadAllLinesAsync(resolved);
@@ -58,8 +57,9 @@ public sealed class FileSystemPlugin(IServiceScopeFactory scopeFactory) {
 	public async Task<string> WriteFileAsync(
 		[Description("Path to file (relative to workspace or absolute)")] string path,
 		[Description("Content to write")] string content) {
-		string resolved = this.ResolveSafePath(path);
-		string relativePath = Path.GetRelativePath(this.ResolveWorkspacePath(), resolved);
+		string workspace    = await WorkspaceResolver.ResolveAsync(scopeFactory);
+		string resolved     = ResolveSafePath(workspace, path);
+		string relativePath = Path.GetRelativePath(workspace, resolved);
 		await ToolContext.NotifyAsync($"\u270f\ufe0f Writing file\n{relativePath}");
 
 		Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
@@ -77,8 +77,9 @@ public sealed class FileSystemPlugin(IServiceScopeFactory scopeFactory) {
 		[Description("Path to file (relative to workspace or absolute)")] string path,
 		[Description("Exact text to find")] string oldText,
 		[Description("Replacement text")] string newText) {
-		string resolved = this.ResolveSafePath(path);
-		string relativePath = Path.GetRelativePath(this.ResolveWorkspacePath(), resolved);
+		string workspace    = await WorkspaceResolver.ResolveAsync(scopeFactory);
+		string resolved     = ResolveSafePath(workspace, path);
+		string relativePath = Path.GetRelativePath(workspace, resolved);
 		await ToolContext.NotifyAsync($"\u270f\ufe0f Editing file\n{relativePath}");
 
 		string fileContent = await File.ReadAllTextAsync(resolved);
@@ -98,8 +99,9 @@ public sealed class FileSystemPlugin(IServiceScopeFactory scopeFactory) {
 	public async Task<string> ListDirectoryAsync(
 		[Description("Path to directory (relative to workspace or absolute)")] string path,
 		[Description("Show hidden files and directories")] bool showHidden = false) {
-		string resolved = this.ResolveSafePath(path);
-		string relativePath = Path.GetRelativePath(this.ResolveWorkspacePath(), resolved);
+		string workspace    = await WorkspaceResolver.ResolveAsync(scopeFactory);
+		string resolved     = ResolveSafePath(workspace, path);
+		string relativePath = Path.GetRelativePath(workspace, resolved);
 		await ToolContext.NotifyAsync($"\ud83d\udcc2 Listing directory\n{relativePath}");
 
 		if (!Directory.Exists(resolved)) return $"Directory not found: {relativePath}";
@@ -134,10 +136,8 @@ public sealed class FileSystemPlugin(IServiceScopeFactory scopeFactory) {
 	public async Task<string> SearchFilesAsync(
 		[Description("Glob pattern to match (e.g. '*.cs', '*.json')")] string pattern,
 		[Description("Root directory to search from (relative to workspace, defaults to workspace root)")] string? root = null) {
-		string workspace = this.ResolveWorkspacePath();
-		string searchRoot = root is not null
-			? this.ResolveSafePath(root)
-			: workspace;
+		string workspace  = await WorkspaceResolver.ResolveAsync(scopeFactory);
+		string searchRoot = root is not null ? ResolveSafePath(workspace, root) : workspace;
 		string relativeRoot = Path.GetRelativePath(workspace, searchRoot);
 		await ToolContext.NotifyAsync($"\ud83d\udd0d Searching files\npattern: {pattern}\nroot: {relativeRoot}");
 
@@ -166,17 +166,7 @@ public sealed class FileSystemPlugin(IServiceScopeFactory scopeFactory) {
 		return sb.ToString().TrimEnd();
 	}
 
-	private string ResolveWorkspacePath() {
-		long agentId = ToolContext.AgentId ?? throw new InvalidOperationException("No agent context");
-		using IServiceScope scope = scopeFactory.CreateScope();
-		LisDbContext db = scope.ServiceProvider.GetRequiredService<LisDbContext>();
-
-		AgentEntity? agent = db.Agents.Find(agentId);
-		return agent?.WorkspacePath ?? Directory.GetCurrentDirectory();
-	}
-
-	private string ResolveSafePath(string userPath) {
-		string workspace = this.ResolveWorkspacePath();
+	private static string ResolveSafePath(string workspace, string userPath) {
 		string resolved = Path.GetFullPath(userPath, workspace);
 		if (!resolved.StartsWith(workspace, StringComparison.OrdinalIgnoreCase))
 			throw new UnauthorizedAccessException($"Path outside workspace: {userPath}");
