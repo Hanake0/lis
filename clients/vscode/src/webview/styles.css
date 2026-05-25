@@ -60,6 +60,21 @@
   --status-success:      var(--vscode-charts-green, #3fa266);
   --status-info:         var(--vscode-charts-blue, #81a1c1);
 
+  /*
+   * Syntax tokens — OC referenced syntax-* CSS vars (originally from TextMate-style
+   * tokens). VS Code doesn't expose syntax colours as CSS variables, so we map onto
+   * the closest symbol-icon / charts tokens with Dark+ hex fallbacks so the project
+   * colour palette renders all 9 swatches instead of just the 3 backed by status-*.
+   */
+  --syntax-keyword:  var(--vscode-symbolIcon-keywordForeground, #c586c0);
+  --syntax-string:   var(--vscode-symbolIcon-stringForeground,  #ce9178);
+  --syntax-number:   var(--vscode-symbolIcon-numberForeground,  #ff7eb6);
+  --syntax-type:     var(--vscode-symbolIcon-classForeground,   #d7a142);
+  --syntax-constant: var(--vscode-symbolIcon-constantForeground,#4fc1ff);
+  --syntax-comment:  var(--vscode-editorCodeLens-foreground,    #6a9955);
+  --syntax-function: var(--vscode-symbolIcon-functionForeground,#dcdcaa);
+  --syntax-variable: var(--vscode-symbolIcon-variableForeground,#9cdcfe);
+
   /* Tool card tokens (used by ToolPart / ReasoningPart ports) */
   --tools-background:   var(--vscode-editor-background);
   --tools-border:       var(--vscode-panel-border, rgba(128,128,128,0.25));

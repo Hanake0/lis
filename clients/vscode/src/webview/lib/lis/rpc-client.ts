@@ -16,6 +16,7 @@
 import { LisHttpClient, type HttpRequest } from './http-client';
 import { LisEventChannel, type ChannelEventListener, type ChannelStateListener, type EventSourceFactory } from './event-channel';
 import { LisChatStreamChannel } from './chat-stream-channel';
+import { lisLog, setLisLogVerbose } from './logger';
 
 type HttpMethod = HttpRequest['method'];
 
@@ -33,12 +34,14 @@ interface InitMessage {
 	type:       'lis.init';
 	baseOrigin: string;
 	token:      string;
+	verbose?:   boolean;
 }
 
 interface ConfigUpdateMessage {
 	type:       'lis.config_update';
 	baseOrigin: string;
 	token:      string;
+	verbose?:   boolean;
 }
 
 export class LisRpcError extends Error {
@@ -59,6 +62,10 @@ export class LisRpcClient {
 	/** Fires every time `setConfig` lands a non-empty origin. Lets stores re-bootstrap
 	 *  data when the host's `lis.init` arrives after their first render. */
 	private readonly configureListeners = new Set<() => void>();
+	/** Resolves on the first non-empty {@link setConfig}. Callers `await rpc.ready()`
+	 *  before mounting UI so stores never run on an unconfigured client. */
+	private readyResolve: (() => void) | null = null;
+	private readonly readyPromise: Promise<void> = new Promise((resolve) => { this.readyResolve = resolve; });
 
 	private constructor(source: MessageSource, eventSourceFactory?: EventSourceFactory) {
 		this.http               = new LisHttpClient();
@@ -122,8 +129,20 @@ export class LisRpcClient {
 			for (const fn of this.configureListeners) {
 				try { fn(); } catch { /* swallow */ }
 			}
+			// First non-empty config unblocks anyone awaiting `ready()`. Subsequent
+			// resolves are no-ops — the underlying Promise is already settled.
+			this.readyResolve?.();
+			this.readyResolve = null;
 		}
 	}
+
+	/**
+	 * Promise that resolves the first time the host pushes a non-empty config via
+	 * `lis.init` / `lis.config_update`. Webview entry points `await rpc.ready()`
+	 * before mounting React so no store ever runs against an unconfigured client.
+	 * Already-configured: resolves immediately.
+	 */
+	ready(): Promise<void> { return this.readyPromise; }
 
 	/**
 	 * Subscribe to "config became available" — fires every time {@link setConfig}
@@ -440,11 +459,15 @@ export class LisRpcClient {
 
 		if (m.type === 'lis.init') {
 			const init = msg as InitMessage;
+			setLisLogVerbose(Boolean(init.verbose));
+			lisLog.info(`rpc: lis.init received (origin=${init.baseOrigin || '∅'}, token=${init.token ? 'set' : 'missing'}, verbose=${Boolean(init.verbose)})`);
 			this.setConfig(init.baseOrigin, init.token);
 			return;
 		}
 		if (m.type === 'lis.config_update') {
 			const upd = msg as ConfigUpdateMessage;
+			setLisLogVerbose(Boolean(upd.verbose));
+			lisLog.info(`rpc: lis.config_update received (origin=${upd.baseOrigin || '∅'}, token=${upd.token ? 'set' : 'missing'}, verbose=${Boolean(upd.verbose)})`);
 			this.setConfig(upd.baseOrigin, upd.token);
 			return;
 		}

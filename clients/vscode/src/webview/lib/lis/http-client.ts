@@ -6,7 +6,13 @@
  * Configuration (`baseOrigin` + `token`) flows in from the extension host via
  * the initial `init` postMessage; subsequent config changes arrive as
  * `config_update`. Callers swap the values via `updateConfig`.
+ *
+ * Every request is logged via lisLog — `http.request` and `http.response` are
+ * verbose-gated traces (visible when `lis.verboseLogging` is on), errors and
+ * 5xx responses surface as unconditional warn/error so they're always visible.
  */
+
+import { lisLog } from './logger';
 
 export interface HttpRequest {
 	method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -40,6 +46,7 @@ export class LisHttpClient {
 
 	async request(req: HttpRequest): Promise<HttpResponse> {
 		if (!this.baseOrigin) {
+			lisLog.warn(`http: ${req.method} ${req.path} dropped — lis.serverUrl is not configured`);
 			return { status: 0, body: { error: 'lis.serverUrl is not configured' } };
 		}
 
@@ -47,6 +54,9 @@ export class LisHttpClient {
 		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (this.token) headers.Authorization = `Bearer ${this.token}`;
 		if (req.body !== undefined) headers['Content-Type'] = 'application/json';
+
+		const startedAt = Date.now();
+		lisLog.event('http.request', { method: req.method, path: req.path, query: req.query, hasBody: req.body !== undefined });
 
 		let response: Response;
 		try {
@@ -57,7 +67,9 @@ export class LisHttpClient {
 				signal: req.signal,
 			});
 		} catch (err) {
-			return { status: 0, body: { error: err instanceof Error ? err.message : String(err) } };
+			const message = err instanceof Error ? err.message : String(err);
+			lisLog.error(`http: ${req.method} ${req.path} threw after ${Date.now() - startedAt}ms`, { error: message });
+			return { status: 0, body: { error: message } };
 		}
 
 		const text = await response.text();
@@ -73,6 +85,15 @@ export class LisHttpClient {
 			if (contentType.includes('json')) {
 				try { body = JSON.parse(text); } catch { /* leave as raw text */ }
 			}
+		}
+
+		const ms = Date.now() - startedAt;
+		if (response.status >= 500) {
+			lisLog.error(`http: ${req.method} ${req.path} → ${response.status} in ${ms}ms`, { body });
+		} else if (response.status >= 400) {
+			lisLog.warn (`http: ${req.method} ${req.path} → ${response.status} in ${ms}ms`, { body });
+		} else {
+			lisLog.event('http.response', { method: req.method, path: req.path, status: response.status, ms });
 		}
 		return { status: response.status, body };
 	}

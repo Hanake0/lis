@@ -9,7 +9,13 @@
  * The auth token is passed as a `?token=` query param because EventSource cannot
  * set custom headers. Once the backend grows auth middleware, it must accept
  * both `Authorization: Bearer …` (used by REST) and `?token=` (used here).
+ *
+ * Lifecycle transitions and every received event are logged via lisLog — state
+ * changes go to info (visible always), per-event traces are gated behind
+ * `lis.verboseLogging`.
  */
+
+import { lisLog } from './logger';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected';
 
@@ -95,14 +101,16 @@ export class LisEventChannel {
 		const params = new URLSearchParams();
 		if (this.token) params.set('token', this.token);
 		const url = `${this.baseOrigin}/api/events${params.size ? `?${params.toString()}` : ''}`;
+		lisLog.info(`sse: opening /api/events @ ${this.baseOrigin}`);
 
 		const src = this.factory(url);
 		this.source = src;
 
-		src.onopen  = () => this.setState('connected');
+		src.onopen  = () => { lisLog.info('sse: /api/events open');     this.setState('connected'); };
 		src.onerror = () => {
 			// EventSource auto-reconnects unless we close it. We surface 'disconnected'
 			// for status feedback but do NOT call close — let the browser retry.
+			lisLog.warn('sse: /api/events error — auto-reconnecting');
 			this.setState('disconnected');
 		};
 
@@ -118,6 +126,7 @@ export class LisEventChannel {
 	close(): void {
 		this.wantOpen = false;
 		if (!this.source) return;
+		lisLog.info('sse: closing /api/events');
 		try { this.source.close(); } catch { /* ignore */ }
 		this.source = null;
 		this.setState('disconnected');
@@ -129,9 +138,12 @@ export class LisEventChannel {
 			try { data = JSON.parse(msg.data); } catch { /* leave raw */ }
 		}
 
+		lisLog.event('sse.event', { event: eventName, id: msg.lastEventId || undefined, data });
 		const ev: ChannelEvent = { id: msg.lastEventId || undefined, event: eventName, data };
 		for (const fn of this.listeners) {
-			try { fn(ev); } catch { /* swallow listener errors */ }
+			try { fn(ev); } catch (err) {
+				lisLog.error('sse: listener threw', { event: eventName, error: err instanceof Error ? err.message : String(err) });
+			}
 		}
 	}
 
