@@ -37,9 +37,13 @@ export function installSidebarFrameHandler(): void {
 	let lastFireKey = '';
 	let lastFireAt  = 0;
 	useSessionUIStore.setState({
-		setCurrentSession: (id: string) => {
-			vscode.postMessage({ type: 'open_session', chat_id: id });
-			origSet(id);
+		// OC calls setCurrentSession(id, directory) — preserve the second arg so
+		// the original store state stays consistent (otherwise archived rows,
+		// which always pass `null` for directory, can short-circuit downstream
+		// effects that compare `(prevDir, nextDir)`).
+		setCurrentSession: (id: string, directory?: string | null) => {
+			vscode.postMessage({ type: 'open_session', chat_id: id, directory: directory ?? null });
+			origSet(id, directory ?? null);
 		},
 		openNewSessionDraft: (options?: { directoryOverride?: string | null }) => {
 			const dir = normalizePath(options?.directoryOverride ?? '') ?? '';
