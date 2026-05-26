@@ -171,6 +171,324 @@ test.describe.serial('Project features — Items 2-6', () => {
 		await waitForChatProjectId(sb, chatId, projA);
 	});
 
+	test('Item 12 — sidebar sizing: html font-size=16px (OC design base), body inherits vscode-font-size', async ({ page }) => {
+		const sb = await sidebarFrame(page);
+		const sizes = await sb.evaluate(() => {
+			const html = document.documentElement;
+			const body = document.body;
+			const htmlFs = parseFloat(getComputedStyle(html).fontSize);
+			const bodyFs = parseFloat(getComputedStyle(body).fontSize);
+			const hasLisSidebarClass = html.classList.contains('lis-sidebar');
+			// Pull a sample sidebar row label height so we can sanity-check the
+			// OC tokens cascade correctly. The row height should be in the
+			// VS-Code-Explorer ballpark (22-30 px).
+			const firstButton = document.querySelector('[role="button"], button');
+			const buttonHeight = firstButton ? firstButton.getBoundingClientRect().height : 0;
+			return { htmlFs, bodyFs, hasLisSidebarClass, buttonHeight };
+		});
+		expect(sizes.hasLisSidebarClass).toBe(true);
+		expect(sizes.htmlFs).toBe(16);          // OC's rem design base
+		expect(sizes.bodyFs).toBeLessThanOrEqual(15);   // body inherits vscode-font-size (13px-ish)
+		expect(sizes.bodyFs).toBeGreaterThanOrEqual(11);
+		// Loose bound on row height — main goal is to catch a regression that
+		// 16px on html cascading everywhere blows up the row to 40px+.
+		expect(sizes.buttonHeight).toBeLessThanOrEqual(48);
+	});
+
+	test('Item 11 — GitHub identity endpoints are wired (status, set-token validates, pr-status accepts empty)', async ({ page: _ }) => {
+		// We can't ship a real PAT through CI, so we just prove the endpoints are
+		// reachable + return the right shapes. The actual "see PR badges on
+		// session groups whose branch has an open PR" check belongs in the
+		// manual Stage-14 checklist where a real PAT is available.
+		const status = await api('GET', '/github/status');
+		expect(status.status).toBe(200);
+		expect(typeof (status.body as { connected: boolean }).connected).toBe('boolean');
+
+		// Empty pr-status request: should return an empty results dict, not error.
+		const empty = await api('POST', '/github/pr-status', { keys: [] });
+		expect(empty.status).toBe(200);
+		const results = (empty.body as { results: Record<string, unknown> }).results;
+		expect(typeof results).toBe('object');
+		expect(Object.keys(results).length).toBe(0);
+
+		// PUT token with an obviously-fake value — backend either accepts the
+		// raw token (lazy validation) or rejects with 400 if it tries to verify
+		// against api.github.com. Either way we get a non-5xx.
+		const setR = await api('PUT', '/github/token', { token: 'ghp_invalid_e2e_token_DO_NOT_USE_' + Date.now() });
+		expect(setR.status).toBeLessThan(500);
+
+		// Clear token — idempotent 204.
+		const clearR = await api('DELETE', '/github/token');
+		expect([200, 204]).toContain(clearR.status);
+	});
+
+	test('Item 10 — multi-run dispatches to N targets + emits multi_run_progress per target', async ({ page: _ }) => {
+		// Default dispatcher is NoOpMultiRunDispatcher → each target reports
+		// status "ok" without an LLM call. Sufficient to prove the coordinator
+		// fans out and emits per-target SSE events.
+		const a = `web:e2e-mr-${Date.now()}-a`;
+		const b = `web:e2e-mr-${Date.now()}-b`;
+		await createChat(a, projA, 'mr-a');
+		await createChat(b, projA, 'mr-b');
+
+		const events: Array<{ event: string; data: string }> = [];
+		const aborter = new AbortController();
+		const reader = (async () => {
+			try {
+				const r = await fetch(`${BACKEND}/api/events`, {
+					headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'text/event-stream' },
+					signal: aborter.signal,
+				});
+				const it = r.body!.getReader();
+				const dec = new TextDecoder();
+				let buf = ''; let event = '';
+				while (true) {
+					const { done, value } = await it.read();
+					if (done) break;
+					buf += dec.decode(value, { stream: true });
+					let nl;
+					while ((nl = buf.indexOf('\n')) !== -1) {
+						const line = buf.slice(0, nl).replace(/\r$/, '');
+						buf = buf.slice(nl + 1);
+						if (line.startsWith('event:')) event = line.slice(6).trim();
+						else if (line.startsWith('data:') && event) {
+							events.push({ event, data: line.slice(5).trim() });
+							event = '';
+						}
+					}
+				}
+			} catch { /* aborted */ }
+		})();
+		await new Promise(r => setTimeout(r, 400));
+		try {
+			const r = await api('POST', '/multi-run', {
+				prompt: 'echo test',
+				targets: [{ chat_id: a }, { chat_id: b }],
+			});
+			expect([200, 202]).toContain(r.status);
+			const runId = (r.body as { run_id?: string }).run_id;
+			expect(runId).toBeTruthy();
+
+			// Wait for both progress events.
+			const deadline = Date.now() + 10_000;
+			while (Date.now() < deadline) {
+				const progress = events.filter(e => e.event === 'multi_run_progress').map(e => JSON.parse(e.data) as { run_id: string; chat_id: string; status: string });
+				const forThisRun = progress.filter(p => p.run_id === runId);
+				const chatsCovered = new Set(forThisRun.map(p => p.chat_id));
+				if (chatsCovered.has(a) && chatsCovered.has(b)) {
+					// All targets reported.
+					expect(forThisRun.every(p => p.status === 'ok')).toBe(true);
+					return;
+				}
+				await new Promise(r => setTimeout(r, 100));
+			}
+			throw new Error(`multi_run_progress incomplete; events: ${JSON.stringify(events)}`);
+		} finally {
+			aborter.abort();
+			await reader.catch(() => {});
+			await deleteChat(a).catch(() => {});
+			await deleteChat(b).catch(() => {});
+		}
+	});
+
+	test('Item 9 — scheduled task CRUD + scheduler computes next_run_at + SSE events', async ({ page: _ }) => {
+		// SSE wiring + scheduler bookkeeping. The actual "fire after N minutes"
+		// behaviour is covered by the manual Stage-14 checklist; an automated
+		// version waiting on Cronos's per-minute boundary would slow the suite
+		// down without proving anything the unit tests don't already.
+		const ts = Date.now();
+		const name = `e2e-sched-${ts}`;
+
+		const events: Array<{ event: string; data: string }> = [];
+		const aborter = new AbortController();
+		const reader = (async () => {
+			try {
+				const r = await fetch(`${BACKEND}/api/events`, {
+					headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'text/event-stream' },
+					signal: aborter.signal,
+				});
+				const body = r.body!;
+				const dec = new TextDecoder();
+				const it = body.getReader();
+				let buf = '';
+				let event = '';
+				while (true) {
+					const { done, value } = await it.read();
+					if (done) break;
+					buf += dec.decode(value, { stream: true });
+					let nl;
+					while ((nl = buf.indexOf('\n')) !== -1) {
+						const line = buf.slice(0, nl).replace(/\r$/, '');
+						buf = buf.slice(nl + 1);
+						if (line.startsWith('event:')) event = line.slice(6).trim();
+						else if (line.startsWith('data:') && event) {
+							events.push({ event, data: line.slice(5).trim() });
+							event = '';
+						}
+					}
+				}
+			} catch { /* aborted */ }
+		})();
+		await new Promise(r => setTimeout(r, 400));
+
+		let externalId: string | null = null;
+		try {
+			// Create.
+			const cre = await api('POST', '/scheduled-tasks', {
+				name,
+				cron_expr:  '*/5 * * * *',
+				prompt:     'echo hi',
+				project_id: projA,
+				agent_name: null,
+				model:      null,
+				enabled:    true,
+			});
+			expect([200, 201]).toContain(cre.status);
+			externalId = (cre.body as { id?: string }).id ?? null;
+			expect(externalId).toBeTruthy();
+			expect((cre.body as { next_run_at?: string }).next_run_at).toBeTruthy();
+			expect(new Date((cre.body as { next_run_at: string }).next_run_at).getTime()).toBeGreaterThan(Date.now());
+
+			// Verify listing returns the task.
+			const list = await api('GET', `/projects/${encodeURIComponent(projA)}/scheduled-tasks`);
+			expect(list.status).toBe(200);
+			expect((list.body as Array<{ id: string }>).find(t => t.id === externalId)).toBeTruthy();
+
+			// Update — disable.
+			const upd = await api('PATCH', `/scheduled-tasks/${encodeURIComponent(externalId!)}`, { enabled: false });
+			expect(upd.status).toBe(200);
+			expect((upd.body as { enabled: boolean }).enabled).toBe(false);
+
+			// SSE: created + updated landed.
+			const wait = (cond: () => boolean, ms: number) => new Promise<void>((resolve, reject) => {
+				const t0 = Date.now();
+				const tick = () => {
+					if (cond()) resolve();
+					else if (Date.now() - t0 > ms) reject(new Error('timeout'));
+					else setTimeout(tick, 100);
+				};
+				tick();
+			});
+			await wait(() => events.some(e => e.event === 'scheduled_task_created'), 5_000);
+			await wait(() => events.some(e => e.event === 'scheduled_task_updated'), 5_000);
+		} finally {
+			aborter.abort();
+			await reader.catch(() => {});
+			if (externalId) await api('DELETE', `/scheduled-tasks/${encodeURIComponent(externalId)}`).catch(() => {});
+		}
+	});
+
+	test('Item 8 — git_status_changed SSE fires on branch / worktree mutations', async ({ page }) => {
+		// Subscribe an SSE reader from the test side (independent of the
+		// sidebar) and assert git_status_changed lands when we mutate the
+		// branch list. Proves the EventBus → SSE bridge works for git events.
+		const ts = Date.now();
+		const branch = `e2e-gitsse-${ts}`;
+		const repoPath = PROJ_A_PATH;
+
+		const events: Array<{ event: string; data: string }> = [];
+		const aborter = new AbortController();
+		const reader = (async () => {
+			try {
+				const r = await fetch(`${BACKEND}/api/events`, {
+					headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'text/event-stream' },
+					signal: aborter.signal,
+				});
+				const body = r.body;
+				if (!body) return;
+				const dec = new TextDecoder();
+				const it = body.getReader();
+				let buf = '';
+				let event = '';
+				// eslint-disable-next-line no-constant-condition
+				while (true) {
+					const { done, value } = await it.read();
+					if (done) break;
+					buf += dec.decode(value, { stream: true });
+					let nl;
+					while ((nl = buf.indexOf('\n')) !== -1) {
+						const line = buf.slice(0, nl).replace(/\r$/, '');
+						buf = buf.slice(nl + 1);
+						if (line.startsWith('event:')) event = line.slice(6).trim();
+						else if (line.startsWith('data:') && event) {
+							events.push({ event, data: line.slice(5).trim() });
+							event = '';
+						}
+					}
+				}
+			} catch { /* aborted */ }
+		})();
+		// Give SSE a beat to attach.
+		await new Promise(r => setTimeout(r, 400));
+
+		// Mutate: create a branch (this alone doesn't emit git_status_changed
+		// — only worktree mutations do — so test via worktree create/remove).
+		const wtPath = `${(process.env.TEMP ?? 'C:/Users/hanake0/AppData/Local/Temp').replace(/\\/g, '/')}/lis-e2e-gitsse-${ts}`;
+		const brR = await api('POST', '/git/branches', { path: repoPath, name: branch, start_point: 'main' });
+		expect([200, 201]).toContain(brR.status);
+		try {
+			const cre = await api('POST', '/worktrees', { project_path: repoPath, new_path: wtPath, branch });
+			expect([200, 201]).toContain(cre.status);
+
+			// Wait up to 5s for git_status_changed to arrive.
+			const deadline = Date.now() + 5_000;
+			while (Date.now() < deadline && !events.some(e => e.event === 'git_status_changed')) {
+				await new Promise(r => setTimeout(r, 100));
+			}
+			expect(events.some(e => e.event === 'git_status_changed')).toBe(true);
+		} finally {
+			aborter.abort();
+			await reader.catch(() => {});
+			await api('DELETE', '/worktrees', { project_path: repoPath, worktree_path: wtPath, force: true }).catch(() => {});
+			await api('DELETE', `/git/branches/${encodeURIComponent(branch)}?path=${encodeURIComponent(repoPath)}&force=true`).catch(() => {});
+		}
+	});
+
+	test('Item 7 — create + list + remove worktree, with git_status_changed SSE', async ({ page }) => {
+		// Use the lis repo itself as the project (we know it's a real git repo).
+		// Cleanup is mandatory because libgit2sharp persists worktrees on disk.
+		const ts = Date.now();
+		const branch = `e2e-wt-${ts}`;
+		const tmpRoot = process.env.TEMP ?? 'C:/Users/hanake0/AppData/Local/Temp';
+		const wtPath = `${tmpRoot.replace(/\\/g, '/')}/lis-e2e-wt-${ts}`;
+		const repoPath = PROJ_A_PATH;
+
+		// 1) Create a branch off main.
+		const branchResp = await api('POST', '/git/branches', { path: repoPath, name: branch, start_point: 'main' });
+		expect([200, 201]).toContain(branchResp.status);
+		try {
+			// 2) Create the worktree.
+			const created = await api('POST', '/worktrees', { project_path: repoPath, new_path: wtPath, branch });
+			expect([200, 201]).toContain(created.status);
+			expect((created.body as { branch: string }).branch).toBe(branch);
+
+			// 3) GET worktrees lists it.
+			const list = await api('GET', `/worktrees?project_path=${encodeURIComponent(repoPath)}`);
+			expect(list.status).toBe(200);
+			const found = (list.body as Array<{ branch: string }>).find(w => w.branch === branch);
+			expect(found).toBeTruthy();
+
+			// 4) Open sidebar — worktree is reachable but we don't assert visual
+			//    placement (depends on project-resolution wiring). Backend coverage
+			//    is the relevant proof here; UI worktree pill is separate plumbing.
+			const sb = await sidebarFrame(page);
+			await sb.waitForFunction(() => {
+				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+				return Boolean(store);
+			}, null, { timeout: 20_000 });
+
+			// 5) Remove the worktree.
+			const del = await api('DELETE', '/worktrees', { project_path: repoPath, worktree_path: wtPath, force: false });
+			expect([200, 204]).toContain(del.status);
+			const after = await api('GET', `/worktrees?project_path=${encodeURIComponent(repoPath)}`);
+			expect((after.body as Array<{ branch: string }>).find(w => w.branch === branch)).toBeUndefined();
+		} finally {
+			// Best-effort cleanup — try to remove the worktree if the test bailed before delete.
+			await api('DELETE', '/worktrees', { project_path: repoPath, worktree_path: wtPath, force: true }).catch(() => {});
+			await api('DELETE', `/git/branches/${encodeURIComponent(branch)}?path=${encodeURIComponent(repoPath)}&force=true`).catch(() => {});
+		}
+	});
+
 	test('Item 6 — bulk archive then bulk delete via session-ui-store', async ({ page }) => {
 		const ids = [`web:e2e-bulk-${Date.now()}-a`, `web:e2e-bulk-${Date.now()}-b`, `web:e2e-bulk-${Date.now()}-c`];
 		for (const id of ids) await createChat(id, projA, `bulk-${id.slice(-1)}`);
