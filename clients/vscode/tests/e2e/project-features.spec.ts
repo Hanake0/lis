@@ -171,6 +171,52 @@ test.describe.serial('Project features — Items 2-6', () => {
 		await waitForChatProjectId(sb, chatId, projA);
 	});
 
+	test('Item 5 — sidebar search filters sessions by name', async ({ page }) => {
+		// Seed two distinct chats so search has something to differentiate.
+		const a = `web:e2e-search-a-${Date.now()}`;
+		const b = `web:e2e-search-b-${Date.now()}`;
+		const uniq = `e2e-search-${Date.now()}`;
+		await createChat(a, projA, `chat-${uniq}-alpha`);
+		await createChat(b, projA, `chat-${uniq}-beta`);
+		try {
+			const sb = await sidebarFrame(page);
+
+			// Wait for both chats to land in the store before driving the UI.
+			await sb.waitForFunction((ids) => {
+				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+				if (!store) return false;
+				const state = store.getState() as { activeSessions: Array<{ id: string }> };
+				const found = new Set(state.activeSessions.map(s => s.id));
+				return ids.every(id => found.has(id));
+			}, [a, b], { timeout: 20_000 });
+
+			// Open the search input via the sidebar header's "Search sessions" toolbar button.
+			const searchBtn = sb.getByRole('button', { name: 'Search sessions' });
+			await searchBtn.waitFor({ state: 'visible', timeout: 10_000 });
+			await searchBtn.click();
+
+			const input = sb.getByPlaceholder('Search sessions...');
+			await input.waitFor({ state: 'visible', timeout: 5_000 });
+
+			// Type a query unique to chat A — beta should disappear from the rendered list.
+			await input.fill(`${uniq}-alpha`);
+
+			// Match-count chip says "1 match" when one result matches the debounced query.
+			// Wait for it (debounce is ~120ms; allow a generous buffer).
+			await expect(sb.getByText(/1 match\b/)).toBeVisible({ timeout: 5_000 });
+
+			// And the beta chat row should no longer be rendered.
+			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-beta`) })).toHaveCount(0);
+
+			// Broaden — both rows match.
+			await input.fill(uniq);
+			await expect(sb.getByText(/2 matches\b/)).toBeVisible({ timeout: 5_000 });
+		} finally {
+			await deleteChat(a);
+			await deleteChat(b);
+		}
+	});
+
 	test('Item 4 — pin / unpin propagate via SSE chat_pinned / chat_unpinned', async ({ page }) => {
 		const sb = await sidebarFrame(page);
 		await sb.waitForFunction(() => {
