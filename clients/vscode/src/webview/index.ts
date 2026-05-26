@@ -8,6 +8,7 @@ import { mountChatEventsBridge } from './sync/chat-events-bridge';
 import { useGlobalSessionsStore } from './stores/useGlobalSessionsStore';
 import { installProjectsSync } from './stores/useProjectsStore';
 import { installSessionFoldersSync } from './stores/useSessionFoldersStore';
+import { installSessionPinnedSync, useSessionPinnedStore } from './stores/useSessionPinnedStore';
 import { installChatPanelInit } from './sync/chat-panel-bridge';
 
 // Trace every inbound postMessage when verbose logging is on. Wire this BEFORE
@@ -37,6 +38,12 @@ installProjectsSync();
 // Initial REST load per-scope happens lazily inside the sidebar's
 // useFolderScopeBootstrap.
 installSessionFoldersSync();
+
+// Wire useSessionPinnedStore: subscribes to chat_pinned / chat_unpinned SSE
+// events. Pins are server-side now (not localStorage), so the store starts
+// empty and gets seeded both from the initial loadSessions REST response
+// (below, after rpc.ready()) and from live SSE events thereafter.
+installSessionPinnedSync();
 
 // Wire useConfigStore: initial /api/providers load on rpc ready and on every
 // config refresh. The store's own module-bottom bootstrap relied on

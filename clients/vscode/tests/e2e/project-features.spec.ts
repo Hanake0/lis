@@ -171,6 +171,67 @@ test.describe.serial('Project features — Items 2-6', () => {
 		await waitForChatProjectId(sb, chatId, projA);
 	});
 
+	test('Item 4 — pin / unpin propagate via SSE chat_pinned / chat_unpinned', async ({ page }) => {
+		const sb = await sidebarFrame(page);
+		await sb.waitForFunction(() => {
+			const store = (window as unknown as { __lis_pinned?: { getState(): unknown } }).__lis_pinned;
+			return Boolean(store);
+		}, null, { timeout: 20_000 });
+
+		const isPinned = async (id: string): Promise<boolean> => {
+			return await sb.evaluate((chat) => {
+				const store = (window as unknown as { __lis_pinned?: { getState(): unknown } }).__lis_pinned;
+				if (!store) return false;
+				const state = store.getState() as { ids: Set<string> };
+				return state.ids.has(chat);
+			}, id);
+		};
+		const waitForPin = async (id: string, want: boolean, ms = 6_000): Promise<void> => {
+			const deadline = Date.now() + ms;
+			while (Date.now() < deadline) {
+				if (await isPinned(id) === want) return;
+				await new Promise(r => setTimeout(r, 200));
+			}
+			throw new Error(`waitForPin(${id}, ${want}) timed out`);
+		};
+
+		// Baseline: not pinned.
+		expect(await isPinned(chatId)).toBe(false);
+
+		// Pin → SSE chat_pinned → store has the id.
+		const pinR = await api('POST', `/chats/${encodeURIComponent(chatId)}/pin`);
+		expect([200, 204]).toContain(pinR.status);
+		await waitForPin(chatId, true);
+
+		// Unpin → SSE chat_unpinned → store drops the id.
+		const unpinR = await api('DELETE', `/chats/${encodeURIComponent(chatId)}/pin`);
+		expect([200, 204]).toContain(unpinR.status);
+		await waitForPin(chatId, false);
+
+		// Pin again then reload — verify the bootstrap seeds from listChats.pinned_at.
+		await api('POST', `/chats/${encodeURIComponent(chatId)}/pin`);
+		await page.reload({ waitUntil: 'domcontentloaded' });
+		await activateLisSidebar(page);
+		const sb2 = await sidebarFrame(page);
+		await sb2.waitForFunction(() => {
+			const store = (window as unknown as { __lis_pinned?: { getState(): unknown } }).__lis_pinned;
+			const sess  = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+			if (!store || !sess) return false;
+			const ss = sess.getState() as { hasLoaded: boolean };
+			return ss.hasLoaded;
+		}, null, { timeout: 20_000 });
+		const pinnedAfterReload = await sb2.evaluate((chat) => {
+			const store = (window as unknown as { __lis_pinned?: { getState(): unknown } }).__lis_pinned;
+			if (!store) return false;
+			const state = store.getState() as { ids: Set<string> };
+			return state.ids.has(chat);
+		}, chatId);
+		expect(pinnedAfterReload).toBe(true);
+
+		// Cleanup.
+		await api('DELETE', `/chats/${encodeURIComponent(chatId)}/pin`);
+	});
+
 	test('Item 3 — folders: create, add item, rename, delete all propagate via SSE', async ({ page }) => {
 		const sb = await sidebarFrame(page);
 		// Folders are per-scope; we use `dir:<project_path>` matching the OC convention.

@@ -108,3 +108,9 @@ function errorMessage(err: unknown): string {
 	if (err instanceof Error)        return err.message;
 	return String(err);
 }
+
+// Expose for the Playwright e2e harness — same pattern as __lis_folders,
+// __lis_globalSessions, __lis_config.
+if (typeof window !== 'undefined') {
+	(window as unknown as { __lis_pinned?: unknown }).__lis_pinned = useSessionPinnedStore;
+}

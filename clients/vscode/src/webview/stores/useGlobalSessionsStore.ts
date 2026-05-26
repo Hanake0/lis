@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { Session } from '@/lib/opencode-sdk-stub';
 import { LisRpcClient, type LisChatSummary } from '@/lib/lis/rpc-client';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
 import { normalizePath } from '@/components/session/sidebar/utils';
 
 /**
@@ -228,6 +229,13 @@ export const useGlobalSessionsStore = create<GlobalSessionsState>((set, get) => 
 		const myLoad = (async (): Promise<LoadResult> => {
 			try {
 				const rows = await LisRpcClient.instance().listChats();
+				// Seed the pin store from rows — pinned_at is on the wire DTO but
+				// not on the OC-shaped Session, so we have to pull it before mapping.
+				// Lis serverizes pin state (vs OC's localStorage); without seeding
+				// here a fresh reload renders every chat as unpinned until the user
+				// pins/unpins one and SSE catches up.
+				const pinnedIds = new Set<string>(rows.filter(r => r.pinned_at).map(r => r.chat_id));
+				useSessionPinnedStore.getState().setIds(pinnedIds);
 				const mapped = rows.map(chatSummaryToSession);
 				const serverActive   = mapped.filter(s => !s.time?.archived);
 				const serverArchived = mapped.filter(s =>  s.time?.archived);
