@@ -307,6 +307,15 @@ export const useGlobalSessionsStore = create<GlobalSessionsState>((set, get) => 
 	},
 }));
 
+// Debug surface for the e2e harness: exposes the store on `window` so a
+// Playwright spec can force a `loadSessions()` round-trip if the SSE event
+// missed the freshly-seeded chat (race between REST-seed and SSE-channel
+// setup). Production webviews never read this — it's behind the same global
+// surface other stores use.
+if (typeof window !== 'undefined') {
+	(window as unknown as { __lis_globalSessions?: unknown }).__lis_globalSessions = useGlobalSessionsStore;
+}
+
 // Projects load asynchronously, often after the first `loadSessions` call. When
 // the projects array transitions (e.g. empty → populated, or a project path
 // changes), re-resolve `directory` on every cached session so the OC sidebar

@@ -129,7 +129,22 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 		return state.providers.find((p: ProviderEntry) => p.id === state.currentProviderId) ?? null;
 	},
 
-	getCurrentModelVariants: () => [],
+	/**
+	 * Returns the list of reasoning-effort variants advertised by the
+	 * currently-selected model. OC's ModelControls hides the effort picker
+	 * entirely when this returns empty, so an unhooked stub silently strips
+	 * the picker from the composer even though the backend ships variants
+	 * via `model.reasoning.supported_efforts` (synthesised into
+	 * `model.variants` by `loadProviders` above).
+	 */
+	getCurrentModelVariants: (): string[] => {
+		const state = useConfigStore.getState();
+		const provider = state.providers.find((p: ProviderEntry) => p.id === state.currentProviderId);
+		if (!provider) return [];
+		const model = provider.models.find((m: ProviderModel) => m.id === state.currentModelId);
+		const variants = (model as ProviderModel & { variants?: Record<string, unknown> } | undefined)?.variants;
+		return variants ? Object.keys(variants) : [];
+	},
 
 	getModelMetadata: (providerId?: string, modelId?: string): ProviderModel | null => {
 		if (!providerId || !modelId) return null;
@@ -256,6 +271,13 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 	setSpeechVolume:                  noop,
 	setShowMessageTTSButtons:         noop,
 }));
+
+// Debug surface for the e2e harness — see useGlobalSessionsStore for the same
+// pattern. Exposes the live config store so Playwright can probe currentModelId
+// /currentProviderId without compiling against the bundle.
+if (typeof window !== 'undefined') {
+	(window as unknown as { __lis_config?: unknown }).__lis_config = useConfigStore;
+}
 
 // Mirror useChatStore → useConfigStore — keeps `agents`, the connection flag,
 // the composer-model selection and the context budget in sync until the OC

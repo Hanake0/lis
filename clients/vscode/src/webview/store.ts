@@ -97,3 +97,7 @@ export const useChatStore = create<ChatStore>((set) => ({
 	addQuestion:         (q)                => set((s) => ({ questions: [...s.questions, q] })),
 	removeQuestion:      (id)               => set((s) => ({ questions: s.questions.filter((q) => q.id !== id) })),
 }));
+
+if (typeof window !== 'undefined') {
+	(window as any).__lis_chatStore = useChatStore;
+}
