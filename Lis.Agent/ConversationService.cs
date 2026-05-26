@@ -459,10 +459,18 @@ public sealed class ConversationService(
 		} else {
 			chat.UpdatedAt = DateTimeOffset.UtcNow;
 
-			if (message.IsGroup && message.ChatName is not null)
-				chat.Name = message.ChatName;
-			else if (message.SenderName is not null)
-				chat.Name = message.SenderName;
+			// Mirror inbound metadata for messaging-channel chats (WhatsApp etc.)
+			// where the sender's display name + group topic are the authoritative
+			// label. The "web" channel is the opposite: the chat name was set by
+			// the client at create-time (or explicit PATCH) and shouldn't be
+			// silently rewritten to the configured owner display name on every
+			// incoming user turn.
+			if (message.Channel != "web") {
+				if (message.IsGroup && message.ChatName is not null)
+					chat.Name = message.ChatName;
+				else if (message.SenderName is not null)
+					chat.Name = message.SenderName;
+			}
 
 			if (message.IsGroup && message.ChatTopic is not null)
 				chat.GroupTopic = message.ChatTopic;
