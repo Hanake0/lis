@@ -1,7 +1,7 @@
 /**
  * Bridges the global SSE channel (`/api/events`) to the OC-shaped
  * useGlobalSessionsStore. Server-side chat lifecycle events
- * (chat_created/updated/deleted/archived) are translated into the
+ * (chat_created/updated/deleted/archived/moved) are translated into the
  * store's CRUD primitives so the sidebar's session list stays
  * in sync without any explicit refresh.
  *
@@ -16,17 +16,22 @@
  * mutations happen in one focused place.
  */
 
+import type { Session } from '@/lib/opencode-sdk-stub';
 import { LisRpcClient } from '@/lib/lis/rpc-client';
 import type { LisChatSummary } from '@/lib/lis/rpc-client';
 import {
 	chatSummaryToSession,
 	useGlobalSessionsStore,
 } from '@/stores/useGlobalSessionsStore';
+import { useProjectsStore } from '@/stores/useProjectsStore';
+import { normalizePath } from '@/components/session/sidebar/utils';
 
 /** Wire payload of `chat_created`/`chat_updated`/`chat_archived`. */
 interface ChatPayloadWithDto { chat: LisChatSummary }
 /** Wire payload of `chat_deleted`. */
 interface ChatDeletedPayload { chat_id: string }
+/** Wire payload of `chat_moved` — does NOT include the full chat DTO. */
+interface ChatMovedPayload { chat_id: string; project_id: string | null }
 
 function isChatPayload(data: unknown): data is ChatPayloadWithDto {
 	if (typeof data !== 'object' || data === null) return false;
@@ -39,6 +44,13 @@ function isChatDeletedPayload(data: unknown): data is ChatDeletedPayload {
 	return typeof data === 'object'
 		&& data !== null
 		&& typeof (data as { chat_id?: unknown }).chat_id === 'string';
+}
+
+function isChatMovedPayload(data: unknown): data is ChatMovedPayload {
+	if (typeof data !== 'object' || data === null) return false;
+	const d = data as { chat_id?: unknown; project_id?: unknown };
+	if (typeof d.chat_id !== 'string') return false;
+	return d.project_id === null || typeof d.project_id === 'string';
 }
 
 /**
@@ -55,6 +67,30 @@ export function mountChatEventsBridge(): () => void {
 			case 'chat_archived': {
 				if (!isChatPayload(ev.data)) return;
 				useGlobalSessionsStore.getState().upsertSession(chatSummaryToSession(ev.data.chat));
+				return;
+			}
+			case 'chat_moved': {
+				// Payload is a thin {chat_id, project_id} — no full DTO. Find the
+				// existing session in the store, clone it with the new projectId
+				// (and the new resolved `directory` from the project's path), and
+				// upsert. The dedup signature includes the resolved directory, so
+				// the re-bucket happens automatically once the dir changes.
+				if (!isChatMovedPayload(ev.data)) return;
+				const { chat_id, project_id } = ev.data;
+				const store    = useGlobalSessionsStore.getState();
+				const existing = store.activeSessions.find(s => s.id === chat_id)
+					?? store.archivedSessions.find(s => s.id === chat_id)
+					?? null;
+				if (!existing) return; // unknown chat — next loadSessions() will pick it up
+				const projectPath = project_id
+					? normalizePath(useProjectsStore.getState().projects.find(p => p.id === project_id)?.path ?? null)
+					: null;
+				const next: Session = {
+					...existing,
+					directory: projectPath,
+					projectId: project_id,
+				} as Session;
+				store.upsertSession(next);
 				return;
 			}
 			case 'chat_deleted': {

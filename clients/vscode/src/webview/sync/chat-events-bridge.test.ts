@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import type { EventSourceLike } from '@/lib/lis/event-channel';
 import { LisRpcClient, type MessageSource } from '@/lib/lis/rpc-client';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import { useProjectsStore } from '@/stores/useProjectsStore';
 import { mountChatEventsBridge } from './chat-events-bridge';
 
 class FakeMessageSource implements MessageSource {
@@ -126,5 +127,48 @@ describe('mountChatEventsBridge', () => {
 		FakeEventSource.last!.fire('chat_created', JSON.stringify(chatPayload({ chat_id: 'b' })));
 		const ids = useGlobalSessionsStore.getState().activeSessions.map(s => s.id);
 		expect(ids).toEqual(['a']); // b was ignored
+	});
+
+	test('chat_moved patches projectId + re-buckets directory for an existing row', () => {
+		mountChatEventsBridge();
+		// Seed projects so resolveGlobalSessionDirectory can map projectId → path.
+		useProjectsStore.setState({
+			projects: [
+				{ id: 'p1', path: '/proj/one' } as never,
+				{ id: 'p2', path: '/proj/two' } as never,
+			],
+		} as never);
+		FakeEventSource.last!.fire('chat_created', JSON.stringify(chatPayload({ chat_id: 'a', project_id: 'p1' })));
+		FakeEventSource.last!.fire('chat_moved',   JSON.stringify({ chat_id: 'a', project_id: 'p2' }));
+		const s = useGlobalSessionsStore.getState().activeSessions.find(x => x.id === 'a');
+		expect(s).toBeTruthy();
+		expect((s as unknown as { projectId: string | null }).projectId).toBe('p2');
+		expect((s as unknown as { directory: string | null }).directory).toBe('/proj/two');
+	});
+
+	test('chat_moved with project_id=null detaches the chat from any project', () => {
+		mountChatEventsBridge();
+		useProjectsStore.setState({ projects: [{ id: 'p1', path: '/proj/one' } as never] } as never);
+		FakeEventSource.last!.fire('chat_created', JSON.stringify(chatPayload({ chat_id: 'a', project_id: 'p1' })));
+		FakeEventSource.last!.fire('chat_moved',   JSON.stringify({ chat_id: 'a', project_id: null }));
+		const s = useGlobalSessionsStore.getState().activeSessions.find(x => x.id === 'a');
+		expect(s).toBeTruthy();
+		expect((s as unknown as { projectId: string | null }).projectId).toBeNull();
+	});
+
+	test('chat_moved for unknown chat is silently dropped — store untouched', () => {
+		mountChatEventsBridge();
+		useProjectsStore.setState({ projects: [{ id: 'p1', path: '/proj/one' } as never] } as never);
+		FakeEventSource.last!.fire('chat_moved', JSON.stringify({ chat_id: 'never-seen', project_id: 'p1' }));
+		expect(useGlobalSessionsStore.getState().activeSessions).toEqual([]);
+	});
+
+	test('chat_moved with malformed payload is silently dropped', () => {
+		mountChatEventsBridge();
+		FakeEventSource.last!.fire('chat_created', JSON.stringify(chatPayload({ chat_id: 'a', project_id: 'p1' })));
+		FakeEventSource.last!.fire('chat_moved',   JSON.stringify({ wrong: true }));
+		FakeEventSource.last!.fire('chat_moved',   'not even json');
+		const s = useGlobalSessionsStore.getState().activeSessions.find(x => x.id === 'a');
+		expect((s as unknown as { projectId: string | null }).projectId).toBe('p1');
 	});
 });
