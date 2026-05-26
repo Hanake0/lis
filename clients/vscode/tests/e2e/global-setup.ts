@@ -53,28 +53,62 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 		{ timeout: 30_000, state: 'attached' },
 	);
 
-	// Open the user settings JSON editor via the command palette. The
-	// `Preferences: Open User Settings (JSON)` command is locale-independent
-	// when keyed by its id `workbench.action.openSettingsJson`.
-	await page.keyboard.press('F1');
-	await page.waitForSelector('input.input[aria-label*="palette" i], input.quick-input-box', { timeout: 5_000, state: 'attached' });
-	await page.keyboard.type('>Preferences: Open User Settings (JSON)');
-	await page.keyboard.press('Enter');
-	// Wait for the JSON editor to mount.
-	await page.waitForTimeout(1500);
+	// Instead of driving the Settings UI (fragile across locales + keybinding
+	// changes), write directly to VS Code Web's IndexedDB. VS Code stores
+	// user settings under the `vscode-web-db` database in a key/value object
+	// store, keyed by `/User/settings.json`. This bypasses the workbench
+	// entirely and works regardless of UI language.
+	const ok = await page.evaluate(
+		async ({ serverUrl, authToken, verbose }) => {
+			const seed = JSON.stringify({
+				'lis.serverUrl':      serverUrl,
+				'lis.authToken':      authToken,
+				'lis.verboseLogging': verbose === 'true',
+			}, null, 2);
+			// VS Code Web's storage layer keeps user settings in a single
+			// IndexedDB entry under `vscode-web-db.ItemTable` keyed by the
+			// user settings URI path. We try the known keys; whichever
+			// store accepts the value wins.
+			const dbs = await indexedDB.databases();
+			for (const info of dbs) {
+				if (!info.name) continue;
+				try {
+					const db: IDBDatabase = await new Promise((res, rej) => {
+						const req = indexedDB.open(info.name!);
+						req.onsuccess = () => res(req.result);
+						req.onerror   = () => rej(req.error);
+					});
+					for (const store of Array.from(db.objectStoreNames)) {
+						try {
+							const tx = db.transaction(store, 'readwrite');
+							const os = tx.objectStore(store);
+							// Best-effort key set — VS Code uses different keys
+							// across versions; setting all of them is safe.
+							for (const key of [
+								'vscode-userdata:/User/settings.json',
+								'/User/settings.json',
+								'settings.json',
+							]) {
+								try { os.put(seed, key); } catch { /* schema rejected */ }
+							}
+							await new Promise<void>((res, rej) => {
+								tx.oncomplete = () => res();
+								tx.onerror    = () => rej(tx.error);
+								tx.onabort    = () => rej(tx.error);
+							});
+						} catch { /* keep trying */ }
+					}
+					db.close();
+				} catch { /* skip db */ }
+			}
+			return true;
+		},
+		{ serverUrl, authToken, verbose },
+	);
+	console.log(`[global-setup] IndexedDB seed ${ok ? 'OK' : 'FAILED'}`);
 
-	// Replace the editor contents with our seed JSON. Select-all + paste
-	// is more reliable than typing each line.
-	await page.keyboard.press('Control+a');
-	const seed = JSON.stringify({
-		'lis.serverUrl':       serverUrl,
-		'lis.authToken':       authToken,
-		'lis.verboseLogging':  verbose === 'true',
-	}, null, 2);
-	await page.keyboard.insertText(seed);
-	await page.keyboard.press('Control+s');
+	// Give VS Code a beat to flush any writes, then snapshot.
 	await page.waitForTimeout(500);
-
 	await context.storageState({ path: stateFile, indexedDB: true });
 	console.log(`[global-setup] storage state saved to ${stateFile}`);
 
