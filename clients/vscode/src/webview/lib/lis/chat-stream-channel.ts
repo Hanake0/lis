@@ -24,6 +24,7 @@ import type {
 	EventSourceFactory,
 	EventSourceLike,
 } from './event-channel';
+import { lisLog } from './logger';
 
 /** Event names emitted on `/api/chats/{id}/stream`. Keep in sync with `ChatStreamEventNames`. */
 const KNOWN_CHAT_STREAM_EVENTS = [
@@ -75,22 +76,34 @@ export class LisChatStreamChannel {
 	}
 
 	open(): void {
-		if (!this.baseOrigin) { this.setState('disconnected'); return; }
-		if (this.source)       { return; } // already open
+		if (!this.baseOrigin) {
+			lisLog.warn(`chat-stream(${this.chatId}): open() bailed — no baseOrigin configured`);
+			this.setState('disconnected');
+			return;
+		}
+		if (this.source) {
+			lisLog.info(`chat-stream(${this.chatId}): already open — skipping`);
+			return;
+		} // already open
 
 		this.setState('connecting');
 		const params = new URLSearchParams();
 		if (this.token) params.set('token', this.token);
 		const url = `${this.baseOrigin}/api/chats/${encodeURIComponent(this.chatId)}/stream${params.size ? `?${params.toString()}` : ''}`;
+		lisLog.info(`chat-stream(${this.chatId}): opening ${url}`);
 
 		const src = this.factory(url);
 		this.source = src;
 
-		src.onopen  = () => this.setState('connected');
+		src.onopen  = () => {
+			lisLog.info(`chat-stream(${this.chatId}): connected`);
+			this.setState('connected');
+		};
 		src.onerror = () => {
 			// Unlike the global channel we DON'T leave it to auto-reconnect — chat
 			// events are turn-scoped. Surface 'disconnected' and let the caller
 			// decide whether to reopen (typically: on the next turn).
+			lisLog.warn(`chat-stream(${this.chatId}): connection error — closing`);
 			this.setState('disconnected');
 			this.close();
 		};
@@ -104,6 +117,7 @@ export class LisChatStreamChannel {
 
 	close(): void {
 		if (!this.source) return;
+		lisLog.info(`chat-stream(${this.chatId}): close()`);
 		try { this.source.close(); } catch { /* ignore */ }
 		this.source = null;
 		this.setState('disconnected');
@@ -114,9 +128,12 @@ export class LisChatStreamChannel {
 		if (typeof msg.data === 'string' && msg.data.length > 0) {
 			try { data = JSON.parse(msg.data); } catch { /* leave raw */ }
 		}
+		lisLog.event(`chat-stream.event`, { chatId: this.chatId, event: eventName, id: msg.lastEventId || undefined, data });
 		const ev: ChannelEvent = { id: msg.lastEventId || undefined, event: eventName, data };
 		for (const fn of this.listeners) {
-			try { fn(ev); } catch { /* swallow listener errors */ }
+			try { fn(ev); } catch (err) {
+				lisLog.error(`chat-stream(${this.chatId}): listener threw`, { event: eventName, error: err instanceof Error ? err.message : String(err) });
+			}
 		}
 	}
 

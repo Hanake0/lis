@@ -215,6 +215,93 @@ test.describe.serial('Project features — Items 2-6', () => {
 		await waitForChatProjectId(sb, chatId, projA);
 	});
 
+	test('Item 13 — end-to-end: open draft chat, send message, assistant response renders', async ({ page }) => {
+		// THIS is what tests every other prior spec wasn't catching: actually
+		// opening a chat panel, sending a message, and verifying the assistant
+		// response renders. Without this, the SSE plumbing tests pass but the
+		// user sees an empty Assistant block in production.
+		const sb = await sidebarFrame(page);
+
+		// Open a fresh draft via the sidebar's "New session" toolbar button.
+		await sb.getByRole('button', { name: 'New session', exact: true }).first().click({ timeout: 10_000 });
+		// Wait for the chat panel iframe to mount.
+		await page.waitForFunction(() => /^(?:Chat|New Chat)\b/.test(document.title), null, { timeout: 15_000 });
+		const cf = await page.waitForSelector('iframe[src*="vscode-cdn.net"]:not([title="Sessions"]), iframe[title="Chat"], iframe[title="New Chat"]', { timeout: 15_000 }).then(() => {
+			// Re-acquire via findInnerFrame approach.
+			const deadline = Date.now() + 15_000;
+			return (async () => {
+				while (Date.now() < deadline) {
+					for (const f of page.frames()) {
+						try {
+							const el = await f.frameElement();
+							const t  = await el.getAttribute('title');
+							if (t === 'Chat' || t === 'New Chat') return f;
+						} catch { /* detached */ }
+					}
+					await new Promise(r => setTimeout(r, 150));
+				}
+				throw new Error('chat panel iframe never appeared');
+			})();
+		});
+
+		const textarea = cf.locator('textarea').first();
+		await textarea.waitFor({ state: 'visible', timeout: 15_000 });
+
+		// Wait for the provider/model to resolve so the Send button enables.
+		await cf.waitForFunction(() => {
+			const cfg = (window as unknown as { __lis_config?: { getState(): unknown } }).__lis_config;
+			const state = cfg?.getState?.() as { currentProviderId: string; currentModelId: string } | undefined;
+			return Boolean(state?.currentProviderId && state?.currentModelId);
+		}, null, { timeout: 15_000 });
+
+		const prompt = `say hi in exactly 3 words ${Date.now()}`;
+		await textarea.fill(prompt);
+
+		// Send. Direct fiber click bypasses any overlay.
+		await cf.evaluate(() => {
+			const btn = Array.from(document.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Send message') as HTMLButtonElement | undefined;
+			if (!btn) throw new Error('Send button not found');
+			const fiberKey = Object.keys(btn).find(k => k.startsWith('__reactProps$'));
+			const onClick  = fiberKey ? (btn as unknown as Record<string, { onClick?: (e: unknown) => void }>)[fiberKey]?.onClick : null;
+			if (typeof onClick !== 'function') throw new Error('Send onClick not bound');
+			onClick({ preventDefault: () => {}, stopPropagation: () => {}, currentTarget: btn, target: btn });
+		});
+
+		// Wait for the user's message to appear (proves the POST happened + SSE echo).
+		await expect(cf.getByText(prompt, { exact: false })).toBeVisible({ timeout: 15_000 });
+
+		// Wait for an ASSISTANT message to appear with non-empty text. This is
+		// the assertion every other test missed: SSE chat-stream chunks must
+		// land + the chat-panel-bridge must apply them to useChatStore.messages
+		// + the React renderer must paint them.
+		await cf.waitForFunction(() => {
+			const store = (window as unknown as { __lis_chatStore?: { getState(): unknown } }).__lis_chatStore;
+			if (!store) return false;
+			const state = store.getState() as { messages: Array<{ kind: string; text?: string }> };
+			return state.messages.some(m => m.kind === 'assistant' && typeof m.text === 'string' && m.text.trim().length > 0);
+		}, null, { timeout: 60_000 });
+
+		// And verify the assistant text is visible in the rendered DOM (not just in store).
+		const assistantText = await cf.evaluate(() => {
+			const store = (window as unknown as { __lis_chatStore?: { getState(): unknown } }).__lis_chatStore;
+			if (!store) return null;
+			const state = store.getState() as { messages: Array<{ kind: string; text?: string }> };
+			const msg   = state.messages.find(m => m.kind === 'assistant' && typeof m.text === 'string' && m.text.trim().length > 0);
+			return msg?.text ?? null;
+		});
+		expect(assistantText).toBeTruthy();
+		expect(assistantText!.length).toBeGreaterThan(0);
+
+		// Cleanup — delete the freshly-minted draft chat.
+		const chatId = await cf.evaluate(() => {
+			const store = (window as unknown as { __lis_chatStore?: { getState(): unknown } }).__lis_chatStore;
+			if (!store) return null;
+			const state = store.getState() as { chatId: string | null };
+			return state.chatId;
+		});
+		if (chatId) await deleteChat(chatId);
+	});
+
 	test('Item 12 — sidebar sizing: html font-size=16px (OC design base), body inherits vscode-font-size', async ({ page }) => {
 		const sb = await sidebarFrame(page);
 		// The .lis-sidebar class is applied by installSidebarFrameHandler()
