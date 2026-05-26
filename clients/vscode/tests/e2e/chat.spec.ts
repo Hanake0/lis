@@ -586,24 +586,33 @@ async function closeAllEditorTabs(page: Page): Promise<void> {
 		await page.keyboard.type('View: Close All Editor Groups');
 		await page.waitForTimeout(150);
 		await page.keyboard.press('Enter');
-		await page.waitForTimeout(300);
+		await page.waitForTimeout(500);
 	} catch { /* fall through */ }
 
 	// Layer 2: keybinding
 	await page.keyboard.press('Escape');
 	await page.keyboard.press('Control+K');
 	await page.keyboard.press('Control+W');
-	await page.waitForTimeout(300);
+	await page.waitForTimeout(500);
 
 	// Layer 3: DOM sweep — close every still-open tab via its X.
 	for (let i = 0; i < 6; i++) {
-		const closeBtns = await page.locator('.tab .codicon-close, .tab .tab-close').all();
+		const closeBtns = await page.locator('.tab .codicon-close, .tab .tab-close, .tab .tab-action.tab-close-btn').all();
 		if (closeBtns.length === 0) break;
 		for (const btn of closeBtns) {
 			try { await btn.click({ force: true, timeout: 500 }); } catch { /* tab already gone */ }
 		}
 		await page.waitForTimeout(200);
 	}
+
+	// Wait for the editor area to be empty (no tabs in any group). Without
+	// this, the next spec's chatFrame() lookup can race with a not-yet-disposed
+	// stale iframe.
+	await page.waitForFunction(
+		() => document.querySelectorAll('.tab').length === 0,
+		null,
+		{ timeout: 5_000 },
+	).catch(() => { /* best-effort */ });
 }
 
 async function waitForChatPanel(page: Page): Promise<void> {
