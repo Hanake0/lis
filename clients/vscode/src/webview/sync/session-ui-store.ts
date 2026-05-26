@@ -3,6 +3,7 @@ import { useChatStore } from '@/store';
 import { LisRpcClient } from '@/lib/lis/rpc-client';
 import { lisLog } from '@/lib/lis/logger';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
+import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 
 declare global {
 	interface Window { __lis_sessionUI?: unknown }
@@ -73,6 +74,11 @@ export const useSessionUIStore = create<any>((rawSet: any) => {
 	},
 	deleteSessions: async (ids: string[]) => {
 		const client = LisRpcClient.instance();
+		// Optimistically remove ALL ids from the local stores before the REST
+		// calls — same reasoning as archiveSessions. Failed ids are re-loaded
+		// from the server at the end so a partial-failure bulk delete shows
+		// the survivors back in the list.
+		useGlobalSessionsStore.getState().removeSessions(ids);
 		const deleted: string[] = [];
 		const failed:  string[] = [];
 		// Sequential — backend writes a row per call and emits a `chat_deleted` event;
@@ -80,6 +86,10 @@ export const useSessionUIStore = create<any>((rawSet: any) => {
 		for (const id of ids) {
 			try { await client.deleteChat(id); deleted.push(id); }
 			catch { failed.push(id); }
+		}
+		if (failed.length > 0) {
+			lisLog.warn(`[session-ui] bulk delete failures: ${failed.join(', ')}`);
+			try { await useGlobalSessionsStore.getState().loadSessions(); } catch { /* best-effort */ }
 		}
 		return { deletedIds: deleted, failedIds: failed };
 	},

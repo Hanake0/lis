@@ -171,6 +171,62 @@ test.describe.serial('Project features — Items 2-6', () => {
 		await waitForChatProjectId(sb, chatId, projA);
 	});
 
+	test('Item 6 — bulk archive then bulk delete via session-ui-store', async ({ page }) => {
+		const ids = [`web:e2e-bulk-${Date.now()}-a`, `web:e2e-bulk-${Date.now()}-b`, `web:e2e-bulk-${Date.now()}-c`];
+		for (const id of ids) await createChat(id, projA, `bulk-${id.slice(-1)}`);
+		try {
+			const sb = await sidebarFrame(page);
+			await sb.waitForFunction((expected) => {
+				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+				if (!store) return false;
+				const state = store.getState() as { activeSessions: Array<{ id: string }> };
+				const set = new Set(state.activeSessions.map(s => s.id));
+				return expected.every(id => set.has(id));
+			}, ids, { timeout: 20_000 });
+
+			// Drive the same code path the sidebar's bulk-archive uses.
+			await sb.evaluate(async (sel) => {
+				const ui = (window as unknown as { __lis_sessionUI?: { getState(): unknown } }).__lis_sessionUI;
+				if (!ui) throw new Error('no __lis_sessionUI');
+				const s = ui.getState() as { archiveSessions: (ids: string[]) => Promise<{ archivedIds: string[]; failedIds: string[] }> };
+				const r = await s.archiveSessions(sel);
+				if (r.failedIds.length > 0) throw new Error(`archive failed: ${r.failedIds.join(',')}`);
+			}, ids);
+
+			// All three should be in archivedSessions now.
+			await sb.waitForFunction((expected) => {
+				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+				if (!store) return false;
+				const state = store.getState() as { activeSessions: Array<{ id: string }>; archivedSessions: Array<{ id: string }> };
+				const archivedSet = new Set(state.archivedSessions.map(s => s.id));
+				const activeSet   = new Set(state.activeSessions.map(s => s.id));
+				return expected.every(id => archivedSet.has(id) && !activeSet.has(id));
+			}, ids, { timeout: 10_000 });
+
+			// Bulk delete next — drive deleteSessions which we just made optimistic too.
+			await sb.evaluate(async (sel) => {
+				const ui = (window as unknown as { __lis_sessionUI?: { getState(): unknown } }).__lis_sessionUI;
+				if (!ui) throw new Error('no __lis_sessionUI');
+				const s = ui.getState() as { deleteSessions: (ids: string[]) => Promise<{ deletedIds: string[]; failedIds: string[] }> };
+				const r = await s.deleteSessions(sel);
+				if (r.failedIds.length > 0) throw new Error(`delete failed: ${r.failedIds.join(',')}`);
+			}, ids);
+
+			// All three should be removed from BOTH buckets.
+			await sb.waitForFunction((expected) => {
+				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+				if (!store) return false;
+				const state = store.getState() as { activeSessions: Array<{ id: string }>; archivedSessions: Array<{ id: string }> };
+				const archivedSet = new Set(state.archivedSessions.map(s => s.id));
+				const activeSet   = new Set(state.activeSessions.map(s => s.id));
+				return expected.every(id => !archivedSet.has(id) && !activeSet.has(id));
+			}, ids, { timeout: 10_000 });
+		} finally {
+			// Belt-and-braces — if the test failed, ensure the ids are gone.
+			for (const id of ids) await deleteChat(id).catch(() => {});
+		}
+	});
+
 	test('Item 5 — sidebar search filters sessions by name', async ({ page }) => {
 		// Seed two distinct chats so search has something to differentiate.
 		const a = `web:e2e-search-a-${Date.now()}`;
