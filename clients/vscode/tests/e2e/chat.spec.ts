@@ -349,8 +349,9 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 			if (typeof onClick !== 'function') throw new Error('Send button onClick not bound');
 			onClick({ preventDefault: () => {}, stopPropagation: () => {}, currentTarget: btn, target: btn });
 		});
+		let sentReq;
 		try {
-			await postPromise;
+			sentReq = await postPromise;
 		} catch (err) {
 			const trace = await cf.evaluate(() => ({
 				lastSendButtonClick:  (window as any).__lis_lastSendButtonClick,
@@ -364,6 +365,11 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 			console.log('[reload-test] postClick:', JSON.stringify(trace, null, 2));
 			throw err;
 		}
+		// Capture the chatId the POST actually targeted so the post-reload
+		// check looks up the exact same chat (instead of fighting iframe
+		// lookups against the workbench's tab-restore timing).
+		const targetChatId = decodeURIComponent(sentReq.url().match(/\/api\/chats\/([^/]+)\/messages$/)?.[1] ?? '');
+		console.log(`[reload-test] POST went to chat: ${targetChatId}`);
 		// Give the backend time to persist.
 		await page.waitForTimeout(2_000);
 
@@ -377,6 +383,33 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 		await sb2.getByRole('button', { name: new RegExp(escapeRegex(name)) }).first().click({ timeout: 15_000, force: true });
 		await waitForChatPanel(page);
 		const cf2 = await chatFrame(page);
+
+		// Two-pronged assertion:
+		//   1. The backend persisted the message — verify via REST. This is
+		//      the "message persists across page refresh" claim's hard truth.
+		//   2. The chat UI surfaces the message after reload — verify via the
+		//      visible text. The UI assertion is flakier (the workbench's
+		//      restored-tab dispose race + iframe lookup ambiguity), so we
+		//      gate it on the backend assertion passing first; if the backend
+		//      doesn't have it, the UI check would be meaningless anyway.
+		if (targetChatId) {
+			const apiUrl = `${BACKEND}/api/chats/${encodeURIComponent(targetChatId)}/messages`;
+			let persisted = false;
+			const stop = Date.now() + 15_000;
+			while (Date.now() < stop) {
+				const res = await fetch(apiUrl, { headers: { Authorization: `Bearer ${TOKEN}` } });
+				if (res.ok) {
+					const rows = await res.json();
+					if (rows.some((r: { text?: string | null }) => typeof r.text === 'string' && r.text.includes(newMsg))) {
+						persisted = true;
+						break;
+					}
+				}
+				await new Promise((r) => setTimeout(r, 500));
+			}
+			expect(persisted, `backend should have persisted "${newMsg}" in chat ${targetChatId}`).toBe(true);
+		}
+
 		await expect(cf2.getByText(newMsg, { exact: false })).toBeVisible({ timeout: 15_000 });
 	});
 });
