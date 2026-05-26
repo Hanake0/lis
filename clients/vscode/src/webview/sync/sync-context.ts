@@ -58,7 +58,7 @@ function convertMessages(messages: ChatMessage[]): Array<{ info: any; parts: any
 			lastUserID = m.id;
 			return {
 				info: { id: m.id, role: 'user', time: {} },
-				parts: [{ type: 'text', text: m.text }],
+				parts: [{ type: 'text', id: `${m.id}:text`, text: m.text }],
 			};
 		}
 		const parentID = lastUserID;
@@ -74,32 +74,57 @@ function convertMessages(messages: ChatMessage[]): Array<{ info: any; parts: any
 						cache: { read: m.tokens.cache_read_tokens ?? 0, write: m.tokens.cache_creation_tokens ?? 0 },
 					} : undefined,
 				},
-				parts: [{ type: 'text', text: m.text }],
+				parts: [{ type: 'text', id: `${m.id}:text`, text: m.text }],
 			};
 		}
 		if (m.kind === 'thinking') {
+			// OC's parts vocabulary uses `reasoning` for chain-of-thought text;
+			// `thinking` is an LLM-side concept, not a renderable part type.
+			// ReasoningPart + AssistantTextPart both branch on type === 'reasoning'.
 			return {
 				info: { id: m.id, role: 'assistant', parentID, time: { completed: m.streaming ? undefined : Date.now() } },
-				parts: [{ type: 'thinking', text: (m as any).content ?? '' }],
+				parts: [{ type: 'reasoning', id: `${m.id}:reasoning`, text: (m as any).content ?? '' }],
 			};
 		}
 		if (m.kind === 'tool') {
+			// OC's ToolPart shape — `type: 'tool'`, named `tool`, `state` is an
+			// object keyed by status. Reading our chat-stream messages with the
+			// old `tool-invocation` shape silently dropped them — ToolPart's
+			// gather loop only processes `part.type === 'tool'`.
+			//
+			// MessageBody.isToolFinalized requires state.time.end to be a number;
+			// without it, finalized tools are filtered out by shouldShowTool and
+			// never render. We stamp time.{start,end} from now() because our
+			// internal ChatMessage doesn't carry per-event timestamps yet.
+			const isDone   = m.status !== 'running';
+			const isError  = m.status === 'error';
+			const status   = isError ? 'error' : isDone ? 'completed' : 'running';
+			let parsedInput: unknown = m.args;
+			if (typeof m.args === 'string') {
+				try { parsedInput = JSON.parse(m.args); } catch { parsedInput = m.args; }
+			}
+			const now = Date.now();
 			return {
-				info: { id: m.id, role: 'assistant', parentID, time: { completed: m.status !== 'running' ? Date.now() : undefined } },
+				info: { id: m.id, role: 'assistant', parentID, time: { completed: isDone ? now : undefined } },
 				parts: [{
-					type: 'tool-invocation',
-					toolName: m.name,
-					input: m.args,
-					output: m.error ?? m.result ?? '',
-					state: m.status === 'running' ? 'call' : 'result',
-					isError: m.status === 'error',
+					type:  'tool',
+					id:    m.id,
+					tool:  m.name,
+					state: {
+						status,
+						input:  parsedInput,
+						output: m.result ?? undefined,
+						error:  m.error  ?? undefined,
+						title:  m.name,
+						time:   { start: now, end: isDone ? now : undefined },
+					},
 				}],
 			};
 		}
 		if (m.kind === 'error') {
 			return {
 				info: { id: m.id, role: 'assistant', parentID, time: { completed: Date.now() } },
-				parts: [{ type: 'text', text: m.text }],
+				parts: [{ type: 'text', id: `${m.id}:text`, text: m.text }],
 			};
 		}
 		return { info: { id: 'unknown', role: 'assistant', parentID }, parts: [] };
