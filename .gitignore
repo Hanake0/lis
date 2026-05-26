@@ -387,3 +387,4 @@ clients/vscode/*.vsix
 
 # Scratch screenshots from Playwright MCP / manual capture
 /*.png
+.playwright/
