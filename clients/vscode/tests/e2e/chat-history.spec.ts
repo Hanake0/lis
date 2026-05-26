@@ -78,4 +78,43 @@ test.describe('Chat panel — history + composer', () => {
 		const req = await postPromise;
 		expect(req.url()).toMatch(/\/api\/chats\/web%3A[^/]+\/messages$/);
 	});
+
+	/**
+	 * The user's exact request: send a message, restart the browser, re-open
+	 * the same chat, assert the message we just sent is still there. This
+	 * catches both "send didn't actually persist" and "history doesn't load
+	 * after a fresh mount".
+	 */
+	test('send + restart: posted message persists across browser reload', async ({ page }) => {
+		const unique = `e2e-ping-${Date.now()}`;
+
+		await openChatByName(page, 'Breno');
+		await waitForChatPanel(page);
+		await page.waitForTimeout(1500);
+
+		const ta = await composerTextarea(page);
+		await ta.fill(unique);
+		const cf = await chatFrame(page);
+		const postPromise = page.waitForRequest(
+			(req) => req.method() === 'POST' && /\/api\/chats\/.+\/messages$/.test(req.url()),
+			{ timeout: 8000 },
+		);
+		await cf.getByRole('button', { name: 'Send message' }).click();
+		await postPromise;
+		// Give the backend time to persist the row before we restart.
+		await page.waitForTimeout(1500);
+
+		// Restart: fully reload the page (drops every webview state) and
+		// re-open the chat. Bridge's loadHistory should bring our message
+		// back from the DB.
+		await page.goto(WORKSPACE_URL);
+		await activateLisSidebar(page);
+		await openChatByName(page, 'Breno');
+		await waitForChatPanel(page);
+		await page.waitForTimeout(2000);
+
+		const cf2 = await chatFrame(page);
+		const present = await cf2.getByText(unique).count();
+		expect(present, `posted "${unique}" should reappear after reload`).toBeGreaterThan(0);
+	});
 });
