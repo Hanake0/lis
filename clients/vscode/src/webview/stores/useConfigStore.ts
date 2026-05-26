@@ -151,7 +151,21 @@ export const useConfigStore = create<any>((set: any, get: any) => ({
 					id:   p.id,
 					name: p.name,
 					// API ships models as a Record<id, model>; OC components want an array.
-					models: Object.values(p.models ?? {}),
+					// OC's ModelControls reads effort options off `model.variants` (a
+					// Record<effort, ModelVariant>). Our backend ships them as
+					// `model.reasoning.supported_efforts` (string[]). Synthesise the
+					// OC-shaped `variants` map here so the effort dropdown renders
+					// without forking ModelControls. `Object.keys(model.variants)`
+					// is all OC actually reads off the map — empty values are fine.
+					models: Object.values(p.models ?? {}).map((m: any) => {
+						const efforts: string[] | undefined = m?.reasoning?.supported_efforts;
+						if (Array.isArray(efforts) && efforts.length > 0 && !m.variants) {
+							const variants: Record<string, unknown> = {};
+							for (const eff of efforts) variants[eff] = {};
+							return { ...m, variants };
+						}
+						return m;
+					}),
 				}));
 				const defaults: ProviderDefaults = result.default ?? { model: null, agent: null };
 
@@ -289,3 +303,8 @@ useChatStore.subscribe((state) => {
 // deterministically after `LisRpcClient.install` regardless of which
 // component first imports this module (the chat panel touches it lazily
 // via ChatInput, which mounts AFTER rpc.ready() has already resolved).
+
+// Debug surface
+if (typeof window !== 'undefined') {
+	(window as any).__lis_configStore = useConfigStore;
+}

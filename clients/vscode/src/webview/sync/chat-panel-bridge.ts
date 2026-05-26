@@ -95,14 +95,15 @@ interface QuestionData {
 export function mountChatPanelBridge(chatId: string): () => void {
 	const client    = LisRpcClient.instance();
 	const cleanups: (() => void)[] = [];
-	const isDraft   = chatId.startsWith('web:draft-');
 
 	// ── Bootstrap fetches ─────────────────────────────────────────────
-	if (!isDraft) {
-		void loadHistory(client, chatId);
-		void loadChatAgent(client, chatId);
-	}
-	// Agent list is global; draft chats still need it to render the picker.
+	// Always attempt history + chat-agent. The `web:draft-…` heuristic used to
+	// gate this — but persisted chats can also carry a `web:draft-…` id
+	// (legacy debug rows + the lazy-create flow keeps the original draft id
+	// on first send). The catch blocks in both helpers silently swallow 404s
+	// for real drafts, so trying is always safe.
+	void loadHistory(client, chatId);
+	void loadChatAgent(client, chatId);
 	void loadAgents(client);
 
 	// ── Per-chat SSE token stream ─────────────────────────────────────
@@ -135,7 +136,11 @@ async function loadHistory(client: LisRpcClient, chatId: string): Promise<void> 
 	try {
 		const rows = await client.getChatMessages(chatId);
 		applyHistory(rows);
-	} catch { /* leave messages empty — the user can retry by re-opening the panel */ }
+	} catch (err) {
+		// 404s for real drafts are expected — silently swallow. Real failures
+		// are logged so we can spot transport issues post-mount.
+		lisLog.error(`[chat-panel-bridge] loadHistory failed chat=${chatId} err=${err instanceof Error ? err.message : String(err)}`);
+	}
 }
 
 async function loadAgents(client: LisRpcClient): Promise<void> {
@@ -479,6 +484,16 @@ export function installChatPanelInit(target: Window = window): () => void {
 	let currentChatId: string | null = null;
 	let stop:          (() => void) | null = null;
 
+	// Debug surface — confirms the listener installed AND tracks every message it sees.
+	if (typeof window !== 'undefined') {
+		(window as any).__lis_chatPanelInit = {
+			installed: Date.now(),
+			messageCount: 0,
+			lastMessageTypes: [] as string[],
+			currentChatId: () => currentChatId,
+		};
+	}
+
 	const handler = (ev: MessageEvent<{
 		type?:                   unknown;
 		chatId?:                 unknown;
@@ -486,6 +501,17 @@ export function installChatPanelInit(target: Window = window): () => void {
 		draftProjectExternalId?: unknown;
 	}>) => {
 		const msg = ev.data;
+		if (typeof window !== 'undefined') {
+			const dbg = (window as any).__lis_chatPanelInit;
+			dbg.messageCount += 1;
+			const t = String((msg as any)?.type ?? 'no-type');
+			dbg.lastMessageTypes.push(t);
+			if (dbg.lastMessageTypes.length > 20) dbg.lastMessageTypes.shift();
+		}
+		const t = (msg as { type?: unknown } | null)?.type;
+		if (t === 'init') {
+			lisLog.info(`[lis-init-recv] type=init chatId=${(msg as any).chatId} isDraft=${(msg as any).isDraft}`);
+		}
 		if (msg?.type !== 'init' || typeof msg.chatId !== 'string' || msg.chatId.length === 0) return;
 		if (msg.chatId === currentChatId) return;
 		currentChatId = msg.chatId;
