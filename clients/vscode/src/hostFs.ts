@@ -20,9 +20,13 @@ import type { Logger } from './logger';
 interface HostFsRequest {
 	type:        'host_fs';
 	request_id:  string;
-	op:          'list' | 'probe' | 'create_directory' | 'system_info' | 'home';
+	op:          'list' | 'probe' | 'create_directory' | 'system_info' | 'home' | 'pick_files';
 	path?:       string;
 	allowOutsideWorkspace?: boolean;
+	/** pick_files: whether the dialog should accept multiple files. */
+	canSelectMany?: boolean;
+	/** pick_files: file extension filters keyed by group label, e.g. `{ Images: ['png','jpg'] }`. */
+	filters?: Record<string, string[]>;
 }
 
 /**
@@ -106,8 +110,72 @@ async function handle(req: HostFsRequest): Promise<unknown> {
 				?? (env.HOMEDRIVE && env.HOMEPATH ? `${env.HOMEDRIVE}${env.HOMEPATH}` : null);
 		}
 
+		case 'pick_files': {
+			// Replaces OC's `/api/vscode/pick-files` backend endpoint. The
+			// composer's paperclip button calls this when running inside a
+			// VS Code webview; we open the host-side native dialog and read
+			// the picked files into base64 data URLs so the webview can
+			// hand them straight to its attachFiles flow.
+			const uris = await vscode.window.showOpenDialog({
+				canSelectFiles:   true,
+				canSelectFolders: false,
+				canSelectMany:    req.canSelectMany ?? true,
+				openLabel:        'Attach',
+				filters:          req.filters,
+			});
+			if (!uris || uris.length === 0) return { files: [], skipped: [] };
+
+			const MAX_BYTES = 5 * 1024 * 1024; // 5 MiB per file — matches the inline-attachment cap on the wire.
+			const files:   { name: string; mimeType: string; dataUrl: string }[] = [];
+			const skipped: { name: string; reason: string }[] = [];
+			for (const uri of uris) {
+				try {
+					const stat = await vscode.workspace.fs.stat(uri);
+					if (stat.size > MAX_BYTES) {
+						skipped.push({ name: basename(uri.fsPath), reason: `too large (${Math.round(stat.size / 1024)} KB)` });
+						continue;
+					}
+					const bytes  = await vscode.workspace.fs.readFile(uri);
+					const base64 = Buffer.from(bytes).toString('base64');
+					const mime   = guessMimeType(uri.fsPath);
+					files.push({
+						name:     basename(uri.fsPath),
+						mimeType: mime,
+						dataUrl:  `data:${mime};base64,${base64}`,
+					});
+				} catch (err) {
+					skipped.push({ name: basename(uri.fsPath), reason: err instanceof Error ? err.message : 'read failed' });
+				}
+			}
+			return { files, skipped };
+		}
+
 		default:
 			throw new Error(`host_fs: unknown op '${(req as { op: string }).op}'`);
+	}
+}
+
+function basename(p: string): string {
+	const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+	return i < 0 ? p : p.slice(i + 1);
+}
+
+function guessMimeType(p: string): string {
+	const i = p.lastIndexOf('.');
+	const ext = i < 0 ? '' : p.slice(i + 1).toLowerCase();
+	switch (ext) {
+		case 'png':                  return 'image/png';
+		case 'jpg': case 'jpeg':     return 'image/jpeg';
+		case 'gif':                  return 'image/gif';
+		case 'webp':                 return 'image/webp';
+		case 'svg':                  return 'image/svg+xml';
+		case 'bmp':                  return 'image/bmp';
+		case 'pdf':                  return 'application/pdf';
+		case 'txt': case 'md':       return 'text/plain';
+		case 'json':                 return 'application/json';
+		case 'js': case 'ts':        return 'text/javascript';
+		case 'html':                 return 'text/html';
+		default:                     return 'application/octet-stream';
 	}
 }
 

@@ -10,6 +10,8 @@ import { vscode } from '@/vscodeApi';
 
 interface FsEntry { name: string; path: string; isDirectory: boolean }
 interface SystemInfo { home: string; platform: string }
+interface PickedFile { name: string; mimeType: string; dataUrl: string }
+interface PickFilesResult { files: PickedFile[]; skipped: { name: string; reason: string }[] }
 
 interface HostFsResponse {
 	type:        'host_fs_response';
@@ -72,6 +74,9 @@ export const opencodeClient = {
 
 	getFilesystemHome: (): Promise<string | null> =>
 		callHost<string | null>('home'),
+
+	pickFiles: (opts?: { canSelectMany?: boolean; filters?: Record<string, string[]> }): Promise<PickFilesResult> =>
+		callHost<PickFilesResult>('pick_files', { ...opts }),
 
 	// ── Stubs (no Lis backend yet — return safe defaults) ───────────
 
