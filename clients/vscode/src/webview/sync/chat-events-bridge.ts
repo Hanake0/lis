@@ -50,7 +50,10 @@ function isChatMovedPayload(data: unknown): data is ChatMovedPayload {
 	if (typeof data !== 'object' || data === null) return false;
 	const d = data as { chat_id?: unknown; project_id?: unknown };
 	if (typeof d.chat_id !== 'string') return false;
-	return d.project_id === null || typeof d.project_id === 'string';
+	// Backend's JsonOpt has DefaultIgnoreCondition=WhenWritingNull so a chat
+	// detached to no-project arrives as `{ chat_id }` with `project_id` absent.
+	// Treat missing AS null. Reject only invalid (non-string-non-null) values.
+	return d.project_id === undefined || d.project_id === null || typeof d.project_id === 'string';
 }
 
 /**
@@ -75,8 +78,13 @@ export function mountChatEventsBridge(): () => void {
 				// (and the new resolved `directory` from the project's path), and
 				// upsert. The dedup signature includes the resolved directory, so
 				// the re-bucket happens automatically once the dir changes.
+				//
+				// project_id is intentionally JSON-omitted by the backend when
+				// the chat is detached (WhenWritingNull policy) — normalize a
+				// missing field to null so the detach path works.
 				if (!isChatMovedPayload(ev.data)) return;
-				const { chat_id, project_id } = ev.data;
+				const chat_id    = ev.data.chat_id;
+				const project_id = ev.data.project_id ?? null;
 				const store    = useGlobalSessionsStore.getState();
 				const existing = store.activeSessions.find(s => s.id === chat_id)
 					?? store.archivedSessions.find(s => s.id === chat_id)

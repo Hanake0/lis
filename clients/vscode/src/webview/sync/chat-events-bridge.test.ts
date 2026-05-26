@@ -171,4 +171,17 @@ describe('mountChatEventsBridge', () => {
 		const s = useGlobalSessionsStore.getState().activeSessions.find(x => x.id === 'a');
 		expect((s as unknown as { projectId: string | null }).projectId).toBe('p1');
 	});
+
+	test('chat_moved without a project_id field (backend WhenWritingNull omits it) detaches the chat', () => {
+		// JsonOpt.Default has DefaultIgnoreCondition=WhenWritingNull, so a chat
+		// detached to no-project arrives as `{ chat_id }` only — no project_id
+		// key. The bridge must treat that as null.
+		mountChatEventsBridge();
+		useProjectsStore.setState({ projects: [{ id: 'p1', path: '/proj/one' } as never] } as never);
+		FakeEventSource.last!.fire('chat_created', JSON.stringify(chatPayload({ chat_id: 'a', project_id: 'p1' })));
+		FakeEventSource.last!.fire('chat_moved',   JSON.stringify({ chat_id: 'a' /* project_id intentionally omitted */ }));
+		const s = useGlobalSessionsStore.getState().activeSessions.find(x => x.id === 'a');
+		expect(s).toBeTruthy();
+		expect((s as unknown as { projectId: string | null }).projectId).toBeNull();
+	});
 });
