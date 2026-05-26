@@ -490,7 +490,9 @@ export function installChatPanelInit(target: Window = window): () => void {
 			installed: Date.now(),
 			messageCount: 0,
 			lastMessageTypes: [] as string[],
+			lastInitPayloads: [] as { chatId: string; isDraft: boolean; project?: string | null; ts: number }[],
 			currentChatId: () => currentChatId,
+			storeReads: [] as { ts: number; tag: string; currentSessionId: string | null; chatStoreId: string | null }[],
 		};
 	}
 
@@ -511,6 +513,16 @@ export function installChatPanelInit(target: Window = window): () => void {
 		const t = (msg as { type?: unknown } | null)?.type;
 		if (t === 'init') {
 			lisLog.info(`[lis-init-recv] type=init chatId=${(msg as any).chatId} isDraft=${(msg as any).isDraft}`);
+			if (typeof window !== 'undefined') {
+				const dbg = (window as any).__lis_chatPanelInit;
+				dbg.lastInitPayloads.push({
+					ts: Date.now(),
+					chatId: String((msg as any).chatId ?? ''),
+					isDraft: (msg as any).isDraft === true,
+					project: typeof (msg as any).draftProjectExternalId === 'string' ? (msg as any).draftProjectExternalId : null,
+				});
+				if (dbg.lastInitPayloads.length > 10) dbg.lastInitPayloads.shift();
+			}
 		}
 		if (msg?.type !== 'init' || typeof msg.chatId !== 'string' || msg.chatId.length === 0) return;
 		if (msg.chatId === currentChatId) return;
@@ -525,6 +537,18 @@ export function installChatPanelInit(target: Window = window): () => void {
 		// the user can't send. The bridge's data path uses useChatStore.chatId.
 		useSessionUIStore.getState().setCurrentSession(currentChatId, null);
 		useChatStore.getState().setChatId(currentChatId);
+		// Breadcrumb the immediate post-write reads so we can spot any store
+		// reset that comes from elsewhere (race with another bridge mount, etc.).
+		if (typeof window !== 'undefined') {
+			const dbg = (window as any).__lis_chatPanelInit;
+			dbg.storeReads.push({
+				ts: Date.now(),
+				tag: 'after-setCurrentSession',
+				currentSessionId: useSessionUIStore.getState().currentSessionId,
+				chatStoreId:      useChatStore.getState().chatId,
+			});
+			if (dbg.storeReads.length > 10) dbg.storeReads.shift();
+		}
 
 		// Draft mode: seed `newSessionDraft` with the project hint so the
 		// composer pills render bound to the right project from turn one.

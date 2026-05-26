@@ -29,7 +29,18 @@ export function App() {
                 <TooltipProvider delayDuration={300} skipDelayDuration={150}>
                     <div className="h-full w-full text-foreground bg-background dark">
                         <ChatErrorBoundary>
-                            <ChatContainer />
+                            {/* `autoOpenDraft={false}` disables OC's "if no
+                              * session, open a draft" effect. The chat-panel
+                              * bridge owns this state — it receives the init
+                              * envelope from the host and calls
+                              * `setCurrentSession(chatId)` (real chat) or
+                              * sets `newSessionDraft={open:true}` (draft).
+                              * Letting the OC effect also fire races the bridge
+                              * and resets `currentSessionId` to null in the
+                              * window between bridge mount and bridge init,
+                              * silently breaking the send button.
+                              */}
+                            <ChatContainer autoOpenDraft={false} />
                         </ChatErrorBoundary>
                         <SessionDialogs />
                         <Toaster />

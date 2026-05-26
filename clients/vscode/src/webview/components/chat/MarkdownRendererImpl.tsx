@@ -587,16 +587,22 @@ const buildMarkdownCacheKey = (baseKey: string, raw: string, index: number, mode
 };
 
 const streamMarkdownBlocks = (text: string, live: boolean, baseKey: string): MarkdownStreamBlock[] => {
+  // Defensive: callers (e.g. history-replay branches that render an assistant
+  // row with no text yet, or a partial SSE chunk before any delta) may pass
+  // null/undefined. The TS signature says `string` but the runtime is
+  // unsanitised — `marked.lexer` and `remend` both crash on non-strings.
+  const safeText = typeof text === 'string' ? text : '';
   if (!live) {
     return [{
-      key: buildMarkdownCacheKey(baseKey, text, 0, 'full'),
-      raw: text,
-      src: text,
+      key: buildMarkdownCacheKey(baseKey, safeText, 0, 'full'),
+      raw: safeText,
+      src: safeText,
       mode: 'full',
     }];
   }
 
-  const healed = healMarkdown(text);
+  const healed = healMarkdown(safeText);
+  text = safeText;
   if (hasReferenceDefinitions(text)) {
     return [{
       key: buildMarkdownCacheKey(baseKey, text, 0, 'live'),

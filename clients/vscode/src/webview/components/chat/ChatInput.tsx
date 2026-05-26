@@ -1,5 +1,6 @@
 import React from 'react';
 import { Textarea } from '@/components/ui/textarea';
+import { lisLog } from '@/lib/lis/logger';
 import { BrowserVoiceButton } from '@/components/voice';
 // sessionStore removed — currentSessionId comes from useSessionUIStore
 import { useConfigStore } from '@/stores/useConfigStore';
@@ -706,7 +707,16 @@ const ComposerActionButtons = React.memo(function ComposerActionButtons(props: C
             type={isMobile ? 'button' : 'submit'}
             disabled={!canSend || (!currentSessionId && !newSessionDraftOpen)}
             onClick={(event) => {
+                try { (window as unknown as { __lis_lastSendButtonClick?: unknown }).__lis_lastSendButtonClick = { ts: Date.now(), isMobile, canSend, currentSessionId, newSessionDraftOpen }; } catch {}
                 if (!isMobile) {
+                    // [lis-fix] In OC desktop the form's onSubmit handler picks this up
+                    // via type="submit". In VS Code Web webviews, the iframe sandbox
+                    // ('allow-same-origin allow-scripts' — no 'allow-forms') silently
+                    // drops form submission, so the click never triggers handleSubmit.
+                    // Fix: always invoke onPrimaryAction directly. We still preventDefault
+                    // so the form doesn't try to submit in environments where it would.
+                    event.preventDefault();
+                    onPrimaryAction();
                     return;
                 }
 
@@ -1558,15 +1568,32 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const handleSubmit = async (options?: SubmitOptions) => {
         const queuedOnly = options?.queuedOnly ?? false;
         const inputSnapshot = getCurrentInputSnapshot();
+        // [lis-debug] Trace the early-return chain — we hit this in real VS Code Web
+        // when the chat panel mounts but currentSessionId is null (init race) or when
+        // the provider/model haven't resolved yet.
+        const snap = {
+            queuedOnly,
+            hasContent:          inputSnapshot.hasContent,
+            hasQueuedMessages,
+            currentSessionId,
+            newSessionDraftOpen,
+            currentProviderId,
+            currentModelId,
+            messageLen:          inputSnapshot.message?.length ?? 0,
+        };
+        lisLog.info('[lis-handleSubmit] entry', snap);
+        try { (window as unknown as { __lis_lastHandleSubmit?: unknown }).__lis_lastHandleSubmit = { ts: Date.now(), ...snap }; } catch {}
 
         if (queuedOnly) {
             if (!hasQueuedMessages || !currentSessionId) return;
         } else if ((!inputSnapshot.hasContent && !hasQueuedMessages) || (!currentSessionId && !newSessionDraftOpen)) {
+            lisLog.warn('[lis-handleSubmit] bail: no content or no session', { hasContent: inputSnapshot.hasContent, hasQueuedMessages, currentSessionId, newSessionDraftOpen });
             return;
         }
 
         if (!currentProviderId || !currentModelId) {
             console.warn('Cannot send message: provider or model not selected');
+            lisLog.warn('[lis-handleSubmit] bail: provider/model missing', { currentProviderId, currentModelId });
             return;
         }
 
@@ -1695,7 +1722,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
             });
         }
 
-        if (!primaryText && primaryAttachments.length === 0 && additionalParts.length === 0) return;
+        if (!primaryText && primaryAttachments.length === 0 && additionalParts.length === 0) {
+            try { (window as unknown as { __lis_handleSubmitBail2?: unknown }).__lis_handleSubmitBail2 = { ts: Date.now(), reason: 'no-content-after-build', primaryText: String(primaryText), primaryTextType: typeof primaryText, primaryAttachmentsCount: primaryAttachments.length, additionalPartsCount: additionalParts.length, queuedMessagesLen: queuedMessages.length, originalMessage: inputSnapshot.message, originalLen: inputSnapshot.message?.length }; } catch {}
+            return;
+        }
+        try { (window as unknown as { __lis_pastBuild?: unknown }).__lis_pastBuild = { ts: Date.now(), primaryTextLen: primaryText.length, primaryAttachmentsCount: primaryAttachments.length, additionalPartsCount: additionalParts.length }; } catch {}
 
         // Clear queue and input
         if (currentSessionId && hasQueuedMessages) {
@@ -1829,12 +1860,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
 
         try {
             const expandText = useSnippetsStore.getState().expandText;
-            primaryText = await expandText(primaryText);
+            const beforeExpand = primaryText;
+            const expanded = await expandText(primaryText);
+            // Lis stubs expandText to () => null; guard against that so we don't
+            // overwrite the real prompt with null and silently bail in sendMessage.
+            primaryText = (typeof expanded === 'string') ? expanded : beforeExpand;
             for (const part of additionalParts) {
-                if (!part.synthetic) part.text = await expandText(part.text);
+                if (!part.synthetic) {
+                    const e = await expandText(part.text);
+                    part.text = (typeof e === 'string') ? e : part.text;
+                }
             }
+            try { (window as unknown as { __lis_postExpand?: unknown }).__lis_postExpand = { ts: Date.now(), len: primaryText.length, expandedType: typeof expanded }; } catch {}
         } catch (error) {
             console.warn('[ChatInput] Failed to expand snippets, sending original text:', error);
+            try { (window as unknown as { __lis_expandThrew?: unknown }).__lis_expandThrew = { ts: Date.now(), err: String(error) }; } catch {}
         }
 
         // Collect all attachments for error recovery
@@ -1843,6 +1883,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
             ...additionalParts.flatMap(p => p.attachments ?? []),
         ];
 
+        try { (window as unknown as { __lis_aboutToSendMessage?: unknown }).__lis_aboutToSendMessage = {
+            ts: Date.now(), primaryTextLen: primaryText.length, currentProviderId, currentModelId, currentAgentName, currentVariant, inputMode,
+        }; } catch {}
         const sendPromise = sendMessage(
             primaryText,
             currentProviderId,
@@ -1927,6 +1970,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const handlePrimaryAction = React.useCallback(() => {
         const inputSnapshot = getCurrentInputSnapshot();
         const canQueue = inputMode === 'normal' && inputSnapshot.hasContent && currentSessionId && sessionPhase !== 'idle';
+        const snap = { canQueue, queueModeEnabled, inputMode, hasContent: inputSnapshot.hasContent, currentSessionId, sessionPhase };
+        lisLog.info('[lis-handlePrimaryAction] fired', snap);
+        try { (window as unknown as { __lis_lastPrimaryAction?: unknown }).__lis_lastPrimaryAction = { ts: Date.now(), ...snap }; } catch {}
         if (queueModeEnabled && canQueue) {
             handleQueueMessage();
         } else {
@@ -3253,8 +3299,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
 
     const handleVSCodePickFiles = React.useCallback(async () => {
         try {
-            const response = await fetch('/api/vscode/pick-files');
-            const data = await response.json();
+            // OC's path posts to its own server-backed `/api/vscode/pick-files`
+            // endpoint. Lis has no such endpoint — it does, however, run inside
+            // VS Code where we can open a native showOpenDialog directly via
+            // the host_fs bridge (see [hostFs.ts:pick_files]). Same return shape
+            // as the OC endpoint so the rest of this handler doesn't fork.
+            const data = await opencodeClient.pickFiles({ canSelectMany: true });
             const picked = Array.isArray(data?.files) ? data.files : [];
             const skipped = Array.isArray(data?.skipped) ? data.skipped : [];
 
@@ -3692,7 +3742,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     return (
         <>
         <form
-            onSubmit={(e) => { e.preventDefault(); handlePrimaryAction(); }}
+            onSubmit={(e) => {
+                e.preventDefault();
+                try { (window as unknown as { __lis_lastFormSubmit?: unknown }).__lis_lastFormSubmit = { ts: Date.now() }; } catch {}
+                handlePrimaryAction();
+            }}
             className={cn(
                 "relative pt-0 pb-4",
                 isDesktopExpanded && 'flex h-full min-h-0 flex-col pt-4',

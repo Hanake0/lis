@@ -1,3 +1,4 @@
+import React from 'react';
 import { SessionSidebar } from './components/session/SessionSidebar';
 import { SessionDialogs } from './components/session/SessionDialogs';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -79,6 +80,17 @@ export function installSidebarFrameHandler(): void {
 }
 
 export function SidebarOCApp() {
+	// Click-to-open is the *whole* point of the sidebar: selecting a session row
+	// has to tell the extension host to open (or focus) a chat panel for that
+	// id. Without this wire, the OC `setCurrentSession` updates local zustand
+	// state and nothing renders — the chat panel never mounts because the host
+	// only opens panels when the sidebar posts `open_session` (handled by
+	// `SidebarWebviewProvider.onWebviewMessage`).
+	const handleSessionSelected = React.useCallback((sessionId: string) => {
+		if (!sessionId || typeof sessionId !== 'string') return;
+		vscode.postMessage({ type: 'open_session', chat_id: sessionId });
+	}, []);
+
 	return (
 		<I18nProvider>
 			<ErrorBoundary>
@@ -90,7 +102,7 @@ export function SidebarOCApp() {
 							color: 'var(--vscode-sideBar-foreground, var(--vscode-foreground))',
 						}}
 					>
-						<SessionSidebar />
+						<SessionSidebar onSessionSelected={handleSessionSelected} allowReselect />
 						<SessionDialogs />
 					</div>
 				</TooltipProvider>

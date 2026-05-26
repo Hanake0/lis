@@ -1,14 +1,42 @@
 import { create } from 'zustand';
 import { useChatStore } from '@/store';
 import { LisRpcClient } from '@/lib/lis/rpc-client';
+import { lisLog } from '@/lib/lis/logger';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
+
+declare global {
+	interface Window { __lis_sessionUI?: unknown }
+}
 
 export type { AttachedFile };
 
 const noop: any = () => {};
 const asyncNoop: any = async () => {};
 
-export const useSessionUIStore = create<any>((set: any) => ({
+export const useSessionUIStore = create<any>((rawSet: any) => {
+	// Diagnostic: track every write that touches `currentSessionId` so we can
+	// pinpoint the caller that's clearing it back to null right before the
+	// composer's onClick reads its value. Replaces `set` with a traced wrapper
+	// so every action's writes flow through it.
+	const set = (updater: any) => rawSet((prev: any) => {
+		const partial = typeof updater === 'function' ? updater(prev) : updater;
+		if (partial && Object.prototype.hasOwnProperty.call(partial, 'currentSessionId')) {
+			const next = partial.currentSessionId;
+			if (typeof window !== 'undefined') {
+				const w = window as any;
+				w.__lis_sessionIdTrace = w.__lis_sessionIdTrace ?? [];
+				w.__lis_sessionIdTrace.push({
+					ts: Date.now(),
+					from: prev.currentSessionId,
+					to:   next,
+					stack: new Error().stack?.split('\n').slice(1, 8).map((s: string) => s.trim()),
+				});
+				if (w.__lis_sessionIdTrace.length > 30) w.__lis_sessionIdTrace.shift();
+			}
+		}
+		return partial;
+	});
+	return ({
 	currentSessionId: null as string | null,
 	newSessionDraft: null as { open: boolean } | null,
 	error: null as string | null,
@@ -81,15 +109,28 @@ export const useSessionUIStore = create<any>((set: any) => ({
 		_agent?:     string,
 		attachments?: AttachedFile[],
 	) => {
+		const snap = { content: content?.slice(0, 40), modelId, attachments: attachments?.length ?? 0 };
+		lisLog.info('[lis-send] sendMessage called', snap);
+		// Window breadcrumb for the e2e test — lisLog routes through postMessage
+		// to the extension host's OutputChannel and isn't visible to Playwright.
+		try { (window as unknown as { __lis_lastSendMessage?: unknown }).__lis_lastSendMessage = { ts: Date.now(), ...snap }; } catch {}
 		const trimmed = (content ?? '').trim();
 		const hasAttachments = attachments && attachments.length > 0;
-		if (!trimmed && !hasAttachments) return;
+		if (!trimmed && !hasAttachments) {
+			lisLog.info('[lis-send] bail: no content and no attachments');
+			try { (window as unknown as { __lis_lastSendMessageBail?: unknown }).__lis_lastSendMessageBail = { ts: Date.now(), reason: 'no-content' }; } catch {}
+			return;
+		}
 
 		// OC's ChatInput is the only caller of this action; it passes the active
 		// composer's selections positionally. We read chatId straight from
 		// currentSessionId (the OC source of truth) — no Lis-legacy fallback.
 		const chatId = useSessionUIStore.getState().currentSessionId as string | null;
-		if (!chatId) return;
+		lisLog.info('[lis-send] chatId from store', { chatId });
+		if (!chatId) {
+			lisLog.info('[lis-send] bail: no chatId');
+			return;
+		}
 
 		const imageAttachments = hasAttachments
 			? attachments
@@ -112,16 +153,25 @@ export const useSessionUIStore = create<any>((set: any) => ({
 		// effort / tool_profile / thinking_mode wiring lands in Stage 15c with the
 		// composer pills. Today the server falls back to the chat's bound agent's
 		// defaults when these are null, which is the correct semantic.
-		await LisRpcClient.instance().sendChatMessage(chatId, {
-			text:          trimmed || null,
-			model:         modelId || null,
-			effort:        null,
-			tool_profile:  null,
-			thinking_mode: null,
-			attachments:   imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
-			project_id:    draftProjectId,
-			directory:     draftDirectory,
-		});
+		const postPayload = { chatId, isDraft, modelId, draftProjectId, draftDirectory };
+		lisLog.info('[lis-send] POSTing', postPayload);
+		try { (window as unknown as { __lis_lastSendMessagePost?: unknown }).__lis_lastSendMessagePost = { ts: Date.now(), ...postPayload }; } catch {}
+		try {
+			const result = await LisRpcClient.instance().sendChatMessage(chatId, {
+				text:          trimmed || null,
+				model:         modelId || null,
+				effort:        null,
+				tool_profile:  null,
+				thinking_mode: null,
+				attachments:   imageAttachments && imageAttachments.length > 0 ? imageAttachments : undefined,
+				project_id:    draftProjectId,
+				directory:     draftDirectory,
+			});
+			lisLog.info('[lis-send] POST returned', result);
+		} catch (err) {
+			lisLog.error('[lis-send] POST failed', { err: err instanceof Error ? err.message : String(err) });
+			throw err;
+		}
 
 		// Clear the draft flag — the chat row exists server-side now (the
 		// chat_created SSE event will reconcile useGlobalSessionsStore /
@@ -212,7 +262,13 @@ export const useSessionUIStore = create<any>((set: any) => ({
 		else                                             next.set   (sessionId, metadata);
 		return { worktreeMetadata: next };
 	}),
-}));
+	});
+});
+
+// Debug surface: lets Playwright probe the store state from inside the iframe.
+if (typeof window !== 'undefined') {
+	(window as any).__lis_sessionUI = useSessionUIStore;
+}
 
 // Mirror useChatStore → useSessionUIStore:
 //   - contextData → getContextUsage accessor (will retire once
