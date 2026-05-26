@@ -3,6 +3,8 @@ using Lis.Persistence.Entities;
 
 using Microsoft.EntityFrameworkCore;
 
+using Npgsql;
+
 namespace Lis.Persistence.Services;
 
 /// <summary>
@@ -127,6 +129,31 @@ public sealed class SessionFolderService(LisDbContext db, TimeProvider time) :IS
 	public async Task<IReadOnlyList<SessionFolderItemEntity>> AddSessionsAsync(string folderExternalId, IReadOnlyList<string> chatExternalIds, CancellationToken ct = default) {
 		SessionFolderEntity folder = await this.RequireAsync(folderExternalId, ct);
 
+		// Webview-side React StrictMode + effect-driven sidebar bootstrap can
+		// fire this endpoint multiple times concurrently for the same
+		// (folder, chat-ids) pair. The composite primary key
+		// (folder_id, chat_external_id) on session_folder_item then races a
+		// UNIQUE-violation between the concurrent SaveChangesAsync calls.
+		// Retry once on PK collision after re-reading the existing set — the
+		// second attempt's existing set will already include whatever the
+		// first transaction committed, so the duplicate row gets skipped.
+		const int MAX_ATTEMPTS = 3;
+		for (int attempt = 1; ; attempt++) {
+			try {
+				return await this.TryAddSessionsAsync(folder, chatExternalIds, ct);
+			} catch (DbUpdateException ex) when (IsUniqueViolation(ex) && attempt < MAX_ATTEMPTS) {
+				// Drop the tracked Added entries that conflicted, then retry —
+				// EF holds onto Added entities across SaveChanges failures, so
+				// a naive retry would re-issue the same INSERTs.
+				foreach (var entry in db.ChangeTracker.Entries<SessionFolderItemEntity>()
+					.Where(e => e.State == EntityState.Added).ToList()) {
+					entry.State = EntityState.Detached;
+				}
+			}
+		}
+	}
+
+	private async Task<IReadOnlyList<SessionFolderItemEntity>> TryAddSessionsAsync(SessionFolderEntity folder, IReadOnlyList<string> chatExternalIds, CancellationToken ct) {
 		HashSet<string> existing = (await db.SessionFolderItems
 			.Where(i => i.FolderId == folder.Id)
 			.Select(i => i.ChatExternalId)
@@ -155,6 +182,21 @@ public sealed class SessionFolderService(LisDbContext db, TimeProvider time) :IS
 			.Where(i => i.FolderId == folder.Id)
 			.OrderBy(i => i.SortIndex)
 			.ToListAsync(ct);
+	}
+
+	/// <summary>
+	/// True when the inner exception is a Postgres unique-constraint violation
+	/// (SQLSTATE 23505). EF Core wraps the Npgsql exception in DbUpdateException;
+	/// we identify it without taking a hard dep on Postgres-only error codes by
+	/// matching the SQLSTATE string.
+	/// </summary>
+	private static bool IsUniqueViolation(DbUpdateException ex) {
+		Exception? cur = ex.InnerException;
+		while (cur is not null) {
+			if (cur is PostgresException pg && pg.SqlState == "23505") return true;
+			cur = cur.InnerException;
+		}
+		return false;
 	}
 
 	[Trace("SessionFolderService > RemoveSessionAsync")]

@@ -84,16 +84,35 @@ export const useSessionUIStore = create<any>((rawSet: any) => {
 		return { deletedIds: deleted, failedIds: failed };
 	},
 	archiveSession: async (sessionId: string) => {
-		await LisRpcClient.instance().archiveChat(sessionId);
+		// Optimistically move the row from active → archived in the local
+		// store BEFORE the round-trip. The SSE `chat_archived` event will
+		// land seconds later and reconcile via upsertSession, but the UI
+		// needs to react to the click instantly — otherwise the user
+		// clicks Archive, sees nothing happen for 500ms+, and clicks again.
+		useGlobalSessionsStore.getState().archiveSessions([sessionId]);
+		try {
+			await LisRpcClient.instance().archiveChat(sessionId);
+		} catch (err) {
+			lisLog.error(`[session-ui] archive failed sid=${sessionId} err=${err instanceof Error ? err.message : String(err)}`);
+			throw err;
+		}
 		return true;
 	},
 	archiveSessions: async (ids: string[]) => {
+		// Same optimistic path as the single-id case so bulk-archive feels
+		// instant. Failures roll back per-id by re-fetching the chat list.
+		useGlobalSessionsStore.getState().archiveSessions(ids);
 		const client = LisRpcClient.instance();
 		const archived: string[] = [];
 		const failed:   string[] = [];
 		for (const id of ids) {
 			try { await client.archiveChat(id); archived.push(id); }
 			catch { failed.push(id); }
+		}
+		if (failed.length > 0) {
+			lisLog.warn(`[session-ui] bulk archive failures: ${failed.join(', ')}`);
+			// Refresh from REST so the failed rows reappear in active.
+			try { await useGlobalSessionsStore.getState().loadSessions(); } catch { /* best-effort */ }
 		}
 		return { archivedIds: archived, failedIds: failed };
 	},
