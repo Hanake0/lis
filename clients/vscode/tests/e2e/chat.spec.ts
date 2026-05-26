@@ -19,6 +19,36 @@ const TOKEN   = process.env.LIS_AUTH_TOKEN ?? 'dev';
 
 test.describe.serial('Chat panel — real VS Code Web', () => {
 
+	// Track every chat seeded inside this spec so we can clean it up after the
+	// suite runs. Previously each test left its seeded chat in the DB; over many
+	// CI runs the sidebar grew to render hundreds of stale rows which slowed
+	// down loadSessions, debounced rendering, and ultimately raced the
+	// composer's mount sequence in later tests.
+	const seededChatIds: string[] = [];
+
+	test.afterAll(async () => {
+		// Best-effort cleanup — stack across all tests; ignore individual failures.
+		// Also sweep any chat whose id matches a known test-fixture prefix in
+		// case a previous run leaked rows (the seededChatIds tracker only
+		// covers the current run's createSeededChat output, not the draft
+		// chats lazily-created by test 2's "New session" flow).
+		const headers = { 'Authorization': `Bearer ${TOKEN}` };
+		const explicit = new Set(seededChatIds);
+		try {
+			const r    = await fetch(`${BACKEND}/api/chats`, { headers });
+			const list = await r.json() as Array<{ chat_id?: string }>;
+			for (const c of list) {
+				if (!c.chat_id) continue;
+				if (explicit.has(c.chat_id)) continue;
+				if (/^web:(?:e2e-|draft-|harness-|test-|smoke-)/.test(c.chat_id)) explicit.add(c.chat_id);
+			}
+		} catch { /* best-effort */ }
+		for (const id of explicit) {
+			await fetch(`${BACKEND}/api/chats/${encodeURIComponent(id)}`, { method: 'DELETE', headers }).catch(() => {});
+		}
+		seededChatIds.length = 0;
+	});
+
 	test.beforeEach(async ({ page }) => {
 		// Use absolute URL — baseURL already has `?folder=...` in its query
 		// (set by playwright.config) and relative goto would produce a
@@ -248,7 +278,7 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 	test('opening an existing chat with history loads messages', async ({ page }) => {
 		const consoles: string[] = [];
 		page.on('console', (m) => consoles.push(`[${m.type()}] ${m.text()}`));
-		const { name, marker } = await createSeededChat();
+		const { name, marker } = await createSeededChat(seededChatIds);
 		const sb = await sidebarFrame(page);
 		await waitForSeededChatInSidebar(sb, name);
 		await sb.getByRole('button', { name: new RegExp(escapeRegex(name)) }).first().click({ timeout: 15_000, force: true });
@@ -296,7 +326,7 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 	});
 
 	test('send-then-reload roundtrip — message persists across page refresh', async ({ page }) => {
-		const { name } = await createSeededChat();
+		const { name } = await createSeededChat(seededChatIds);
 		const sb = await sidebarFrame(page);
 		await waitForSeededChatInSidebar(sb, name);
 		await sb.getByRole('button', { name: new RegExp(escapeRegex(name)) }).first().click({ timeout: 15_000, force: true });
@@ -305,6 +335,33 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 		const cf = await chatFrame(page);
 		const ta = cf.locator('textarea').first();
 		await ta.waitFor({ state: 'visible', timeout: 15_000 });
+		// Wait until useConfigStore has a non-empty provider/model first —
+		// handleSubmit bails when either is empty.
+		await cf.waitForFunction(
+			() => {
+				const cfg = (window as any).__lis_config;
+				const state = cfg?.getState?.();
+				return !!(state?.currentProviderId && state?.currentModelId);
+			},
+			null,
+			{ timeout: 15_000 },
+		);
+		// createSeededChat POSTs a user message and waits only 800ms before
+		// returning. The chat-panel-bridge subscribes to the chat's SSE stream
+		// as soon as the panel mounts; if the LLM turn is still running, the
+		// composer renders "Stop generating" instead of "Send message". Wait
+		// for the composer to revert to send mode (turn finished —
+		// streamingMessageId cleared in useStreamingStore) BEFORE filling the
+		// textarea — otherwise any re-init that lands while we're waiting
+		// will clear what we typed.
+		await cf.waitForFunction(
+			() => {
+				const btn = Array.from(document.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Send message') as HTMLButtonElement | undefined;
+				return Boolean(btn);
+			},
+			null,
+			{ timeout: 30_000 },
+		);
 		const newMsg = 'reload-roundtrip ' + Date.now();
 		await ta.fill(newMsg);
 		const postPromise = page.waitForRequest(
@@ -320,24 +377,12 @@ test.describe.serial('Chat panel — real VS Code Web', () => {
 				storeReads:    (window as any).__lis_chatPanelInit.storeReads,
 				lastInitPayloads: (window as any).__lis_chatPanelInit.lastInitPayloads,
 			},
+			composerMessage: (() => {
+				const ta = document.querySelector('textarea');
+				return ta ? (ta as HTMLTextAreaElement).value : null;
+			})(),
 		}));
 		console.log('[reload-test] preClick:', JSON.stringify(preClick, null, 2));
-		// Wait until useConfigStore has a non-empty provider/model — handleSubmit
-		// bails when either is empty. The bridge does NOT directly write
-		// currentProviderId; that's the responsibility of the providers loader
-		// (kicked off by rpc.ready()) plus the useChatStore → useConfigStore
-		// subscriber that mirrors composerModel into currentModelId. When the
-		// chat panel mounts after a sidebar click on a persisted chat, those
-		// two paths race the user-clicks-send moment.
-		await cf.waitForFunction(
-			() => {
-				const cfg = (window as any).__lis_config;
-				const state = cfg?.getState?.();
-				return !!(state?.currentProviderId && state?.currentModelId);
-			},
-			null,
-			{ timeout: 15_000 },
-		);
 		// Belt-and-braces — clicking the React button via its onClick attached
 		// to the fiber is the most reliable way to bypass any pointer-event
 		// interception layer the workbench may slip in front.
@@ -635,7 +680,7 @@ interface SeededChat { chatId: string; marker: string; name: string }
  * so each spec can target its own seeded chat in the sidebar list without
  * colliding with leftovers from previous runs.
  */
-async function createSeededChat(): Promise<SeededChat> {
+async function createSeededChat(track?: string[]): Promise<SeededChat> {
 	const ts     = Date.now();
 	const rand   = Math.random().toString(36).slice(2, 8);
 	const chatId = `web:e2e-${ts}-${rand}`;
@@ -651,6 +696,8 @@ async function createSeededChat(): Promise<SeededChat> {
 	if (!create.ok) {
 		throw new Error(`createSeededChat: create failed ${create.status} ${await create.text()}`);
 	}
+	// Caller passes an array to track cleanup ids — afterAll deletes them all.
+	track?.push(chatId);
 
 	const send = await fetch(`${BACKEND}/api/chats/${encodeURIComponent(chatId)}/messages`, {
 		method: 'POST',

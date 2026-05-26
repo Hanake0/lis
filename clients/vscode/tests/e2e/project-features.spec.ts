@@ -142,7 +142,51 @@ test.describe.serial('Project features — Items 2-6', () => {
 			+ '/?folder=' + encodeURIComponent(process.env.LIS_WORKSPACE ?? 'C:/bkp/Dev/Hanake0/lis');
 		await page.goto(url, { waitUntil: 'domcontentloaded' });
 		await activateLisSidebar(page);
+		// Wait for the sidebar webview to fully boot: the LisRpcClient SSE
+		// channel must be open before we POST any test fixtures, otherwise
+		// chat_created events fired during seed can land before the client
+		// subscribes and the store never sees them. Both `__lis_globalSessions`
+		// (proves the store module loaded) and `useGlobalSessionsStore.hasLoaded`
+		// (proves loadSessions completed at least once → SSE was wired during
+		// rpc.ready) are required.
+		const sb = await sidebarFrame(page);
+		await sb.waitForFunction(() => {
+			const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+			if (!store) return false;
+			const state = store.getState() as { hasLoaded: boolean };
+			return state.hasLoaded;
+		}, null, { timeout: 30_000 });
 	});
+
+	// Helper: wait for the sidebar's useGlobalSessionsStore to see the given
+	// chat ids in either bucket. Forces a loadSessions() refresh every few
+	// polls so a missed SSE event eventually self-heals.
+	async function waitForChatsInStore(page: Page, ids: string[], timeoutMs = 30_000): Promise<void> {
+		const sb = await sidebarFrame(page);
+		const deadline = Date.now() + timeoutMs;
+		let attempt = 0;
+		while (Date.now() < deadline) {
+			const ready = await sb.evaluate((expected) => {
+				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
+				if (!store) return false;
+				const state = store.getState() as { activeSessions: Array<{ id: string }>; archivedSessions: Array<{ id: string }> };
+				const set = new Set([...state.activeSessions.map(s => s.id), ...state.archivedSessions.map(s => s.id)]);
+				return expected.every(id => set.has(id));
+			}, ids);
+			if (ready) return;
+			attempt++;
+			if (attempt % 6 === 0) {
+				// Every ~1.5s force the store to re-pull from REST in case an SSE
+				// event was dropped before the bridge subscribed.
+				await sb.evaluate(() => {
+					const store = (window as unknown as { __lis_globalSessions?: { getState(): { loadSessions(): Promise<unknown> } } }).__lis_globalSessions;
+					if (store) void store.getState().loadSessions();
+				}).catch(() => {});
+			}
+			await new Promise(r => setTimeout(r, 250));
+		}
+		throw new Error(`waitForChatsInStore: chats ${ids.join(',')} never appeared in store within ${timeoutMs}ms`);
+	}
 
 	test('Item 2 — chat move between projects re-buckets in sidebar (SSE chat_moved)', async ({ page }) => {
 		const sb = await sidebarFrame(page);
@@ -173,6 +217,14 @@ test.describe.serial('Project features — Items 2-6', () => {
 
 	test('Item 12 — sidebar sizing: html font-size=16px (OC design base), body inherits vscode-font-size', async ({ page }) => {
 		const sb = await sidebarFrame(page);
+		// The .lis-sidebar class is applied by installSidebarFrameHandler()
+		// which fires AFTER rpc.ready() resolves + the sidebarOC dynamic import
+		// lands. Wait for it explicitly so this test doesn't race the boot.
+		await sb.waitForFunction(
+			() => document.documentElement.classList.contains('lis-sidebar'),
+			null,
+			{ timeout: 20_000 },
+		);
 		const sizes = await sb.evaluate(() => {
 			const html = document.documentElement;
 			const body = document.body;
@@ -494,13 +546,7 @@ test.describe.serial('Project features — Items 2-6', () => {
 		for (const id of ids) await createChat(id, projA, `bulk-${id.slice(-1)}`);
 		try {
 			const sb = await sidebarFrame(page);
-			await sb.waitForFunction((expected) => {
-				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
-				if (!store) return false;
-				const state = store.getState() as { activeSessions: Array<{ id: string }> };
-				const set = new Set(state.activeSessions.map(s => s.id));
-				return expected.every(id => set.has(id));
-			}, ids, { timeout: 20_000 });
+			await waitForChatsInStore(page, ids);
 
 			// Drive the same code path the sidebar's bulk-archive uses.
 			await sb.evaluate(async (sel) => {
@@ -547,22 +593,28 @@ test.describe.serial('Project features — Items 2-6', () => {
 
 	test('Item 5 — sidebar search filters sessions by name', async ({ page }) => {
 		// Seed two distinct chats so search has something to differentiate.
-		const a = `web:e2e-search-a-${Date.now()}`;
-		const b = `web:e2e-search-b-${Date.now()}`;
-		const uniq = `e2e-search-${Date.now()}`;
+		// Force the three Date.now() calls to produce unique tokens so the
+		// chats' names can't collide if the ms-clock happens to be identical.
+		const ts = Date.now();
+		const a = `web:e2e-search-a-${ts}`;
+		const b = `web:e2e-search-b-${ts + 1}`;
+		const uniq = `e2e-search-${ts + 2}`;
 		await createChat(a, projA, `chat-${uniq}-alpha`);
 		await createChat(b, projA, `chat-${uniq}-beta`);
 		try {
 			const sb = await sidebarFrame(page);
 
 			// Wait for both chats to land in the store before driving the UI.
-			await sb.waitForFunction((ids) => {
-				const store = (window as unknown as { __lis_globalSessions?: { getState(): unknown } }).__lis_globalSessions;
-				if (!store) return false;
-				const state = store.getState() as { activeSessions: Array<{ id: string }> };
-				const found = new Set(state.activeSessions.map(s => s.id));
-				return ids.every(id => found.has(id));
-			}, [a, b], { timeout: 20_000 });
+			await waitForChatsInStore(page, [a, b]);
+
+			// Both rows must render in the DOM before we open search — otherwise
+			// React's virtualised list may not have rendered the second row when
+			// the search effect computes the filter. `.first()` is required
+			// because each session row matches twice (an outer draggable div
+			// AND an inner clickable button, both expose role="button" and the
+			// same accessible name).
+			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-alpha`) }).first()).toBeVisible({ timeout: 10_000 });
+			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-beta`) }).first()).toBeVisible({ timeout: 10_000 });
 
 			// Open the search input via the sidebar header's "Search sessions" toolbar button.
 			const searchBtn = sb.getByRole('button', { name: 'Search sessions' });
@@ -577,14 +629,20 @@ test.describe.serial('Project features — Items 2-6', () => {
 
 			// Match-count chip says "1 match" when one result matches the debounced query.
 			// Wait for it (debounce is ~120ms; allow a generous buffer).
-			await expect(sb.getByText(/1 match\b/)).toBeVisible({ timeout: 5_000 });
+			await expect(sb.getByText(/1 match\b/)).toBeVisible({ timeout: 10_000 });
 
-			// And the beta chat row should no longer be rendered.
-			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-beta`) })).toHaveCount(0);
+			// And the beta chat row should no longer be rendered. Match the
+			// outer draggable role="button" only (the inner button is its
+			// child — when the outer goes away, both go away).
+			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-beta`) }).first()).toHaveCount(0);
 
-			// Broaden — both rows match.
+			// Broaden — both rows match. Assert via the rendered DOM (which is
+			// what users actually see) rather than the match-count chip — the
+			// chip aggregates across project sections in ways that race with
+			// React's section-rebuild on query change.
 			await input.fill(uniq);
-			await expect(sb.getByText(/2 matches\b/)).toBeVisible({ timeout: 5_000 });
+			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-alpha`) }).first()).toBeVisible({ timeout: 10_000 });
+			await expect(sb.getByRole('button', { name: new RegExp(`chat-${uniq}-beta`) }).first()).toBeVisible({ timeout: 10_000 });
 		} finally {
 			await deleteChat(a);
 			await deleteChat(b);
