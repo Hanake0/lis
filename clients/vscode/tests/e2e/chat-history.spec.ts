@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { WORKSPACE_URL } from '../../playwright.config';
 import {
+	WORKSPACE_URL,
 	activateLisSidebar, chatFrame, openChatByName, waitForChatPanel,
 	hasEmptyState, visibleMessageCount, sendButtonDisabled, composerTextarea,
 } from './helpers';

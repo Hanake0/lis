@@ -1,5 +1,13 @@
 import type { Page, Locator } from '@playwright/test';
 
+/** Computed lazily so env-var overrides take effect at test run time. */
+function computeWorkspaceUrl(): string {
+	const base = process.env.LIS_SERVE_WEB ?? 'http://127.0.0.1:8001';
+	const ws   = process.env.LIS_WORKSPACE ?? 'C:/bkp/Dev/Hanake0/lis';
+	return base + '/?folder=' + encodeURIComponent(ws);
+}
+export const WORKSPACE_URL = computeWorkspaceUrl();
+
 /**
  * VS Code Web wraps every webview in **two** nested iframes:
  *   outer  — `vscode-cdn.net` shell (cross-origin)
