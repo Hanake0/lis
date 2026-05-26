@@ -91,9 +91,11 @@
     "build": "tailwindcss -i src/webview/styles.css -o dist/chat.css && node esbuild.mjs",
     "watch": "concurrently \"tailwindcss -i src/webview/styles.css -o dist/chat.css --watch\" \"node esbuild.mjs --watch\"",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/**/*.test.ts"
+    "test": "bun test src/**/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/cli": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
