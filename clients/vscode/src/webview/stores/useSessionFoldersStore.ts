@@ -510,3 +510,11 @@ function errorMessage(err: unknown): string {
 	if (err instanceof Error)        return err.message;
 	return String(err);
 }
+
+// Expose the store on `window` for the Playwright e2e harness — lets specs
+// observe folder mutations driven by REST without driving the sidebar's
+// react render cycle. Mirrors the `__lis_globalSessions` / `__lis_config`
+// hooks already in place. No-op in non-browser test environments.
+if (typeof window !== 'undefined') {
+	(window as unknown as { __lis_folders?: unknown }).__lis_folders = useSessionFoldersStore;
+}

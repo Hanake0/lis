@@ -7,6 +7,7 @@ import { lisLog } from './lib/lis/logger';
 import { mountChatEventsBridge } from './sync/chat-events-bridge';
 import { useGlobalSessionsStore } from './stores/useGlobalSessionsStore';
 import { installProjectsSync } from './stores/useProjectsStore';
+import { installSessionFoldersSync } from './stores/useSessionFoldersStore';
 import { installChatPanelInit } from './sync/chat-panel-bridge';
 
 // Trace every inbound postMessage when verbose logging is on. Wire this BEFORE
@@ -29,6 +30,13 @@ mountChatEventsBridge();
 // Wire useProjectsStore: initial REST load + live SSE updates for
 // project_created/updated/deleted.
 installProjectsSync();
+
+// Wire useSessionFoldersStore: subscribes to folder_created / folder_updated /
+// folder_deleted SSE events. Without this the sidebar never reflects folder
+// mutations from other clients (or from this client after an HMR boundary).
+// Initial REST load per-scope happens lazily inside the sidebar's
+// useFolderScopeBootstrap.
+installSessionFoldersSync();
 
 // Wire useConfigStore: initial /api/providers load on rpc ready and on every
 // config refresh. The store's own module-bottom bootstrap relied on
