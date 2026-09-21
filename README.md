@@ -1,3 +1,5 @@
+
+
 # Lis
 
 A production-grade AI assistant that lives where you already chat. Not a wrapper around an API — a full agent with tools, memory, security, cost control, and group intelligence.
@@ -57,7 +59,7 @@ Running an AI agent on a messaging platform means long-lived conversations with 
 - **Tool summarization policies** — per-tool control: `Prune` strips verbose output (file listings, search results), `Summarize` preserves valuable context (memory searches, config reads) in compaction summaries.
 - **Per-message token tracking** — input, output, cache read, cache creation — stored per-message and per-session. `/status` shows real-time cache hit %, token usage, and budget utilization.
 
-### Tools (33 functions across 9 plugins)
+### Tools (34 functions across 9 plugins)
 
 | Plugin | Functions | What it does |
 |--------|-----------|-------------|
